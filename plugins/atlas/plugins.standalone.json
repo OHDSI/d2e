@@ -84,6 +84,17 @@
       "metadata": { "author": "OHDSI", "description": "Studies shell: Local / Network / Results" }
     },
     {
+      "id": "data-quality",
+      "name": "Data quality",
+      "version": "0.1.0",
+      "entryPoint": "data-quality/index.system.js",
+      "menuItems": [],
+      "mountPoints": [
+        { "id": "dashboard", "surface": "datasource-sidebar", "name": "Data quality dashboard", "icon": "mdi-medal-outline", "group": "Data quality", "order": 10 }
+      ],
+      "metadata": { "author": "D2E", "description": "OMOP CDM data quality dashboard for the selected data source" }
+    },
+    {
       "id": "patient-analytics",
       "name": "Data Exploration",
       "version": "2.0.0",

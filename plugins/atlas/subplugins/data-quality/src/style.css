@@ -1,0 +1,5 @@
+/* @d2e/atlas-data-quality: layout/theme come from @ohdsi/atlas-ui + the host;
+   this file exists so the plugin bootstrap style-link resolves (no 404/MIME). */
+:root {
+  --data-quality-plugin: 1;
+}

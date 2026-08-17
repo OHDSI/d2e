@@ -440,6 +440,16 @@ jobs:
             ( cd "$SUB/$p" && npm install \
               && npm run "$(node -e "process.stdout.write(require('./package.json').scripts['build:pkg'] ? 'build:pkg' : 'build')")" )
           done
+          # data-quality lives in this repo (plugins/atlas/subplugins), not the
+          # submodule, but is a file: dep of plugins/atlas — so unlike
+          # patient-analytics it must be built BEFORE the atlas install, whose
+          # postinstall stages its dist/. Mirrors scripts/build-atlas.sh.
+          DQ_DIR=plugins/atlas/subplugins/data-quality
+          ( cd "$DQ_DIR" && npm install && npm run build )
+          if [ ! -f "$DQ_DIR/dist/index.system.js" ]; then
+            echo "::error::data-quality did not produce dist/index.system.js"
+            exit 1
+          fi
       # Atlas plugin: postinstall bakes Atlas3 + the Pythia UI into resources/;
       # build the portal entry. Packs only resources/ (see package.json "files").
       - name: Build Atlas plugin
