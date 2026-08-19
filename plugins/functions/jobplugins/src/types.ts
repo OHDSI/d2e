@@ -8,7 +8,13 @@ export interface IPrefectFlowRunDto {
   };
 }
 
+type IDataQualityArtifactScalar<T> = T | T[];
+
 export interface IDataQualityResult {
+  startTimestamp?: IDataQualityArtifactScalar<string>;
+  endTimestamp?: IDataQualityArtifactScalar<string>;
+  executionTime?: IDataQualityArtifactScalar<string>;
+  executionTimeSeconds?: IDataQualityArtifactScalar<number>;
   Overview: {
     countOverallFailed: number;
     countFailedPlausibility: number;
@@ -17,7 +23,8 @@ export interface IDataQualityResult {
   };
   Metadata: {
     cdmReleaseDate: string;
-  };
+    dqdVersion?: string;
+  }[];
   CheckResults: IDataQualityCheckResult[];
 }
 
