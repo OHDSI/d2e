@@ -22,8 +22,10 @@ const VUE_APP_HOST = env.REACT_APP_DN_BASE_URL.endsWith("/")
   ? `${env.REACT_APP_DN_BASE_URL}d2e`
   : `${env.REACT_APP_DN_BASE_URL}/d2e`;
 
-function generateAppId(path: string): string {
-  return `researcher-plugin-${path.replace(/[^a-zA-Z0-9]/g, "-")}`;
+function generateAppId(path: string, route?: string): string {
+  const pathPart = path.replace(/[^a-zA-Z0-9]/g, "-");
+  const routePart = route ? `-${route.replace(/[^a-zA-Z0-9]/g, "-")}` : "";
+  return `researcher-plugin-${pathPart}${routePart}`;
 }
 
 interface ResearcherStudyPluginRendererProps {
@@ -69,7 +71,7 @@ export const ResearcherStudyPluginRenderer: FC<ResearcherStudyPluginRendererProp
     if (configType === "app" && !isRegistered) {
       const registerApp = async () => {
         try {
-          const appId = generateAppId(path);
+          const appId = generateAppId(path, route);
           const basePath = `${env.PUBLIC_URL}/researcher/${route}`;
 
           console.debug(`[ResearcherStudyPluginRenderer] Registering single-spa app: ${appId}`);
@@ -113,7 +115,7 @@ export const ResearcherStudyPluginRenderer: FC<ResearcherStudyPluginRendererProp
 
   useEffect(() => {
     if (configType === "app" && isRegistered) {
-      const appId = generateAppId(path);
+      const appId = generateAppId(path, route);
       updateCustomProps(appId, {
         getToken: getAuthToken,
         idpUserId,
@@ -126,19 +128,19 @@ export const ResearcherStudyPluginRenderer: FC<ResearcherStudyPluginRendererProp
         ...data,
       });
     }
-  }, [studyId, locale, idpUserId, username, data, path, configType, isRegistered, features, featuresLoading]);
+  }, [studyId, locale, idpUserId, username, data, path, route, configType, isRegistered, features, featuresLoading]);
 
   // Cleanup: unload the single-spa app when the component unmounts
   // This ensures the app can be properly remounted when returning to Researcher
   useEffect(() => {
     if (configType === "app") {
-      const appId = generateAppId(path);
+      const appId = generateAppId(path, route);
       return () => {
         console.log(`[ResearcherStudyPluginRenderer] Unmounting, unloading app: ${appId}`);
         unloadSingleSpaApp(appId);
       };
     }
-  }, [configType, path]);
+  }, [configType, path, route]);
 
   // Load legacy plugins when path changes
   useEffect(() => {
@@ -175,7 +177,7 @@ export const ResearcherStudyPluginRenderer: FC<ResearcherStudyPluginRendererProp
       fetchMenu,
       subFeatureFlags,
     }),
-    [tenantId, studyId, releaseId, data, fetchMenu, userId, subFeatureFlags]
+    [tenantId, studyId, releaseId, data, fetchMenu, userId, subFeatureFlags],
   );
 
   if (isLoading) {
@@ -183,7 +185,7 @@ export const ResearcherStudyPluginRenderer: FC<ResearcherStudyPluginRendererProp
   }
 
   if (pluginType === "app") {
-    const appId = generateAppId(path);
+    const appId = generateAppId(path, route);
     return <SingleSpaAppContainer appName={appId} />;
   }
 
