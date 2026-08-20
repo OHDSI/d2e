@@ -16,6 +16,7 @@ export const usePortalContextStore = defineStore('portalContext', {
     REACT_APP_USE_PUBLIC_WEBAPI_PROXY: undefined,
     REACT_APP_PUBLIC_WEBAPI_DATASOURCE: undefined,
     debug: undefined,
+    view: undefined,
   }),
   actions: {
     applyProps(next: Partial<PortalContextState>) {

@@ -16,6 +16,7 @@ export interface PortalContextState {
   REACT_APP_USE_PUBLIC_WEBAPI_PROXY?: string
   REACT_APP_PUBLIC_WEBAPI_DATASOURCE?: string
   debug?: boolean
+  view?: string
 }
 
 declare global {
