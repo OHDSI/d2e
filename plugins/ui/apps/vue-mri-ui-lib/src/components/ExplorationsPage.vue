@@ -101,7 +101,14 @@ const getText = (key: string): string => {
 }
 
 const load = (): void => {
-  store.dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } }).catch(() => {})
+  store
+    .dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } })
+    .catch(() => {})
+    .finally(() => {
+      // PatientAnalytics owns completeInitialLoad in the cohort view; the
+      // exploration view must clear the splash itself.
+      store.dispatch('completeInitialLoad')
+    })
 }
 
 const cards = computed(() => {
