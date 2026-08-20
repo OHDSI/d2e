@@ -424,6 +424,14 @@ export const i18n = {
     MRI_PA_BOOKMARK_DELETE_DIALOG_TEXT:
       'Deleting this saved filter will delete any access points that you generated for it.',
     MRI_PA_BOOKMARK_DELETE_DIALOG_QUESTION_TEXT: 'Are you sure you want to delete?',
+    MRI_PA_EXPLORATION_RENAME_DIALOG_TITLE: 'Rename exploration name',
+    MRI_PA_EXPLORATION_NAME_LABEL: 'Exploration name',
+    MRI_PA_BUTTON_RENAME: 'Rename',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE: 'Delete filter?',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT:
+      'Deleting this saved filter will delete any access point that you generated for it. This action cannot be undone.',
+    MRI_PA_BUTTON_YES_DELETE: 'Yes, delete',
+    MRI_PA_BUTTON_MATERIALIZE: 'Materialize',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: 'No cohort definition available',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TITLE: 'Overwrite Saved Filter',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TEXT: 'A saved filter with this name already exists. Do you want to overwrite it?',
@@ -1463,6 +1471,14 @@ export const i18n = {
     MRI_PA_BOOKMARK_DELETE_DIALOG_TEXT:
       'Wenn Sie diesen gesicherten Filter löschen, werden alle Zugriffspunkte, die Sie für diesen Filter generiert haben, ebenfalls gelöscht.',
     MRI_PA_BOOKMARK_DELETE_DIALOG_QUESTION_TEXT: 'Möchten Sie wirklich löschen?',
+    MRI_PA_EXPLORATION_RENAME_DIALOG_TITLE: 'Explorationsnamen umbenennen',
+    MRI_PA_EXPLORATION_NAME_LABEL: 'Explorationsname',
+    MRI_PA_BUTTON_RENAME: 'Umbenennen',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE: 'Filter löschen?',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT:
+      'Wenn Sie diesen gespeicherten Filter löschen, werden alle dafür erstellten Zugangspunkte ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+    MRI_PA_BUTTON_YES_DELETE: 'Ja, löschen',
+    MRI_PA_BUTTON_MATERIALIZE: 'Materialisieren',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: 'Keine Kohortendefinition verfügbar',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TITLE: 'Gesicherten Filter überschreiben',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TEXT:
@@ -2472,6 +2488,14 @@ export const i18n = {
     MRI_PA_BOOKMARK_DELETE_DIALOG_TITLE: '删除已保存的过滤器',
     MRI_PA_BOOKMARK_DELETE_DIALOG_TEXT: '删除此已保存的过滤器将删除您为其生成的访问点。',
     MRI_PA_BOOKMARK_DELETE_DIALOG_QUESTION_TEXT: '是否确定要删除？',
+    MRI_PA_EXPLORATION_RENAME_DIALOG_TITLE: '重命名探索名称',
+    MRI_PA_EXPLORATION_NAME_LABEL: '探索名称',
+    MRI_PA_BUTTON_RENAME: '重命名',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE: '删除过滤器？',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT:
+      '删除此已保存的过滤器将删除您为其生成的所有访问点。此操作无法撤消。',
+    MRI_PA_BUTTON_YES_DELETE: '是，删除',
+    MRI_PA_BUTTON_MATERIALIZE: '物化',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: '没有可用的群组定义',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TITLE: '覆盖已保存的过滤器',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TEXT: '具有此名称的已保存的过滤器已存在。是否要覆盖？',
