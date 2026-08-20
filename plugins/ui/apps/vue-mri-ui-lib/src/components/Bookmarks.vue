@@ -166,10 +166,9 @@
     </cohortListDialog>
 
     <addCohort
-      :openAddDialog="showAddCohortDialog"
+      v-model="showAddCohortDialog"
       :bookmarkId="this.selectedBookmark?.id"
       :bookmarkName="this.selectedBookmark?.name"
-      @closeEv="showAddCohortDialog = false"
       :cohortDefinitionType="cohortDefinitionType"
       :atlasCohortDefinitionId="atlasCohortDefinitionId"
     >

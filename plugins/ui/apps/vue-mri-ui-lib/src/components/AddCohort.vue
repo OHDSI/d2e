@@ -1,69 +1,60 @@
 <template>
-  <messageBox v-if="showAddCohortDialog" dim="true" :busy="cohortBusy" messageType="custom" @close="closeWindow">
-    <template v-slot:header>
-      <div style="maxwidth: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-        {{ getText('MRI_PA_COLL_ADD_PATIENTS_TO_COLLECTION') + ` (${this.bookmarkName})` }}
-      </div>
-    </template>
-    <template v-slot:body>
-      <div class="cohort-dialog">
-        <appMessageStrip
-          :messageType="messageStrip.messageType"
-          :text="messageStrip.message"
-          v-if="messageStrip.show"
-          @closeEv="resetMessageStrip"
-        />
+  <D2eDialog
+    :model-value="modelValue"
+    :busy="cohortBusy"
+    :title="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
+    data-testid="pa-modal-wrapper"
+    @update:model-value="onModelValueUpdate"
+  >
+    <appMessageStrip
+      :messageType="messageStrip.messageType"
+      :text="messageStrip.message"
+      v-if="messageStrip.show"
+      @closeEv="resetMessageStrip"
+    />
 
-        <div class="form-group" v-if="cohortDefinitionType === 'D2E'">
-          <div class="row">
-            <div class="col-sm-4 form-check col-form-label">
-              <label class="form-check-label" for="cohort-radio-newcollection">{{
-                getText('MRI_PA_COLL_COHORT_DESCRIPTION')
-              }}</label>
-            </div>
-            <div class="col-sm-8">
-              <input
-                class="form-control"
-                :placeholder="getText('MRI_PA_COLL_ENTER_DESCRIPTION')"
-                v-model="cohortDescription"
-                tabindex="1"
-                @keydown.enter="onOkButtonPress"
-              />
-            </div>
-          </div>
-        </div>
+    <div v-if="cohortDefinitionType === 'D2E'" class="cohort-dialog__description">
+      <D2eTextField
+        v-model="cohortDescription"
+        :label="getText('MRI_PA_COLL_COHORT_MATERIALIZATION_DESCRIPTION')"
+        :placeholder="getText('MRI_PA_COLL_ENTER_DESCRIPTION')"
+        @keydown.enter="onOkButtonPress"
+      />
+    </div>
 
-        <!-- TODO: Customize dialog body for Atlas -->
-        <div v-if="cohortDefinitionType === 'Atlas' && !messageStrip.show">Click OK to materialize this cohort.</div>
-      </div>
-    </template>
-    <template v-slot:footer>
-      <div class="flex-spacer"></div>
-      <appButton
+    <!-- TODO: Customize dialog body for Atlas -->
+    <div v-if="cohortDefinitionType === 'Atlas' && !messageStrip.show">Click OK to materialize this cohort.</div>
+
+    <template #actions>
+      <D2eButton
+        variant="secondary"
+        :disabled="cohortBusy"
+        @click="closeWindow"
+      >
+        {{ getText('MRI_PA_BUTTON_CANCEL') }}
+      </D2eButton>
+      <D2eButton
         :disabled="cohortBusy || (messageStrip.show && messageStrip.messageType === 'error')"
-        :click="onOkButtonPress"
-        :text="getText('MRI_PA_COLL_BUT_OK')"
-      ></appButton>
-      <appButton :disabled="cohortBusy" :click="closeWindow" :text="getText('MRI_PA_COLL_BUT_CANCEL')"></appButton>
+        :loading="cohortBusy"
+        @click="onOkButtonPress"
+      >
+        {{ getText('MRI_PA_BUTTON_MATERIALIZE') }}
+      </D2eButton>
     </template>
-  </messageBox>
+  </D2eDialog>
 </template>
 
 <script lang="ts">
 import { mapActions, mapGetters, mapMutations } from 'vuex'
-import appButton from '../lib/ui/app-button.vue'
-import appLabel from '../lib/ui/app-label.vue'
+import { D2eButton, D2eDialog, D2eTextField } from '@d2e/ui'
 import appMessageStrip from '../lib/ui/app-message-strip.vue'
-import appSkinnyDropdown from '../lib/ui/app-skinny-dropdown.vue'
 import * as types from '../store/mutation-types'
-import messageBox from './MessageBox.vue'
 
 export default {
   name: 'addCohort',
-  props: ['bookmarkId', 'bookmarkName', 'openAddDialog', 'cohortDefinitionType', 'atlasCohortDefinitionId'],
+  props: ['bookmarkId', 'bookmarkName', 'modelValue', 'cohortDefinitionType', 'atlasCohortDefinitionId'],
   data() {
     return {
-      showAddCohortDialog: false,
       cohortDescription: '',
       cohortBusy: false,
       messageStrip: {
@@ -74,11 +65,6 @@ export default {
     }
   },
   watch: {
-    openAddDialog(val) {
-      if (val) {
-        this.openAddCohortDialog()
-      }
-    },
     selectedCollection(newVal, oldVal) {
       if (newVal === 'oldCollection') {
         this.loadOldCollections()
@@ -145,12 +131,8 @@ export default {
       'fireBookmarkQuery',
     ]),
     ...mapMutations([types.SET_COHORT_TYPE, types.SET_COLLECTION_TYPE, types.COLLECTIONS_SET_HASEXISTINGCOLLECTION]),
-    openAddCohortDialog() {
-      this.showAddCohortDialog = true
-    },
     onOkButtonPress() {
       try {
-        this.cohortDefinitionType === 'D2E'
         const syntax = JSON.stringify({
           datasetId: this.getSelectedDataset.id,
           bookmarkId: this.bookmarkId,
@@ -203,14 +185,18 @@ export default {
         console.error(e)
       }
     },
+    onModelValueUpdate(open) {
+      if (!open) {
+        this.closeWindow()
+      }
+    },
     closeWindow() {
       this.resetMessageStrip()
       this.cohortBusy = false
       this[types.SET_COHORT_TYPE]('subset')
       this[types.SET_COLLECTION_TYPE]('newCollection')
       this.cohortDescription = ''
-      this.showAddCohortDialog = false
-      this.$emit('closeEv')
+      this.$emit('update:modelValue', false)
     },
     resetMessageStrip() {
       this.messageStrip = {
@@ -233,12 +219,15 @@ export default {
     },
   },
   components: {
-    messageBox,
-    appLabel,
-    appButton,
-    appSkinnyDropdown,
+    D2eDialog,
+    D2eButton,
+    D2eTextField,
     appMessageStrip,
   },
 }
 </script>
-<style></style>
+<style scoped>
+.cohort-dialog__description {
+  margin-bottom: 8px;
+}
+</style>
