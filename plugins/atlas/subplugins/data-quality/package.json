@@ -1,5 +1,5 @@
 {
-  "name": "@d2e/atlas-data-quality",
+  "name": "@data2evidence/atlas-data-quality",
   "version": "0.1.0",
   "description": "OMOP CDM data quality dashboard for Atlas3, reading the d2e jobplugins DQD endpoints",
   "type": "module",
