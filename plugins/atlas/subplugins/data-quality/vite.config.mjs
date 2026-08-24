@@ -15,12 +15,14 @@ const OUT_DIR = process.env.DATA_QUALITY_OUT_DIR
   ? join(__dirname, process.env.DATA_QUALITY_OUT_DIR)
   : join(__dirname, 'dist');
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     vue(),
-    // styles: 'none' — the Atlas host already ships Vuetify's stylesheet; this
-    // build only needs the component code.
-    vuetify({ autoImport: true, styles: 'none' }),
+    // styles: 'none' for the library build — the Atlas host already ships
+    // Vuetify's stylesheet, so it only needs the component code. The dev harness
+    // (src/dev.ts) has no host to borrow from, so there the plugin wires
+    // Vuetify's prebuilt CSS in as usual.
+    vuetify({ autoImport: true, styles: command === 'serve' ? true : 'none' }),
   ],
   build: {
     cssCodeSplit: false,
@@ -52,4 +54,4 @@ export default defineConfig({
     // loader — otherwise rendering either throws "Unknown file extension .css".
     server: { deps: { inline: ['vuetify', '@ohdsi/atlas-ui'] } },
   },
-});
+}));
