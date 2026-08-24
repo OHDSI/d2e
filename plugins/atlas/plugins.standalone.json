@@ -38,7 +38,10 @@
       "version": "0.1.0",
       "entryPoint": "strategus-plugin/index.system.js",
       "menuItems": [],
-      "metadata": { "author": "OHDSI", "description": "Strategus Analysis Specification Builder" }
+      "metadata": {
+        "author": "OHDSI",
+        "description": "Strategus Analysis Specification Builder"
+      }
     },
     {
       "id": "wizards",
@@ -63,7 +66,10 @@
       "version": "0.1.0",
       "entryPoint": "notebook-plugin/index.system.js",
       "menuItems": [],
-      "metadata": { "author": "OHDSI", "description": "Create, store and run Python/R/Markdown notebooks (Pyodide/WebR)" }
+      "metadata": {
+        "author": "OHDSI",
+        "description": "Create, store and run Python/R/Markdown notebooks (Pyodide/WebR)"
+      }
     },
     {
       "id": "network-plugin",
@@ -71,7 +77,10 @@
       "version": "0.1.0",
       "entryPoint": "network-plugin/index.system.js",
       "menuItems": [],
-      "metadata": { "author": "OHDSI", "description": "Federated network studies — site plugin. Loads inactive until NETWORK_* config is provided." }
+      "metadata": {
+        "author": "OHDSI",
+        "description": "Federated network studies — site plugin. Loads inactive until NETWORK_* config is provided."
+      }
     },
     {
       "id": "studies-plugin",
@@ -79,9 +88,18 @@
       "version": "0.1.0",
       "entryPoint": "studies-plugin/index.system.js",
       "menuItems": [
-        { "id": "studies.main", "name": "Studies", "route": "/plugins/studies-plugin/", "icon": "mdi-flask-outline", "order": 40 }
+        {
+          "id": "studies.main",
+          "name": "Studies",
+          "route": "/plugins/studies-plugin/",
+          "icon": "mdi-flask-outline",
+          "order": 40
+        }
       ],
-      "metadata": { "author": "OHDSI", "description": "Studies shell: Local / Network / Results" }
+      "metadata": {
+        "author": "OHDSI",
+        "description": "Studies shell: Local / Network / Results"
+      }
     },
     {
       "id": "data-quality",
@@ -90,9 +108,19 @@
       "entryPoint": "data-quality/index.system.js",
       "menuItems": [],
       "mountPoints": [
-        { "id": "dashboard", "surface": "datasource-sidebar", "name": "Data quality dashboard", "icon": "mdi-medal-outline", "group": "Data quality", "order": 10 }
+        {
+          "id": "dashboard",
+          "surface": "datasource-sidebar",
+          "name": "Data quality dashboard",
+          "icon": "mdi-license",
+          "group": "Data quality",
+          "order": 10
+        }
       ],
-      "metadata": { "author": "D2E", "description": "OMOP CDM data quality dashboard for the selected data source" }
+      "metadata": {
+        "author": "D2E",
+        "description": "OMOP CDM data quality dashboard for the selected data source"
+      }
     },
     {
       "id": "patient-analytics",
@@ -100,9 +128,19 @@
       "version": "2.0.0",
       "entryPoint": "patient-analytics/index.system.js",
       "menuItems": [
-        { "id": "pa.main", "name": "Data Exploration", "route": "/plugins/patient-analytics/", "icon": "mdi-account-search-outline", "order": 45, "insertBefore": "cohorts" }
+        {
+          "id": "pa.main",
+          "name": "Data Exploration",
+          "route": "/plugins/patient-analytics/",
+          "icon": "mdi-account-search-outline",
+          "order": 45,
+          "insertBefore": "cohorts"
+        }
       ],
-      "metadata": { "author": "D2E", "description": "Data Exploration (Patient Analytics/MRI) — visual cohort exploration against the selected data source" }
+      "metadata": {
+        "author": "D2E",
+        "description": "Data Exploration (Patient Analytics/MRI) — visual cohort exploration against the selected data source"
+      }
     }
   ],
   "settings": {
@@ -116,8 +154,23 @@
       "logoNavigateTo": "/",
       "accentColor": "#ff5e59",
       "landingLogoUrl": "/atlas/config/landing-page-illustration.svg",
-      "chartColors": ["#000080", "#ff5e59", "#4e79a7", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#9c755f", "#bab0ab", "#e15759"],
-      "treemapGradient": ["#c3cce8", "#4a5fb0", "#000080"]
+      "chartColors": [
+        "#000080",
+        "#ff5e59",
+        "#4e79a7",
+        "#76b7b2",
+        "#59a14f",
+        "#edc949",
+        "#af7aa1",
+        "#9c755f",
+        "#bab0ab",
+        "#e15759"
+      ],
+      "treemapGradient": [
+        "#c3cce8",
+        "#4a5fb0",
+        "#000080"
+      ]
     },
     "header": {
       "showNavBar": true,
