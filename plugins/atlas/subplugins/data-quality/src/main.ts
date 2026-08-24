@@ -8,62 +8,69 @@
  * /trex-token, because trex CORE's auth middleware is HS256-only. This plugin
  * talks to /jobplugins/*, which is scope-checked by the gateway and accepts the
  * Logto RS256 token directly — the same token the d2e portal sends. Adding the
- * exchange here would be wrong, not merely redundant.
+ * exchange here would be wrong.
  */
-import './style.css';
-import { h, createApp, ref } from 'vue';
-import { createVuetify } from 'vuetify';
-import { aliases, mdi } from 'vuetify/iconsets/mdi';
-import singleSpaVue from 'single-spa-vue';
-import DataQualityApp from './DataQualityApp.vue';
-import { DQ_HOST_CTX, resolveSourceKey, type DqHostCtx, type PluginProps } from './types';
+import "./style.css";
+import { h, createApp, ref } from "vue";
+import { createVuetify } from "vuetify";
+import { aliases, mdi } from "vuetify/iconsets/mdi";
+import singleSpaVue from "single-spa-vue";
+import DataQualityApp from "./DataQualityApp.vue";
+import {
+  DQ_HOST_CTX,
+  resolveSourceKey,
+  type DqHostCtx,
+  type PluginProps,
+} from "./types";
 
 /**
  * The selected data source, shared between the lifecycles and the component
  * tree. Module-scoped because `update()` receives props but no handle to the Vue
  * instance, and Atlas mounts at most one instance of a given plugin at a time.
  */
-const selectedSourceKey = ref('');
+const selectedSourceKey = ref("");
 
-const CSS_LINK_ID = 'data-quality-plugin-styles';
+const CSS_LINK_ID = "data-quality-plugin-styles";
 
 function injectPluginCss(uiFilesUrl: string): Promise<void> {
-  const existing = document.getElementById(CSS_LINK_ID) as HTMLLinkElement | null;
+  const existing = document.getElementById(
+    CSS_LINK_ID,
+  ) as HTMLLinkElement | null;
   if (existing) {
-    return existing.dataset.loaded === 'true'
+    return existing.dataset.loaded === "true"
       ? Promise.resolve()
       : new Promise<void>((resolve) => {
-          existing.addEventListener('load', () => resolve(), { once: true });
-          existing.addEventListener('error', () => resolve(), { once: true });
+          existing.addEventListener("load", () => resolve(), { once: true });
+          existing.addEventListener("error", () => resolve(), { once: true });
         });
   }
   // uiFilesUrl is the plugin's public directory, e.g. "/atlas/plugins/data-quality/".
   const base = uiFilesUrl
-    ? uiFilesUrl.replace(/\/$/, '')
+    ? uiFilesUrl.replace(/\/$/, "")
     : `${window.location.origin}/atlas/plugins/data-quality`;
   return new Promise<void>((resolve) => {
-    const link = document.createElement('link');
+    const link = document.createElement("link");
     link.id = CSS_LINK_ID;
-    link.rel = 'stylesheet';
+    link.rel = "stylesheet";
     link.href = `${base}/style.css`;
     // Resolve on load so mount() never paints before CSS applies; resolve (not
     // reject) on error so a missing file can't hang the parcel forever. Mark it
     // settled either way so a remount doesn't await a dead listener.
     link.addEventListener(
-      'load',
+      "load",
       () => {
-        link.dataset.loaded = 'true';
+        link.dataset.loaded = "true";
         resolve();
       },
-      { once: true }
+      { once: true },
     );
     link.addEventListener(
-      'error',
+      "error",
       () => {
-        link.dataset.loaded = 'true';
+        link.dataset.loaded = "true";
         resolve();
       },
-      { once: true }
+      { once: true },
     );
     document.head.appendChild(link);
   });
@@ -76,25 +83,30 @@ function injectPluginCss(uiFilesUrl: string): Promise<void> {
  */
 function getSharedDefaults(): Record<string, Record<string, unknown>> {
   const config =
-    typeof window !== 'undefined'
-      ? (window as unknown as { __atlasUiConfig?: { defaults?: Record<string, Record<string, unknown>> } })
-          .__atlasUiConfig
+    typeof window !== "undefined"
+      ? (
+          window as unknown as {
+            __atlasUiConfig?: {
+              defaults?: Record<string, Record<string, unknown>>;
+            };
+          }
+        ).__atlasUiConfig
       : undefined;
   if (config?.defaults) return config.defaults;
   // Fallback for running outside the Atlas3 host (vite dev, unit tests).
   return {
-    VBtn: { variant: 'flat', color: 'primary', rounded: 'lg' },
-    VCard: { variant: 'flat', rounded: 'lg' },
-    VTextField: { variant: 'outlined', density: 'compact', rounded: 'md' },
-    VSelect: { variant: 'outlined', density: 'compact', rounded: 'md' },
-    VChip: { variant: 'tonal', rounded: 'md', density: 'compact' },
-    VAlert: { variant: 'tonal', rounded: 'md' },
+    VBtn: { variant: "flat", color: "primary", rounded: "lg" },
+    VCard: { variant: "flat", rounded: "lg" },
+    VTextField: { variant: "outlined", density: "compact", rounded: "md" },
+    VSelect: { variant: "outlined", density: "compact", rounded: "md" },
+    VChip: { variant: "tonal", rounded: "md", density: "compact" },
+    VAlert: { variant: "tonal", rounded: "md" },
   };
 }
 
 const vuetify = createVuetify({
   theme: false as never, // the host's :root tokens already provide the theme
-  icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
+  icons: { defaultSet: "mdi", aliases, sets: { mdi } },
   defaults: getSharedDefaults(),
 });
 
@@ -110,14 +122,17 @@ const vueLifecycles = singleSpaVue({
     app.use(vuetify);
 
     const hostCtx: DqHostCtx = {
-      getToken: pluginProps.getToken ?? (async () => pluginProps.authContext?.token ?? ''),
+      getToken:
+        pluginProps.getToken ??
+        (async () => pluginProps.authContext?.token ?? ""),
       // Reactive: Atlas never remounts us when the header's data source changes.
       // As a parcel it calls update({ hostContext }); as a routed app it fires a
       // `custom-props-changed` window event (see useHostContext).
       datasetId: selectedSourceKey,
       appId: pluginProps.appId,
-      locale: pluginProps.locale ?? 'en',
-      uiFilesUrl: pluginProps.uiFilesUrl ?? '',
+      t: pluginProps.t ?? ((_key: string, fallback?: string) => fallback ?? _key),
+      locale: pluginProps.locale ?? "en",
+      uiFilesUrl: pluginProps.uiFilesUrl ?? "",
     };
     app.provide(DQ_HOST_CTX, hostCtx);
   },
@@ -156,6 +171,6 @@ export const update = async (props: PluginProps) => {
 
 export const unmount = async (props: PluginProps) => {
   const result = await vueLifecycles.unmount(props);
-  selectedSourceKey.value = '';
+  selectedSourceKey.value = "";
   return result;
 };

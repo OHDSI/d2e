@@ -73,6 +73,12 @@ export interface PluginProps {
 export interface DqHostCtx {
   getToken: () => Promise<string>;
   /**
+   * The host's i18n lookup, `t(key, fallback)`. Atlas hands `t` to parcels only,
+   * so main.ts substitutes a pass-through returning the fallback — which is what
+   * the routed-app path, the vite dev harness and the unit tests run on.
+   */
+  t: (key: string, fallback?: string) => string;
+  /**
    * Reactive because Atlas mutates it in place: switching source in the header
    * dispatches `custom-props-changed` rather than remounting the plugin.
    */

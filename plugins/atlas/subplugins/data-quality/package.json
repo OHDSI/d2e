@@ -4,7 +4,9 @@
   "description": "OMOP CDM data quality dashboard for Atlas3, reading the d2e jobplugins DQD endpoints",
   "type": "module",
   "private": true,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": "./dist/index.system.js",
     "./dist/*": "./dist/*"
@@ -23,6 +25,7 @@
     "vuetify": "^3.5.0"
   },
   "devDependencies": {
+    "@mdi/font": "^7.4.47",
     "@vitejs/plugin-vue": "^5.2.4",
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^15.11.2",
