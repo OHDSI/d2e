@@ -26,11 +26,7 @@
     <div v-if="cohortDefinitionType === 'Atlas' && !messageStrip.show">Click OK to materialize this cohort.</div>
 
     <template #actions>
-      <D2eButton
-        variant="secondary"
-        :disabled="cohortBusy"
-        @click="closeWindow"
-      >
+      <D2eButton variant="secondary" :disabled="cohortBusy" @click="closeWindow">
         {{ getText('MRI_PA_BUTTON_CANCEL') }}
       </D2eButton>
       <D2eButton

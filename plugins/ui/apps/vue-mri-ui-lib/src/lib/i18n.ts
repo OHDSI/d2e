@@ -2492,8 +2492,7 @@ export const i18n = {
     MRI_PA_EXPLORATION_NAME_LABEL: '探索名称',
     MRI_PA_BUTTON_RENAME: '重命名',
     MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE: '删除过滤器？',
-    MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT:
-      '删除此已保存的过滤器将删除您为其生成的所有访问点。此操作无法撤消。',
+    MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT: '删除此已保存的过滤器将删除您为其生成的所有访问点。此操作无法撤消。',
     MRI_PA_BUTTON_YES_DELETE: '是，删除',
     MRI_PA_BUTTON_MATERIALIZE: '物化',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: '没有可用的群组定义',

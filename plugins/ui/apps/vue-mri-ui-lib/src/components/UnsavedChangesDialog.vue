@@ -10,19 +10,10 @@
   >
     <p>{{ message }}</p>
     <template #actions>
-      <D2eButton
-        variant="secondary"
-        data-testid="leave-page-button"
-        @click="$emit('leave')"
-      >
+      <D2eButton variant="secondary" data-testid="leave-page-button" @click="$emit('leave')">
         {{ leaveLabel }}
       </D2eButton>
-      <D2eButton
-        ref="stayButtonRef"
-        autofocus
-        data-testid="stay-page-button"
-        @click="$emit('stay')"
-      >
+      <D2eButton ref="stayButtonRef" autofocus data-testid="stay-page-button" @click="$emit('stay')">
         {{ stayLabel }}
       </D2eButton>
     </template>
