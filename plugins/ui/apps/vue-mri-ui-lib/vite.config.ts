@@ -7,6 +7,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
 import path from 'path'
 import { vueDir, vuetifyDir } from './vite.resolve-deps'
+import { postcssWoff2Only } from './build/postcss-woff2-only'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -169,6 +170,10 @@ export default defineConfig(({ command, mode }) => {
               },
             },
           },
+          // Library mode inlines every font a @font-face names, so each extra
+          // format is dead weight in lifecycles.js. Keep WOFF2 only.
+          // See build/postcss-woff2-only.ts.
+          postcssWoff2Only(),
         ],
       },
       preprocessorOptions: {
@@ -254,7 +259,7 @@ export default defineConfig(({ command, mode }) => {
       globals: true,
       environment: 'happy-dom',
       setupFiles: ['./vitest.setup.ts'],
-      include: ['src/**/__tests__/*.test.ts'],
+      include: ['src/**/__tests__/*.test.ts', 'build/__tests__/*.test.ts'],
       server: {
         deps: {
           inline: ['vuetify'],
