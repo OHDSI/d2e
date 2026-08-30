@@ -9,6 +9,13 @@
  * talks to /jobplugins/*, which is scope-checked by the gateway and accepts the
  * Logto RS256 token directly — the same token the d2e portal sends. Adding the
  * exchange here would be wrong.
+ *
+ * If a refresh briefly shows 'Report type "dashboard" is not
+ * yet implemented' before the dashboard appears, that is Atlas3's DataSourcesView
+ * rendering its unimplemented-report branch while the plugin registry is still
+ * loading — we are not mounted yet, and the string exists nowhere in this
+ * package. It is an upstream issue, written up in
+ * docs/atlas-plugin-report-type-flash.md.
  */
 import "./style.css";
 import { h, createApp, ref } from "vue";
@@ -130,7 +137,9 @@ const vueLifecycles = singleSpaVue({
       // `custom-props-changed` window event (see useHostContext).
       datasetId: selectedSourceKey,
       appId: pluginProps.appId,
-      t: pluginProps.t ?? ((_key: string, fallback?: string) => fallback ?? _key),
+      t:
+        pluginProps.t ??
+        ((_key: string, fallback?: string) => fallback ?? _key),
       locale: pluginProps.locale ?? "en",
       uiFilesUrl: pluginProps.uiFilesUrl ?? "",
       // Same discriminator bootstrap() uses below: uiFilesUrl is routed-only.
