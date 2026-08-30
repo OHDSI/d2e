@@ -103,6 +103,8 @@ const hostCtx: DqHostCtx = {
   t: (_key, fallback) => fallback ?? _key,
   locale: 'en',
   uiFilesUrl: '',
+  // The harness stands in for the parcel surface, which is how we ship.
+  isRoutedApp: false,
 };
 
 const app = createApp({

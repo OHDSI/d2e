@@ -133,6 +133,10 @@ const vueLifecycles = singleSpaVue({
       t: pluginProps.t ?? ((_key: string, fallback?: string) => fallback ?? _key),
       locale: pluginProps.locale ?? "en",
       uiFilesUrl: pluginProps.uiFilesUrl ?? "",
+      // Same discriminator bootstrap() uses below: uiFilesUrl is routed-only.
+      // useHostContext needs it to know whether the shell's
+      // `custom-props-changed` broadcast is about us.
+      isRoutedApp: Boolean(pluginProps.uiFilesUrl),
     };
     app.provide(DQ_HOST_CTX, hostCtx);
   },

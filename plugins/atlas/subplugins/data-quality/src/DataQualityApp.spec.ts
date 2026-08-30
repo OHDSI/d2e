@@ -38,6 +38,7 @@ function mountApp(overrides: Partial<DqHostCtx> = {}): VueWrapper {
     appId: 'app-1',
     locale: 'en',
     uiFilesUrl: '',
+    isRoutedApp: false,
     t: (_key, fallback) => fallback ?? _key,
     ...overrides,
   };
@@ -347,5 +348,66 @@ describe('DataQualityApp localisation', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="dq-empty"]').text()).toBe('[plugins.dataQuality.noRun]');
+  });
+});
+
+/**
+ * Atlas3's PluginLoader broadcasts `custom-props-changed` to every registered
+ * plugin id whenever the WebAPI store's sources settle, carrying
+ * `selectedSource || sources[0].sourceKey` — the shell's global "current"
+ * source, which on a fresh page load is simply the first one in the list. As a
+ * parcel we are handed the data source the /datasources route picked, so that
+ * broadcast is not news about us: honouring it swapped the route's results for
+ * the first source's (usually "no job has run").
+ */
+describe('DataQualityApp host source broadcast', () => {
+  function broadcast(datasetId: string, appId = 'app-1'): void {
+    window.dispatchEvent(
+      new CustomEvent('custom-props-changed', { detail: { appId, datasetId } }),
+    );
+  }
+
+  it('keeps the route’s results when the shell broadcasts a different source at parcel mount', async () => {
+    vi.mocked(getLatestDataQualityFlowRun).mockImplementation(async (datasetId: string) =>
+      datasetId === 'dataset-1' ? flowRun('COMPLETED') : null,
+    );
+    vi.mocked(getDataQualityOverview).mockResolvedValue(overviewResults());
+
+    const wrapper = mountApp();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="dq-overview"]').exists()).toBe(true);
+
+    broadcast('dataset-2');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="dq-overview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dq-empty"]').exists()).toBe(false);
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledTimes(1);
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledWith('dataset-1', 'token');
+  });
+
+  it('follows the broadcast when routed, where it is the only source-change channel', async () => {
+    vi.mocked(getLatestDataQualityFlowRun).mockResolvedValue(null);
+
+    mountApp({ isRoutedApp: true, uiFilesUrl: './plugins/data-quality/' });
+    await flushPromises();
+
+    broadcast('dataset-2');
+    await flushPromises();
+
+    expect(getLatestDataQualityFlowRun).toHaveBeenLastCalledWith('dataset-2', 'token');
+  });
+
+  it('ignores a broadcast addressed to a sibling plugin', async () => {
+    vi.mocked(getLatestDataQualityFlowRun).mockResolvedValue(null);
+
+    mountApp({ isRoutedApp: true, uiFilesUrl: './plugins/data-quality/' });
+    await flushPromises();
+
+    broadcast('dataset-2', 'some-other-plugin');
+    await flushPromises();
+
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledTimes(1);
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledWith('dataset-1', 'token');
   });
 });

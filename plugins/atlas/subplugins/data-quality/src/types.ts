@@ -79,13 +79,24 @@ export interface DqHostCtx {
    */
   t: (key: string, fallback?: string) => string;
   /**
-   * Reactive because Atlas mutates it in place: switching source in the header
-   * dispatches `custom-props-changed` rather than remounting the plugin.
+   * Reactive because Atlas mutates it in place rather than remounting us when
+   * the header's source changes: `parcel.update` as a parcel, a
+   * `custom-props-changed` window event as a routed app.
    */
   datasetId: Ref<string>;
   appId: string;
   locale: string;
   uiFilesUrl: string;
+  /**
+   * Which of the two mount modes above we are in. Derived from `uiFilesUrl`,
+   * the same signal bootstrap() uses to decide whether to inject our CSS, so
+   * the mode is read off one prop rather than guessed twice.
+   *
+   * It matters because the two modes learn about a source change through
+   * different channels, and only the routed one may listen to the window event
+   * (see useHostContext).
+   */
+  isRoutedApp: boolean;
 }
 
 /**
