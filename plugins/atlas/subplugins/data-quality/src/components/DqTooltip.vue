@@ -43,15 +43,19 @@ const props = withDefaults(
     width?: number;
     /**
      * Let the pointer into the card — VTooltip's own prop, which drops the
-     * `pointer-events: none` it otherwise puts on the content. Turn it on when
-     * there is something in the card worth reaching, such as text to select;
-     * leave it off otherwise, so the card cannot swallow clicks meant for what
-     * it covers. `offset="0"` already makes the trip from trigger to card
-     * continuous, so no close delay is needed to survive the gap.
+     * `pointer-events: none` it otherwise puts on the content. On by default:
+     * every card here holds a paragraph or two meant to be read, and a card that
+     * vanishes the moment you move toward it cannot be. `offset="0"` already
+     * butts the caret against the trigger, so the trip across is continuous and
+     * needs no close delay to survive a gap.
+     *
+     * Pass `:interactive="false"` where the card would rather not take the
+     * pointer — it covers whatever is beneath it while open, so clicks meant for
+     * that content land on the card instead.
      */
     interactive?: boolean;
   }>(),
-  { align: 'end', width: 300, interactive: false },
+  { align: 'end', width: 300, interactive: true },
 );
 
 const location = computed(() => (props.align === 'center' ? 'bottom' : 'bottom end'));
