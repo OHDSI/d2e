@@ -7,10 +7,11 @@
  *
  * The endpoint ships no prose, so the tooltip copy lives here: the corrected-rate
  * notes mirror the portal's OVERVIEW_TABLE__NOTE_1..3 strings, and the category
- * hints paraphrase the Kahn framework definitions DQD organises its checks by.
+ * explanations are the ones written into Figma node 1773:370246, verbatim.
  */
 import { computed } from 'vue';
-import { AtlasIcon, AtlasTooltip } from '@ohdsi/atlas-ui';
+import { AtlasIcon } from '@ohdsi/atlas-ui';
+import DqTooltip from './DqTooltip.vue';
 import type { OverviewResults } from '../api/dqd';
 import { formatNumber, formatPercent } from '../utils/format';
 
@@ -20,29 +21,36 @@ const CATEGORIES = [
   {
     key: 'plausibility',
     label: 'Plausibility',
-    hint: 'Are the values believable? Checks that values, distributions and event sequences make clinical and temporal sense.',
+    lead: 'Are the values clinically believable?',
+    detail:
+      "Values are clinically and logically believable — e.g. a patient's age, drug dosage, or lab result falls within an expected range. Flags records that are possible but unlikely.",
   },
   {
     key: 'conformance',
     label: 'Conformance',
-    hint: 'Do the data follow the CDM specification? Checks value formats, data types, vocabulary use and referential integrity.',
+    lead: 'Does the data follow OMOP structural rules?',
+    detail:
+      "Data follows the structural rules of the OMOP Common Data Model — correct formats, valid concept IDs, required fields populated. Flags records that don't match the expected schema.",
   },
   {
     key: 'completeness',
     label: 'Completeness',
-    hint: 'Are the expected data there? Checks for missing values in tables and fields that should be populated.',
+    lead: 'Are the expected fields populated?',
+    detail:
+      'Key fields expected to be present are actually populated. Flags records where important clinical data is missing or null.',
   },
 ] as const;
 
 const overall = computed(() => props.data.total.total);
 
 const categories = computed(() =>
-  CATEGORIES.map(({ key, label, hint }) => {
+  CATEGORIES.map(({ key, label, lead, detail }) => {
     const cell = props.data.total[key];
     return {
       key,
       label,
-      hint,
+      lead,
+      detail,
       percentPass: formatPercent(cell.percentPass),
       pass: formatNumber(cell.pass),
       fail: formatNumber(cell.fail),
@@ -51,16 +59,22 @@ const categories = computed(() =>
   }),
 );
 
-const correctedRateNotes = computed(() => {
+/**
+ * The two counts the correction is made from. The design states the rule as a
+ * formula and then shows what went into it, rather than the portal's third note
+ * restating the corrected percentage — that number is already in the label the
+ * tooltip hangs off, so `PassMinusAllNA` and `totalMinusAllErrorMinusAllNA` are
+ * no longer spelled out here.
+ */
+const correctedRateBreakdown = computed(() => {
   const cell = overall.value;
   return [
-    `${formatNumber(cell.allNa)} out of ${formatNumber(cell.pass)} passed checks are not applicable, due to empty tables or fields.`,
-    `${formatNumber(cell.allError)} out of ${formatNumber(cell.fail)} failed checks are SQL errors.`,
-    `Corrected pass percentage for NA and Errors: ${formatPercent(
-      cell.correctedPassPercentage,
-    )} (${formatNumber(cell.PassMinusAllNA)}/${formatNumber(
-      cell.totalMinusAllErrorMinusAllNA,
-    )}).`,
+    `Not-applicable passed checks, due to empty tables or fields: ${formatNumber(
+      cell.allNa,
+    )} of ${formatNumber(cell.pass)}`,
+    `Failed checks due to SQL errors: ${formatNumber(cell.allError)} of ${formatNumber(
+      cell.fail,
+    )}`,
   ];
 });
 </script>
@@ -80,7 +94,11 @@ const correctedRateNotes = computed(() => {
             Corrected pass rate {{ formatPercent(overall.correctedPassPercentage) }} –
             calculation info
           </span>
-          <AtlasTooltip location="bottom" max-width="360">
+          <DqTooltip
+            title="How the pass rate is calculated"
+            align="center"
+            :width="370"
+          >
             <template #activator="{ props: activator }">
               <button
                 v-bind="activator"
@@ -91,10 +109,21 @@ const correctedRateNotes = computed(() => {
                 <AtlasIcon icon="mdi-information-outline" size="20" />
               </button>
             </template>
-            <p v-for="note in correctedRateNotes" :key="note" class="dq-tooltip__line">
-              {{ note }}
+            <p>
+              The corrected pass rate excludes SQL errors and not-applicable checks from
+              the total.
             </p>
-          </AtlasTooltip>
+            <p>
+              <strong>
+                Corrected rate = (Pass − Not Applicable) ÷ (Total − SQL Errors − Not
+                Applicable) × 100.
+              </strong>
+            </p>
+            <hr />
+            <ul>
+              <li v-for="note in correctedRateBreakdown" :key="note">{{ note }}</li>
+            </ul>
+          </DqTooltip>
         </p>
         <p class="dq-summary__checks">
           {{ formatNumber(overall.pass) }} of {{ formatNumber(overall.total) }} checks
@@ -106,7 +135,7 @@ const correctedRateNotes = computed(() => {
       <li v-for="category in categories" :key="category.key" class="dq-tile">
         <div class="dq-tile__head">
           <span class="dq-tile__title">{{ category.label }}</span>
-          <AtlasTooltip location="bottom" max-width="320">
+          <DqTooltip :title="category.label" :lead="category.lead">
             <template #activator="{ props: activator }">
               <button
                 v-bind="activator"
@@ -117,8 +146,8 @@ const correctedRateNotes = computed(() => {
                 <AtlasIcon icon="mdi-information-outline" size="20" />
               </button>
             </template>
-            <p class="dq-tooltip__line">{{ category.hint }}</p>
-          </AtlasTooltip>
+            <p>{{ category.detail }}</p>
+          </DqTooltip>
         </div>
         <p class="dq-tile__value" :data-testid="`dq-tile-${category.key}`">
           {{ category.percentPass }}
@@ -270,11 +299,7 @@ const correctedRateNotes = computed(() => {
   border-radius: 50%;
 }
 
-.dq-tooltip__line {
-  margin: 0;
-}
-
-.dq-tooltip__line + .dq-tooltip__line {
-  margin-top: 4px;
-}
+/* Tooltip typography and paragraph rhythm now live in DqTooltip, which has to
+   own them: its content is teleported into Vuetify's overlay container, where a
+   scoped rule from this file would still match but the tokens would not. */
 </style>
