@@ -111,6 +111,10 @@ export function useDataQualityOverview(
   let authTimer: ReturnType<typeof setTimeout> | undefined;
   let pollFailures = 0;
   let authAttempts = 0;
+  // True from the moment a load starts until it commits, fails, or is superseded
+  // — a scheduled auth retry counts as still in flight, since it continues the
+  // same cycle. Read by the poll tick below.
+  let inFlight = false;
 
   function stopPolling(): void {
     if (pollTimer !== undefined) {
@@ -132,6 +136,7 @@ export function useDataQualityOverview(
     stopAuthWait();
     pollFailures = 0;
     authAttempts = 0;
+    inFlight = false;
     flowRunStateType.value = undefined;
     overview.value = null;
     loadError.value = null;
@@ -142,7 +147,14 @@ export function useDataQualityOverview(
     const shouldPoll = stateType !== undefined && POLLED_STATES.includes(stateType);
     if (shouldPoll) {
       if (pollTimer === undefined) {
-        pollTimer = setInterval(() => void load(true), POLL_INTERVAL_MS);
+        // Skip the tick while a load is still outstanding. Every load() claims a
+        // new sequence number, so an overlapping poll would discard the pending
+        // answer as stale — under latency above the interval that repeats every
+        // tick and nothing ever commits, freezing the dashboard mid-run.
+        pollTimer = setInterval(() => {
+          if (inFlight) return;
+          void load(true);
+        }, POLL_INTERVAL_MS);
       }
     } else {
       stopPolling();
@@ -161,6 +173,7 @@ export function useDataQualityOverview(
     }
 
     if (!quiet) loading.value = true;
+    inFlight = true;
 
     // A rejection from the host's getToken is read as "no token yet" so the wait
     // below applies to it as well, rather than surfacing a host-internal error.
@@ -212,6 +225,7 @@ export function useDataQualityOverview(
       // Runs for the early return above too, which is what keeps the poll alive
       // across a tolerated failure: the flow-run state is still in-progress.
       if (requestId === latestRequest) {
+        inFlight = false;
         loading.value = false;
         syncPolling();
       }
@@ -240,6 +254,13 @@ export function useDataQualityOverview(
   );
 
   onUnmounted(() => {
+    // Clearing the timers is not enough: a request still in flight would reach
+    // its `finally`, still hold the newest sequence number, and call
+    // syncPolling() — re-arming the interval after teardown and polling the
+    // gateway forever. Retiring the sequence number makes every pending load a
+    // stale one, so none of them can commit or restart a timer.
+    latestRequest += 1;
+    inFlight = false;
     stopPolling();
     stopAuthWait();
   });

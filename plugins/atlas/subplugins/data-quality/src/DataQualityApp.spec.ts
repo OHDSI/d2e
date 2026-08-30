@@ -294,6 +294,60 @@ describe('DataQualityApp polling', () => {
 
     expect(wrapper.find('[data-testid="dq-error"]').exists()).toBe(true);
   });
+
+  it('does not stack a second poll on top of a request slower than the interval', async () => {
+    let releaseSlowPoll: (run: FlowRun) => void = () => {};
+    vi.mocked(getLatestDataQualityFlowRun)
+      .mockResolvedValueOnce(flowRun('RUNNING'))
+      .mockReturnValueOnce(
+        new Promise<FlowRun>((resolve) => {
+          releaseSlowPoll = resolve;
+        }),
+      )
+      .mockResolvedValue(flowRun('COMPLETED'));
+    vi.mocked(getDataQualityOverview).mockResolvedValue(overviewResults());
+
+    const wrapper = mountApp();
+    await settle();
+
+    // The poll fires, then takes three intervals to answer. Overlapping polls
+    // would each retire the pending request, so its answer could never commit.
+    await settle(POLL_MS);
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledTimes(2);
+    await settle(POLL_MS * 3);
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledTimes(2);
+
+    releaseSlowPoll(flowRun('COMPLETED'));
+    await settle();
+
+    expect(wrapper.find('[data-testid="dq-overview"]').exists()).toBe(true);
+  });
+
+  it('does not re-arm the poll when a request lands after unmount', async () => {
+    let releaseSlowPoll: (run: FlowRun) => void = () => {};
+    vi.mocked(getLatestDataQualityFlowRun)
+      .mockResolvedValueOnce(flowRun('RUNNING'))
+      .mockReturnValue(
+        new Promise<FlowRun>((resolve) => {
+          releaseSlowPoll = resolve;
+        }),
+      );
+
+    const wrapper = mountApp();
+    await settle();
+    await settle(POLL_MS);
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledTimes(2);
+
+    wrapper.unmount();
+    wrappers.pop();
+    // Answering with an in-progress state is what used to restart the interval
+    // from the load's `finally`, leaving the gateway polled forever.
+    releaseSlowPoll(flowRun('RUNNING'));
+    await settle();
+    await settle(POLL_MS * 3);
+
+    expect(getLatestDataQualityFlowRun).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('DataQualityApp host token', () => {

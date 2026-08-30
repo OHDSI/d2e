@@ -9,8 +9,14 @@ The dev server renders the dashboard outside Atlas with a stubbed host context,
 an `AtlasCard` container, and mocked `/jobplugins` responses. It does not need
 a running TREX instance.
 
+`npm install` needs `NODE_AUTH_TOKEN`: this package's `.npmrc` resolves
+`@ohdsi/atlas-ui` through GitHub Packages, so the token must carry
+`read:packages`. (`scripts/build-atlas.sh` exports it for you from `GITHUB_TOKEN`
+or `gh auth token`; running npm here directly does not.)
+
 ```sh
 cd plugins/atlas/subplugins/data-quality
+export NODE_AUTH_TOKEN="${GITHUB_TOKEN:-$(gh auth token)}"
 npm install
 npm run dev
 ```
