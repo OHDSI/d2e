@@ -83,8 +83,8 @@ export interface UseDataQualityOverview {
   errorMessage: Ref<string>;
   /**
    * Re-runs the load behind the error state's Retry button. Safe to call while a
-   * load is already in flight: `latestRequest` discards whichever finishes first.
-   * Atlas3's store exposes `retryFetchReport` for the same purpose.
+   * load is already in flight: the new one retires it, so only the newest answer
+   * commits. Atlas3's store exposes `retryFetchReport` for the same purpose.
    */
   retry: () => void;
 }
@@ -103,18 +103,23 @@ export function useDataQualityOverview(
   const loadError = ref<Error | null>(null);
   const loading = ref(false);
 
-  // Atlas mutates the selected source in place rather than remounting us, so a
-  // slow answer for the previous source can land after the switch. Every load
-  // claims a sequence number and only the newest one is allowed to commit.
-  let latestRequest = 0;
+  /**
+   * The load cycle currently allowed to commit, or undefined when none is
+   * outstanding. Atlas mutates the selected source in place rather than
+   * remounting us, so a slow answer for the previous source can land after the
+   * switch: each load aborts its predecessor and then checks its own signal
+   * after every await, so only the newest one writes to the refs above.
+   *
+   * The signal is deliberately not passed to the api layer. Its job here is to
+   * mark a cycle superseded, and plumbing it into fetch would make the request
+   * reject with an AbortError that `reportFailure` flattens into the generic
+   * load-failure sentence — an abort would then read as a gateway failure.
+   */
+  let activeLoad: AbortController | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let authTimer: ReturnType<typeof setTimeout> | undefined;
   let pollFailures = 0;
   let authAttempts = 0;
-  // True from the moment a load starts until it commits, fails, or is superseded
-  // — a scheduled auth retry counts as still in flight, since it continues the
-  // same cycle. Read by the poll tick below.
-  let inFlight = false;
 
   function stopPolling(): void {
     if (pollTimer !== undefined) {
@@ -134,9 +139,10 @@ export function useDataQualityOverview(
   function forget(): void {
     stopPolling();
     stopAuthWait();
+    activeLoad?.abort();
+    activeLoad = undefined;
     pollFailures = 0;
     authAttempts = 0;
-    inFlight = false;
     flowRunStateType.value = undefined;
     overview.value = null;
     loadError.value = null;
@@ -147,12 +153,12 @@ export function useDataQualityOverview(
     const shouldPoll = stateType !== undefined && POLLED_STATES.includes(stateType);
     if (shouldPoll) {
       if (pollTimer === undefined) {
-        // Skip the tick while a load is still outstanding. Every load() claims a
-        // new sequence number, so an overlapping poll would discard the pending
-        // answer as stale — under latency above the interval that repeats every
-        // tick and nothing ever commits, freezing the dashboard mid-run.
+        // Skip the tick while a load is still outstanding. Each load supersedes
+        // its predecessor, so an overlapping poll would retire the pending
+        // answer before it lands — under latency above the interval that repeats
+        // every tick and nothing ever commits, freezing the dashboard mid-run.
         pollTimer = setInterval(() => {
-          if (inFlight) return;
+          if (activeLoad) return;
           void load(true);
         }, POLL_INTERVAL_MS);
       }
@@ -164,7 +170,6 @@ export function useDataQualityOverview(
   /** `quiet` keeps the poll from flashing the page back to its loading state. */
   async function load(quiet = false): Promise<void> {
     const sourceKey = datasetId.value;
-    const requestId = ++latestRequest;
 
     if (!sourceKey) {
       forget();
@@ -172,8 +177,11 @@ export function useDataQualityOverview(
       return;
     }
 
+    // Retire whoever was mid-flight; this load owns the cycle from here.
+    activeLoad?.abort();
+    const { signal } = (activeLoad = new AbortController());
+
     if (!quiet) loading.value = true;
-    inFlight = true;
 
     // A rejection from the host's getToken is read as "no token yet" so the wait
     // below applies to it as well, rather than surfacing a host-internal error.
@@ -181,7 +189,7 @@ export function useDataQualityOverview(
       console.warn('[data-quality] host token unavailable', cause);
       return '';
     });
-    if (requestId !== latestRequest) return;
+    if (signal.aborted) return;
 
     if (!token && authAttempts < AUTH_MAX_ATTEMPTS) {
       // Stay in whatever state we are in — 'loading' on first paint, the running
@@ -200,13 +208,13 @@ export function useDataQualityOverview(
         latest?.state?.type === 'COMPLETED'
           ? await getDataQualityOverview(latest.id, sourceKey, token)
           : null;
-      if (requestId !== latestRequest) return;
+      if (signal.aborted) return;
       flowRunStateType.value = latest?.state?.type;
       overview.value = results;
       loadError.value = null;
       pollFailures = 0;
     } catch (error) {
-      if (requestId !== latestRequest) return;
+      if (signal.aborted) return;
       pollFailures += 1;
       // A background poll that fails has not invalidated what we already know:
       // the job was in flight a moment ago and the next tick usually answers.
@@ -224,8 +232,10 @@ export function useDataQualityOverview(
     } finally {
       // Runs for the early return above too, which is what keeps the poll alive
       // across a tolerated failure: the flow-run state is still in-progress.
-      if (requestId === latestRequest) {
-        inFlight = false;
+      // Skipped when superseded, so a retired load neither clears the cycle a
+      // newer one now owns nor re-arms its timer.
+      if (!signal.aborted) {
+        activeLoad = undefined;
         loading.value = false;
         syncPolling();
       }
@@ -255,12 +265,11 @@ export function useDataQualityOverview(
 
   onUnmounted(() => {
     // Clearing the timers is not enough: a request still in flight would reach
-    // its `finally`, still hold the newest sequence number, and call
-    // syncPolling() — re-arming the interval after teardown and polling the
-    // gateway forever. Retiring the sequence number makes every pending load a
-    // stale one, so none of them can commit or restart a timer.
-    latestRequest += 1;
-    inFlight = false;
+    // its `finally` still holding the cycle and call syncPolling(), re-arming
+    // the interval after teardown and polling the gateway forever. Aborting
+    // retires it, so no late completion can commit or restart a timer.
+    activeLoad?.abort();
+    activeLoad = undefined;
     stopPolling();
     stopAuthWait();
   });
