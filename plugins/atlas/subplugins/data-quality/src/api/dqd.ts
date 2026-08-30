@@ -6,6 +6,11 @@
  * because the plugin ships no axios, and the gateway accepts the host's Logto
  * access token unchanged (see main.ts).
  *
+ * Callers pass a resolved token rather than the host's `getToken`, because the
+ * meaning of an unresolved one is a UI decision, not an HTTP one: the host
+ * answers "" until login settles, and useDataQualityOverview waits that out
+ * instead of firing an unauthenticated request and reporting the 401.
+ *
  * The prefix is root-absolute on purpose: Atlas serves the shell from /atlas/,
  * so a relative base would resolve underneath it. vue-mri-ui-lib's dqd store
  * module reaches the same service through the same root prefix.
@@ -79,9 +84,8 @@ export interface OverviewResults {
 async function getJson<T>(
   path: string,
   params: Record<string, string>,
-  getToken: () => Promise<string>,
+  token: string,
 ): Promise<T | null> {
-  const token = await getToken();
   const query = new URLSearchParams(params).toString();
   const response = await fetch(`${JOBPLUGINS_BASE}${path}?${query}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -107,7 +111,7 @@ async function getJson<T>(
  * for the detail, 'Unable to load ... Please try again.' for the alert — and
  * likewise leaves this string untranslated.
  */
-const LOAD_FAILED_MESSAGE = 'Unable to load data quality results. Please try again.';
+export const LOAD_FAILED_MESSAGE = 'Unable to load data quality results. Please try again.';
 
 function reportFailure(attempted: string, cause: unknown): Error {
   console.error(`[data-quality] ${attempted}`, cause);
@@ -117,10 +121,10 @@ function reportFailure(attempted: string, cause: unknown): Error {
 /** Latest data-quality flow run for the dataset, or null when none exists. */
 export async function getLatestDataQualityFlowRun(
   datasetId: string,
-  getToken: () => Promise<string>,
+  token: string,
 ): Promise<FlowRun | null> {
   try {
-    return await getJson<FlowRun>('/dqd/data-quality/flow-run/latest', { datasetId }, getToken);
+    return await getJson<FlowRun>('/dqd/data-quality/flow-run/latest', { datasetId }, token);
   } catch (cause) {
     throw reportFailure(`could not load the latest flow run for dataset ${datasetId}`, cause);
   }
@@ -130,13 +134,13 @@ export async function getLatestDataQualityFlowRun(
 export async function getDataQualityOverview(
   flowRunId: string,
   datasetId: string,
-  getToken: () => Promise<string>,
+  token: string,
 ): Promise<OverviewResults | null> {
   try {
     return await getJson<OverviewResults>(
       `/dqd/data-quality/flow-run/${flowRunId}/overview`,
       { datasetId },
-      getToken,
+      token,
     );
   } catch (cause) {
     throw reportFailure(

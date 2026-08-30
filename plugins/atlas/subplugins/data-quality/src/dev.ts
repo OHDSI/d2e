@@ -16,6 +16,7 @@
  *   /?state=boom         the endpoint errors
  *   /?state=no-source    no data source selected in the header
  *   /?delay=2000         hold every response back, to look at the loading state
+ *   /?token=late         host answers "" for 1.5s, as it does before login settles
  */
 import 'vuetify/styles';
 import '@ohdsi/atlas-ui/tokens.css';
@@ -89,8 +90,13 @@ window.fetch = (async (input: RequestInfo | URL) => {
   return json({ id: 'dev-flow-run', state: { type: stateType } });
 }) as typeof fetch;
 
+// The real host answers "" until Logto settles; `?token=late` reproduces that,
+// which the dashboard waits out rather than reporting as a failure (see
+// useDataQualityOverview's auth wait).
+const tokenReadyAt = Date.now() + (params.get('token') === 'late' ? 1500 : 0);
+
 const hostCtx: DqHostCtx = {
-  getToken: async () => 'dev-token',
+  getToken: async () => (Date.now() < tokenReadyAt ? '' : 'dev-token'),
   datasetId: ref(scenario === 'no-source' ? '' : 'dev-dataset'),
   appId: 'data-quality',
   // No host to borrow i18n from out here, so fall back to the default copy.

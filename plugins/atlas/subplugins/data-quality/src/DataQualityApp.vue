@@ -20,6 +20,12 @@
  * promises content in a moment, which is a lie for a Prefect run that can take
  * hours. Atlas3 draws the same line — every one of its skeletons stands in for a
  * fetch, and both of its long-running-job surfaces use a spinner.
+ *
+ * Two states the portal has no equivalent for are handled in the composable
+ * rather than here, because neither is anything the user should be shown: the
+ * wait for the host's access token reads as 'loading', and a single failed
+ * background poll leaves the running job's spinner in place instead of raising
+ * the alert. See useDataQualityOverview.
  */
 import { computed } from 'vue';
 import {

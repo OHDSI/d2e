@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDataQualityOverview, getLatestDataQualityFlowRun } from './dqd';
 
-const getToken = async () => 'token';
+const token = 'access-token';
 
 function respond(init: { status: number; body?: string; statusText?: string }): Response {
   return {
@@ -24,7 +24,7 @@ describe('getLatestDataQualityFlowRun', () => {
   it('reports a failed request in words the user can act on, not an HTTP status line', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ status: 500, statusText: 'Internal Server Error' })));
 
-    await expect(getLatestDataQualityFlowRun('dataset-1', getToken)).rejects.toThrow(
+    await expect(getLatestDataQualityFlowRun('dataset-1', token)).rejects.toThrow(
       'Unable to load data quality results. Please try again.',
     );
   });
@@ -32,7 +32,7 @@ describe('getLatestDataQualityFlowRun', () => {
   it('keeps the status line in the console so the failure stays diagnosable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ status: 500, statusText: 'Internal Server Error' })));
 
-    await expect(getLatestDataQualityFlowRun('dataset-1', getToken)).rejects.toThrow();
+    await expect(getLatestDataQualityFlowRun('dataset-1', token)).rejects.toThrow();
 
     const logged = vi.mocked(console.error).mock.calls.flat().join(' ');
     expect(logged).toContain('dataset-1');
@@ -42,7 +42,7 @@ describe('getLatestDataQualityFlowRun', () => {
   it('still reads a 404 as "nothing recorded yet" rather than a failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ status: 404 })));
 
-    await expect(getLatestDataQualityFlowRun('dataset-1', getToken)).resolves.toBeNull();
+    await expect(getLatestDataQualityFlowRun('dataset-1', token)).resolves.toBeNull();
   });
 });
 
@@ -50,7 +50,7 @@ describe('getDataQualityOverview', () => {
   it('reports a failed request in words the user can act on', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ status: 503, statusText: 'Service Unavailable' })));
 
-    await expect(getDataQualityOverview('run-1', 'dataset-1', getToken)).rejects.toThrow(
+    await expect(getDataQualityOverview('run-1', 'dataset-1', token)).rejects.toThrow(
       'Unable to load data quality results. Please try again.',
     );
   });
@@ -58,6 +58,6 @@ describe('getDataQualityOverview', () => {
   it('still returns null when a completed run wrote no artifact', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ status: 200, body: '' })));
 
-    await expect(getDataQualityOverview('run-1', 'dataset-1', getToken)).resolves.toBeNull();
+    await expect(getDataQualityOverview('run-1', 'dataset-1', token)).resolves.toBeNull();
   });
 });
