@@ -1,7 +1,8 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import plotly from '@/lib/CustomPlotly'
 import { COLORS_ARRAY, FUNNEL_THRESHOLDS, FUNNEL_LEGEND_LABELS } from '../constants'
-import type { InclusionReportResponse } from '@/query-filter/types/InclusionReportTypes'
+import type { InclusionReportResponse, RuleFilterCardDetails } from '@/query-filter/types/InclusionReportTypes'
+import { getRuleDisplayName } from '@/utils/filterCardUtils'
 
 export interface FunnelChartData {
   labels: string[]
@@ -21,9 +22,13 @@ export interface AttritionStat {
 export function useFunnelChart(
   inclusionReportResponse: Ref<InclusionReportResponse | null>,
   draggableAttritionStats: Ref<AttritionStat[]>,
-  getText: (key: string, param?: string | string[]) => string
+  getText: (key: string, param?: string | string[]) => string,
+  filterCardDetails?: Ref<RuleFilterCardDetails[] | undefined>
 ) {
   const funnelChartRef = ref<HTMLElement | null>(null)
+
+  /** Basic Data rules are labelled by their attribute name rather than the "Basic Data" card name */
+  const ruleLabel = (stat: AttritionStat) => getRuleDisplayName(stat.name, filterCardDetails?.value?.[stat.id])
 
   const funnelChartData = computed<FunnelChartData | null>(() => {
     if (!inclusionReportResponse.value || draggableAttritionStats.value.length === 0) return null
@@ -39,11 +44,12 @@ export function useFunnelChart(
     // Add each inclusion rule with calculated statistics
     stats.forEach(stat => {
       const prefix = stat.isExclude ? '- ' : '+ '
-      const name = stat.name.length > 35 ? stat.name.slice(0, 35) + '...' : stat.name
+      const fullName = ruleLabel(stat)
+      const name = fullName.length > 35 ? fullName.slice(0, 35) + '...' : fullName
       labels.push(`${prefix}${name}`)
       values.push(stat.countSatisfying)
       hoverTexts.push(
-        `${prefix}${stat.name}<br>Count: ${stat.countSatisfying.toLocaleString()}<br>Percent: ${stat.percentSatisfying}`
+        `${prefix}${fullName}<br>Count: ${stat.countSatisfying.toLocaleString()}<br>Percent: ${stat.percentSatisfying}`
       )
     })
 
@@ -181,7 +187,7 @@ export function useFunnelChart(
         const prefix = stat.isExclude
           ? `${getText('MRI_PA_FILTERCARD_TITLE_EXCLUSION')} - `
           : `${getText('MRI_PA_FILTERCARD_TITLE_INCLUSION')} - `
-        return [`${prefix}${stat.name}`, stat.countSatisfying.toString(), stat.percentSatisfying]
+        return [`${prefix}${ruleLabel(stat)}`, stat.countSatisfying.toString(), stat.percentSatisfying]
       }),
     ]
 

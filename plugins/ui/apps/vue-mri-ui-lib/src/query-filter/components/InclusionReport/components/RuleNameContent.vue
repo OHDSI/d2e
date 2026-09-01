@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RuleFilterCardDetails } from '@/query-filter/types/InclusionReportTypes'
+import { getRuleNameParts } from '@/utils/filterCardUtils'
 
 const props = defineProps<{
   stat: { id: number; name: string; isExclude: boolean }
@@ -8,28 +9,7 @@ const props = defineProps<{
 }>()
 
 /** Pairs each non-OR name part with its corresponding FilterCardDetail (if available) */
-const nameParts = computed(() => {
-  const parts = props.stat.name.split(/\b(OR)\b/)
-  const ruleDetails = props.filterCardDetails?.[props.stat.id]
-  console.log(props.filterCardDetails)
-  let fcIndex = 0
-  return parts.map(part => {
-    if (part === 'OR') {
-      return { text: part, isOr: true, fc: undefined, isBasicData: false }
-    }
-    const fc = ruleDetails?.[fcIndex++]
-    // Basic Data rules are split per attribute, so the attribute name is the rule's
-    // real title — show it in place of the card name and drop it from the detail lines.
-    const isBasicData = !!fc?.isBasicData
-    const attributeName = fc?.visibleAttributes[0]?.name
-    return {
-      text: isBasicData && attributeName ? attributeName : part,
-      isOr: false,
-      fc,
-      isBasicData,
-    }
-  })
-})
+const nameParts = computed(() => getRuleNameParts(props.stat.name, props.filterCardDetails?.[props.stat.id]))
 </script>
 
 <template>
