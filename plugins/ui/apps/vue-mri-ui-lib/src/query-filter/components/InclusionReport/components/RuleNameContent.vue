@@ -11,25 +11,37 @@ const props = defineProps<{
 const nameParts = computed(() => {
   const parts = props.stat.name.split(/\b(OR)\b/)
   const ruleDetails = props.filterCardDetails?.[props.stat.id]
+  console.log(props.filterCardDetails)
   let fcIndex = 0
-  return parts.map(part => ({
-    text: part,
-    isOr: part === 'OR',
-    fc: part !== 'OR' ? ruleDetails?.[fcIndex++] : undefined,
-  }))
+  return parts.map(part => {
+    if (part === 'OR') {
+      return { text: part, isOr: true, fc: undefined, isBasicData: false }
+    }
+    const fc = ruleDetails?.[fcIndex++]
+    // Basic Data rules are split per attribute, so the attribute name is the rule's
+    // real title — show it in place of the card name and drop it from the detail lines.
+    const isBasicData = !!fc?.isBasicData
+    const attributeName = fc?.visibleAttributes[0]?.name
+    return {
+      text: isBasicData && attributeName ? attributeName : part,
+      isOr: false,
+      fc,
+      isBasicData,
+    }
+  })
 })
 </script>
 
 <template>
   <span>{{ stat.isExclude ? '-' : '+' }}&nbsp;</span>
   <template v-for="(part, i) in nameParts" :key="i">
-    <b v-if="part.isOr">OR</b>
+    <b v-if="part.isOr"> OR </b>
     <template v-else>
       {{ part.text }}
       <div v-if="part.fc" class="filter-card-details">
         <template v-for="attribute in part.fc.visibleAttributes" :key="attribute.name">
           <div class="bookmark-attribute">
-            <span class="bookmark-element">{{ attribute.name }}: </span>
+            <span v-if="!part.isBasicData" class="bookmark-element">{{ attribute.name }}: </span>
             <span
               v-for="(constraint, cIdx) in attribute.visibleConstraints"
               :key="cIdx"

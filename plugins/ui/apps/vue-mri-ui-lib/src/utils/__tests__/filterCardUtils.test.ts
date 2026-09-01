@@ -250,6 +250,26 @@ describe('getInclusionReportFilterCardDetails – inclusion/exclusion ordering',
     expect(rules[0][0].isExcluded).toBe(false)
   })
 
+  it('flags only Basic Data cards, regardless of their position within an OR group', () => {
+    const bdContainer = makeBasicDataContainer([makeAttr('p.attr.gender', [makeConstraint('=', 'F')])])
+    // Two OR'd cards in one container: the second must not inherit isBasicData from its index
+    const orContainer = makeContainer(
+      makeCard('Condition Occurrence A', [makeAttr('p.attr.c', [makeConstraint('=', 'legacy:243')])]),
+      makeCard('Condition Occurrence B', [makeAttr('p.attr.c', [makeConstraint('=', 'legacy:241')])])
+    )
+    const excContainer = makeContainer(
+      makeExclusionWrapper(makeCard('ExcA', [makeAttr('p.x', [makeConstraint('=', '1')])])),
+      makeExclusionWrapper(makeCard('ExcB', [makeAttr('p.y', [makeConstraint('=', '2')])]))
+    )
+
+    const rules = getInclusionReportFilterCardDetails(
+      [bdContainer, orContainer, excContainer],
+      noopAttrName,
+      noopAdvTime
+    )
+    expect(rules.map(r => r.map((c: any) => c.isBasicData))).toEqual([[true], [false, false], [false], [false]])
+  })
+
   it('orders Basic Data rules before non-Basic inclusion rules before exclusion rules', () => {
     const bdContainer = makeBasicDataContainer([makeAttr('p.attr.gender', [makeConstraint('=', 'F')])])
     const incCard = makeCard('Condition', [makeAttr('p.attr.c', [makeConstraint('=', '1')])])

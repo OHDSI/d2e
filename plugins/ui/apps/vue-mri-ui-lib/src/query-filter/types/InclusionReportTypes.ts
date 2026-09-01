@@ -39,6 +39,8 @@ export interface FilterCardDetail {
   visibleAttributes: FilterCardDetailAttribute[]
   visibleAdvanceTime: string[]
   isExcluded: boolean
+  /** True for the patient-level Basic Data card, whose rules are split per attribute */
+  isBasicData: boolean
 }
 
 /** Each rule can have multiple filter cards (joined by OR) */
