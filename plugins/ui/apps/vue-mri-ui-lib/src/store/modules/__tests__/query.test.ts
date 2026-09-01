@@ -2,6 +2,10 @@ import { vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('axios')
+// drilldown loads plotly with a dynamic import, so the chart chunk stays out of
+// the single-spa entry. vi.mock intercepts the dynamic specifier too.
+const plotlyUpdate = vi.fn()
+vi.mock('@/lib/CustomPlotly', () => ({ default: { update: plotlyUpdate } }))
 vi.mock('@/store', () => ({
   default: {
     getters: {},
@@ -86,7 +90,7 @@ describe('store - query', () => {
 
   describe('actions', () => {
     describe('drilldown', () => {
-      it('dispatches datetime constraints when selected values come from chart-formatted datetime strings', () => {
+      it('dispatches datetime constraints when selected values come from chart-formatted datetime strings', async () => {
         const dispatch = vi.fn()
         const context = {
           rootGetters: {
@@ -102,7 +106,7 @@ describe('store - query', () => {
           dispatch,
         }
 
-        queryModule.actions.drilldown(context as any, {
+        await queryModule.actions.drilldown(context as any, {
           aSelectedData: [
             {
               id: 'patient.attributes.start_datetime',
@@ -121,7 +125,7 @@ describe('store - query', () => {
         )
       })
 
-      it('keeps selected calendar day for time drilldown values', () => {
+      it('keeps selected calendar day for time drilldown values', async () => {
         const dispatch = vi.fn()
         const context = {
           rootGetters: {
@@ -137,7 +141,7 @@ describe('store - query', () => {
           dispatch,
         }
 
-        queryModule.actions.drilldown(context as any, {
+        await queryModule.actions.drilldown(context as any, {
           aSelectedData: [
             {
               id: 'patient.attributes.admission_date',
@@ -164,6 +168,29 @@ describe('store - query', () => {
         expect(payload.toDateValue).toBeInstanceOf(Date)
         expect(DateUtils.displayDateFormat(payload.fromDateValue)).toBe('1976-02-21')
         expect(DateUtils.displayDateFormat(payload.toDateValue)).toBe('1976-03-20')
+      })
+
+      it('clears the plotly selection through the lazily imported chart module', async () => {
+        plotlyUpdate.mockClear()
+        const dispatch = vi.fn()
+        const dispatchEvent = vi.fn()
+        const plotlyElement = { dispatchEvent }
+        const context = {
+          rootGetters: {
+            getMriFrontendConfig: {
+              getAttributeByPath: () => ({ getType: () => 'text' }),
+            },
+          },
+          getters: { getPlotlyElement: plotlyElement },
+          dispatch,
+        }
+
+        await queryModule.actions.drilldown(context as any, {
+          aSelectedData: [{ id: 'patient.attributes.gender', value: 'Female' }],
+        })
+
+        expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'plotly_deselect' }))
+        expect(plotlyUpdate).toHaveBeenCalledWith(plotlyElement, {}, { selections: [] })
       })
     })
 
