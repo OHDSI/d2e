@@ -23,6 +23,13 @@ d4l-button {
 // specificity matches the block above and wins over d4l-ui.css's own :root.
 :root:root {
   --color-primary: #000080;
+  // Defined here because nothing else defines them. d4l-ui.css supplies
+  // --color-feedback-success and --color-feedback-alarm but no -error, and no
+  // --color-text-primary. Sites that named them with no fallback produced an
+  // invalid declaration and inherited instead. #a3293d matches the fallback
+  // the ShinyViewer dialogs already carry, so their rendering does not change.
+  --color-feedback-error: #a3293d;
+  --color-text-primary: #000080;
   --color-ui-medium-border-rgb: 204, 204, 204;
   --color-mri-brand: var(--color-primary, #000080);
   --color-mri-brand-selected: none;
