@@ -3,7 +3,9 @@ import { buildD2eVuetifyOptions } from "../tokens/theme";
 
 // Snapshot of the `d2e` colors map. It started as an exact copy of the
 // hand-written map in apps/vue-mri-ui-lib/src/plugins/vuetify.ts; the four
-// `mri-*` keys were renamed to `brand*` on 2026-09-02 so the shared library
+// `mri-*` keys became `brand*` on 2026-09-02, then folded into `primary` once
+// Bootstrap left the portal scope and stopped colliding on that name. The
+// shared library
 // carries no application-specific naming. Values are unchanged.
 //
 // Keep in sync when the theme changes deliberately; the assertions below
@@ -31,10 +33,8 @@ const EXPECTED_COLORS = {
   "on-secondary": "#ffffff",
   "on-background": "#000080",
   "on-surface": "#000080",
-  brand: "#000080",
-  "brand-hover": "#007eba",
-  "brand-info": "#007cc0",
-  "brand-contrast": "#000080",
+  "primary-hover": "#007eba",
+  "primary-info": "#007cc0",
   "border-color": "#dee2e6",
   "border-light": "#dddddd",
   "border-medium": "#cccccc",
