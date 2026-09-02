@@ -278,7 +278,7 @@ const getCardinalityCount = () => {
 
       // Selection state with 3px border
       &--selected {
-        border: 3px solid var(--color-primary, #000080);
+        border: 3px solid var(--d2e-color-primary, #000080);
         font-weight: 600;
         z-index: 2;
 
@@ -315,10 +315,10 @@ const getCardinalityCount = () => {
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid var(--color-primary, #000080);
+      border: 1px solid var(--d2e-color-primary, #000080);
       border-radius: 4px;
       background: #fff;
-      color: var(--color-primary, #000080);
+      color: var(--d2e-color-primary, #000080);
       font-weight: 500;
       cursor: pointer;
       transition: all 0.2s ease;

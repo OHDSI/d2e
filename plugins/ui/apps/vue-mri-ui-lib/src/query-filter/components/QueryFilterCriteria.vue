@@ -177,9 +177,9 @@ const handleGroupRemove = (groupIndex: number) => {
     display: flex;
     align-items: center;
     border-radius: 0 0 0 8px;
-    border: 1px solid var(--color-primary);
+    border: 1px solid var(--d2e-color-primary, #000080);
     .criteria-sidebar-top {
-      background-color: var(--color-primary);
+      background-color: var(--d2e-color-primary, #000080);
       width: 30%;
       height: 100%;
       border-radius: 0 0 0 6px;
@@ -191,7 +191,7 @@ const handleGroupRemove = (groupIndex: number) => {
     text-orientation: sideways;
     font-size: 13px;
     font-weight: 700;
-    color: var(--color-primary);
+    color: var(--d2e-color-primary, #000080);
     text-transform: uppercase;
     letter-spacing: 1.5px;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);

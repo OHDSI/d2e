@@ -76,7 +76,7 @@
         width: 16px;
         height: 16px;
         border: 2px solid var(--color-neutral-lightest);
-        border-top: 2px solid var(--color-primary);
+        border-top: 2px solid var(--d2e-color-primary, #000080);
         border-radius: 50%;
         animation: spin 1s linear infinite;
       }
@@ -133,7 +133,7 @@
 
       &:focus {
         outline: none;
-        border-color: var(--color-form-control-focus, var(--color-primary));
+        border-color: var(--color-form-control-focus, var(--d2e-color-primary, #000080));
         box-shadow: 0 0 0 3px var(--color-primary-extra-lightest, rgba(0, 102, 204, 0.1));
       }
 
@@ -193,7 +193,7 @@
         width: 1rem;
         height: 1rem;
         cursor: pointer;
-        accent-color: var(--color-primary);
+        accent-color: var(--d2e-color-primary, #000080);
       }
 
       label {

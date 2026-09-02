@@ -79,7 +79,7 @@ function handleClose() {
   flex: 1;
   font-size: 18px;
   font-weight: bold;
-  color: var(--color-primary, #1f425a);
+  color: var(--d2e-color-primary, #000080);
 }
 
 .modal-close-btn {
@@ -94,7 +94,7 @@ function handleClose() {
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  color: var(--color-primary, #1f425a);
+  color: var(--d2e-color-primary, #000080);
   transition: all 0.2s;
   flex-shrink: 0;
 }

@@ -399,8 +399,8 @@ const toggleExpanded = () => {
     transition: all 0.2s ease;
 
     &:hover {
-      border-color: var(--color-primary, #000080);
-      color: var(--color-primary, #000080);
+      border-color: var(--d2e-color-primary, #000080);
+      color: var(--d2e-color-primary, #000080);
       background: #f2f0f1;
     }
   }

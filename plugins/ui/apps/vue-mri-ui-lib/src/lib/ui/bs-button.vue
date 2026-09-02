@@ -95,8 +95,8 @@ const handleClick = (event: MouseEvent) => {
 /* Primary variant */
 .btn-primary {
   color: var(--color-text-button-primary-default, #fff);
-  background-color: var(--color-background-button-primary-default, var(--color-primary, #007bff));
-  border-color: var(--color-border-button-primary-default, var(--color-primary, #007bff));
+  background-color: var(--color-background-button-primary-default, var(--d2e-color-primary, #000080));
+  border-color: var(--color-border-button-primary-default, var(--d2e-color-primary, #000080));
 }
 
 .btn-primary:hover {
@@ -119,27 +119,27 @@ const handleClick = (event: MouseEvent) => {
 
 /* Secondary variant */
 .btn-secondary {
-  color: var(--color-text-button-secondary-default, var(--color-primary, #6c757d));
+  color: var(--color-text-button-secondary-default, var(--d2e-color-primary, #000080));
   background-color: var(--color-background-button-secondary-default, transparent);
-  border-color: var(--color-border-button-secondary-default, var(--color-primary, #6c757d));
+  border-color: var(--color-border-button-secondary-default, var(--d2e-color-primary, #000080));
 }
 
 .btn-secondary:hover {
-  color: var(--color-text-button-secondary-hover, var(--color-primary, #545b62));
+  color: var(--color-text-button-secondary-hover, var(--d2e-color-primary, #000080));
   background-color: var(--color-background-button-secondary-hover, var(--color-neutral-lightest, #f8f9fa));
-  border-color: var(--color-border-button-secondary-hover, var(--color-primary, #545b62));
+  border-color: var(--color-border-button-secondary-hover, var(--d2e-color-primary, #000080));
 }
 
 .btn-secondary:active {
-  color: var(--color-text-button-secondary-active, var(--color-primary, #545b62));
+  color: var(--color-text-button-secondary-active, var(--d2e-color-primary, #000080));
   background-color: var(--color-background-button-secondary-active, var(--color-neutral-lightest, #f8f9fa));
-  border-color: var(--color-border-button-secondary-active, var(--color-primary, #545b62));
+  border-color: var(--color-border-button-secondary-active, var(--d2e-color-primary, #000080));
 }
 
 .btn-secondary:disabled {
-  color: var(--color-text-button-secondary-disabled, var(--color-primary, #6c757d));
+  color: var(--color-text-button-secondary-disabled, var(--d2e-color-primary, #000080));
   background-color: var(--color-background-button-secondary-disabled, var(--color-primary-extra-lightest, #e9ecef));
-  border-color: var(--color-border-button-secondary-disabled, var(--color-primary, #6c757d));
+  border-color: var(--color-border-button-secondary-disabled, var(--d2e-color-primary, #000080));
 }
 
 /* Success variant */
@@ -222,7 +222,7 @@ const handleClick = (event: MouseEvent) => {
 
 /* Link variant */
 .btn-link {
-  color: var(--color-primary, #007bff);
+  color: var(--d2e-color-primary, #000080);
   background-color: transparent;
   border-color: transparent;
   text-decoration: underline;

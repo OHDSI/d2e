@@ -12,7 +12,7 @@
 // point of this subphase; Vuetify owns them now.
 //
 // Exception to "same as Bootstrap": `.btn-outline-primary` uses
-// `var(--color-primary, #000080)` instead of Bootstrap's #007bff, so the one
+// `var(--d2e-color-primary, #000080)` instead of Bootstrap's #007bff, so the one
 // call site (QueryFilterModern.vue copy button) follows the app theme.
 
 // ---------------------------------------------------------------------------
@@ -777,14 +777,14 @@ textarea.form-control {
 
 // Theme-aware: follows the app primary, not Bootstrap's #007bff.
 .btn-outline-primary {
-  color: var(--color-primary, #000080);
-  border-color: var(--color-primary, #000080);
+  color: var(--d2e-color-primary, #000080);
+  border-color: var(--d2e-color-primary, #000080);
 }
 
 .btn-outline-primary:hover {
   color: #fff;
-  background-color: var(--color-primary, #000080);
-  border-color: var(--color-primary, #000080);
+  background-color: var(--d2e-color-primary, #000080);
+  border-color: var(--d2e-color-primary, #000080);
 }
 
 .btn-outline-primary:focus {
@@ -793,15 +793,15 @@ textarea.form-control {
 
 .btn-outline-primary.disabled,
 .btn-outline-primary:disabled {
-  color: var(--color-primary, #000080);
+  color: var(--d2e-color-primary, #000080);
   background-color: transparent;
 }
 
 .btn-outline-primary:not(:disabled):not(.disabled):active,
 .btn-outline-primary:not(:disabled):not(.disabled).active {
   color: #fff;
-  background-color: var(--color-primary, #000080);
-  border-color: var(--color-primary, #000080);
+  background-color: var(--d2e-color-primary, #000080);
+  border-color: var(--d2e-color-primary, #000080);
 }
 
 // ---------------------------------------------------------------------------

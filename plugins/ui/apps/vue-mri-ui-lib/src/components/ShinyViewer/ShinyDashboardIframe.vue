@@ -202,7 +202,7 @@ function handleIframeLoad() {
   width: 48px;
   height: 48px;
   border: 4px solid var(--color-ui-light-border, #dddddd);
-  border-top-color: var(--color-primary, #1f425a);
+  border-top-color: var(--d2e-color-primary, #000080);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

@@ -845,7 +845,7 @@ const isConceptAttribute = (attribute: QueryFilterAttribute) => {
     padding: 6px 8px;
 
     &:hover {
-      color: var(--color-primary, #000080);
+      color: var(--d2e-color-primary, #000080);
       background: #f2f0f1;
     }
   }
@@ -880,7 +880,7 @@ const isConceptAttribute = (attribute: QueryFilterAttribute) => {
   .sidebar-label {
     writing-mode: sideways-lr;
     text-orientation: sideways;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
     font-weight: 500;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     user-select: none;

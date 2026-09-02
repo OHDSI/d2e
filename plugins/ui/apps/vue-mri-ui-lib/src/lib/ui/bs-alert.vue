@@ -146,7 +146,7 @@ onMounted(() => {
   // Variant styles based on Bootstrap 5 patterns
   &--primary {
     color: #fff;
-    background-color: var(--color-primary);
+    background-color: var(--d2e-color-primary, #000080);
     border-color: #b6d4fe;
   }
 
@@ -175,7 +175,7 @@ onMounted(() => {
   }
 
   &--info {
-    color: var(--color-primary);
+    color: var(--d2e-color-primary, #000080);
     background-color: #bdd4f0;
     border-color: #bee5eb;
   }

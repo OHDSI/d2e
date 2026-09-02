@@ -95,7 +95,7 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .estimated-progress-spinner {
-  color: var(--color-primary, #000080);
+  color: var(--d2e-color-primary, #000080);
 
   :deep(.v-progress-circular__underlay) {
     stroke: var(--color-ui-light-border, #e0e0e0);

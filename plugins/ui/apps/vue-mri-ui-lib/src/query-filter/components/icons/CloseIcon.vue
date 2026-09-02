@@ -9,7 +9,7 @@ export default {
     height="24px"
     viewBox="0 -960 960 960"
     width="24px"
-    fill="var(--color-primary, #000080)"
+    fill="var(--d2e-color-primary, #000080)"
   >
     <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z" />
   </svg>

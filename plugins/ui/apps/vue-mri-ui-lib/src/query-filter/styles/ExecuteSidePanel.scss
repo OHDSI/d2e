@@ -19,7 +19,7 @@
   background-color: var(--color-ui-lightest-bg, white);
 }
 .active-dataset {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--d2e-color-primary, #000080);
   box-sizing: content-box;
 }
 :global(.dataset-card .card-body) {
@@ -53,7 +53,7 @@
 :global(.main-content .tabs .app-listItem) {
   width: 100%;
   background-color: transparent !important;
-  color: var(--color-primary) !important;
+  color: var(--d2e-color-primary, #000080) !important;
   font-size: 1.2rem !important;
 }
 
@@ -117,7 +117,7 @@
     transition: all 0.2s ease;
     width: fit-content;
     &.btn-primary {
-      background-color: var(--color-primary);
+      background-color: var(--d2e-color-primary, #000080);
       color: white;
 
       &:hover:not(:disabled) {
@@ -181,7 +181,7 @@
 
     &.patient-count-actual {
       font-size: 20px;
-      color: var(--color-primary);
+      color: var(--d2e-color-primary, #000080);
       font-weight: 700;
     }
   }

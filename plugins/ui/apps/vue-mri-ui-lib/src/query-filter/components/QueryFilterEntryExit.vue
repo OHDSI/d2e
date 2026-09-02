@@ -536,7 +536,7 @@ const activeTooltipKey = computed(() => {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
   }
 
   .events-container {
@@ -546,10 +546,10 @@ const activeTooltipKey = computed(() => {
       display: flex;
       align-items: center;
       border-radius: 0 0 0 8px;
-      border: 1px solid var(--color-primary);
+      border: 1px solid var(--d2e-color-primary, #000080);
 
       .sidebar-top {
-        background-color: var(--color-primary);
+        background-color: var(--d2e-color-primary, #000080);
         width: 30%;
         height: 100%;
         border-radius: 0 0 0 6px;
@@ -559,7 +559,7 @@ const activeTooltipKey = computed(() => {
         text-orientation: sideways;
         font-size: 13px;
         font-weight: 700;
-        color: var(--color-primary);
+        color: var(--d2e-color-primary, #000080);
         text-transform: uppercase;
         letter-spacing: 1.5px;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -584,11 +584,11 @@ const activeTooltipKey = computed(() => {
     background: transparent;
     border-radius: 6px;
     &:not(:first-child) {
-      border-left: var(--color-primary, #000080) 2px solid;
+      border-left: var(--d2e-color-primary, #000080) 2px solid;
     }
     font-size: 14px;
     font-weight: 600;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
@@ -601,7 +601,7 @@ const activeTooltipKey = computed(() => {
     }
 
     &--active {
-      background: var(--color-primary, #000080);
+      background: var(--d2e-color-primary, #000080);
       color: white;
       box-shadow: 0 2px 4px rgba(30, 58, 138, 0.2);
     }
@@ -647,7 +647,7 @@ const activeTooltipKey = computed(() => {
     align-items: center;
     justify-content: center;
     padding: 12px 6px;
-    background: var(--color-primary, #000080); // Blue to match other sidebars
+    background: var(--d2e-color-primary, #000080); // Blue to match other sidebars
     position: relative;
     border-radius: 8px 0 0 8px; // Round left corners
 
@@ -727,7 +727,7 @@ const activeTooltipKey = computed(() => {
         transition: all 0.2s ease;
 
         &:hover {
-          border-color: var(--color-primary, #000080);
+          border-color: var(--d2e-color-primary, #000080);
           background: white;
         }
       }
@@ -783,7 +783,7 @@ const activeTooltipKey = computed(() => {
         transition: all 0.2s ease;
 
         &:hover {
-          border-color: var(--color-primary, #000080);
+          border-color: var(--d2e-color-primary, #000080);
           background: white;
         }
       }

@@ -459,20 +459,20 @@ defineExpose({
 }
 
 .dp__theme_light {
-  --dp-text-color: var(--color-primary);
+  --dp-text-color: var(--d2e-color-primary, #000080);
   --dp-hover-color: #d2d2d2;
-  --dp-primary-color: var(--color-primary, --dp-primary-color);
+  --dp-primary-color: var(--d2e-color-primary, #000080);
   .dp__today {
     border: 2.5px solid var(--color-app-date-today, #ff5e59);
     border-radius: 5px;
     color: #ffffff;
-    background: var(--color-primary);
+    background: var(--d2e-color-primary, #000080);
   }
   .dp__tp_inline_btn_top,
   .dp__tp_inline_btn_bottom {
     &:hover {
       .dp__tp_inline_btn_bar {
-        background: var(--color-primary);
+        background: var(--d2e-color-primary, #000080);
       }
     }
   }

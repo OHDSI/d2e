@@ -63,7 +63,7 @@ export default {
 .landing {
   min-height: 100%;
   background-color: var(--color-neutral-lightest, #f2f0f1);
-  color: var(--color-primary, #1f425a);
+  color: var(--d2e-color-primary, #000080);
   display: flex;
   padding: 32px;
   font-size: 16px;
@@ -106,7 +106,7 @@ export default {
 }
 
 .landing__link {
-  color: var(--color-primary, #000080);
+  color: var(--d2e-color-primary, #000080);
   text-decoration: underline;
 
   &:hover {
@@ -139,7 +139,7 @@ export default {
   font-size: 16px;
   font-weight: 500;
   border-radius: 4px;
-  border: 2px solid var(--color-primary, #000080);
+  border: 2px solid var(--d2e-color-primary, #000080);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
   text-decoration: none;
@@ -148,11 +148,11 @@ export default {
 
   &--outline {
     background-color: transparent;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
   }
 
   &--secondary {
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
     border-color: var(--color-support-orange, #eb6622);
     background-color: white;
   }

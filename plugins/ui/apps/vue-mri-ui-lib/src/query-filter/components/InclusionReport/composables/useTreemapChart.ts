@@ -99,7 +99,7 @@ export function useTreemapChart(
         formatter: (params: any) => formatTreemapTooltip(params.data?.tooltip),
         backgroundColor: 'var(--color-ui-extra-light-bg)',
         textStyle: {
-          color: 'var(--color-text-primary)',
+          color: 'var(--d2e-color-primary, #000080)',
           fontSize: 16,
         },
         confine: true,
