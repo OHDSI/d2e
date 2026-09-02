@@ -108,6 +108,9 @@ export function useFunnelChart(
       x: [null],
       y: [null],
       mode: 'markers',
+      // These placeholders hold no hoverable data. Keeping them out of plotly's hover search also
+      // stops compare mode from rotating the tooltip 60deg to stack one label per searchable trace.
+      hoverinfo: 'skip',
       marker: {
         size: 10,
         color: color,
@@ -117,6 +120,9 @@ export function useFunnelChart(
     })).filter((_trace, index) => usedColors.has(COLORS_ARRAY[index]))
 
     const layout = {
+      // Compare mode drops plotly's "is the cursor inside the bar?" test, so the whole row is
+      // hoverable .
+      hovermode: 'y',
       font: {
         size: 16,
       },
