@@ -998,6 +998,16 @@ textarea.form-control {
 }
 
 // ---------------------------------------------------------------------------
+// Deliberately not carried over: Bootstrap's `@media print` block.
+// It set `text-shadow`/`box-shadow: none !important` on everything,
+// `page-break-inside: avoid` on rows and images, `orphans`/`widows: 3`,
+// `@page { size: a3 }` and `.container { min-width: 992px !important }`.
+// Nothing in the app calls window.print() and no `d-print-*` class is used, so
+// this only affects a manual Ctrl+P: shadows will print and long tables may
+// split across pages. Restore this block if printing becomes a requirement.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Reduced motion. Bootstrap emitted these guards next to every transition and
 // animation; the shim keeps them in one block.
 // ---------------------------------------------------------------------------
