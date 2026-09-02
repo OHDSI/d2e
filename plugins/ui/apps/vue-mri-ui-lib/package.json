@@ -23,7 +23,6 @@
     "@mdi/font": "^7.4.47",
     "@vuepic/vue-datepicker": "^11.0.2",
     "axios": "^1.13.4",
-    "bootstrap": "4.6.1",
     "canvg": "^3.0.7",
     "core-js": "^3.8.2",
     "d3": "3.5.17",

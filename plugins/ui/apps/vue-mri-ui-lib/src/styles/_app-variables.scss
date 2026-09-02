@@ -1,0 +1,42 @@
+// App SCSS variables.
+//
+// What is left of the old `_mri-bootstrap-variables.scss`: only the variables
+// app stylesheets actually reference, plus the transitive dependencies of
+// those definitions. It used to hold 520 Bootstrap 4.6.1 overrides that fed
+// the full Bootstrap build; Bootstrap is gone (see `_bootstrap-shim.scss`),
+// so the dead declarations went with it.
+//
+// Deliberately absent: `$primary`/`$blue` (#007bff). Nothing in the app read
+// them, and they contradict `--color-primary: #000080`.
+
+$white: #fff;
+$gray-900: #212529;
+
+$body-bg: $white;
+$body-color: $gray-900;
+
+// GT-America stays first (name only — we no longer ship it) so clients with it
+// installed still render it; everyone else falls to self-hosted IBM Plex Sans.
+// Kept in sync with the Analyze/Integrate font stack (PR #2791).
+$font-family-sans-serif: 'GT-America', 'IBM Plex Sans Variable', 'IBM Plex Sans', -apple-system,
+  BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans',
+  'Helvetica Neue', sans-serif;
+$font-family-base: $font-family-sans-serif;
+
+$font-size-base: 0.875rem; // Assumes the browser default, typically `16px`
+$font-size-sm: ($font-size-base * 0.875);
+$font-weight-normal: 400;
+$font-weight-base: $font-weight-normal;
+$line-height-base: 1.5;
+
+// Input sizing chain that produces $input-height. Note the historical quirk:
+// the inner height adds padding-y only once (the old override of Bootstrap's
+// formula), which is why the compiled height is calc(1.6875rem + 1px).
+$border-width: 1px;
+$input-btn-padding-y: 0.375rem;
+$input-btn-line-height: $line-height-base;
+$input-btn-border-width: $border-width;
+$input-border-width: $input-btn-border-width;
+$input-height-border: $input-border-width;
+$input-height-inner: ($font-size-base * $input-btn-line-height) + ($input-btn-padding-y);
+$input-height: calc(#{$input-height-inner} + #{$input-height-border});

@@ -1,6 +1,6 @@
 // The font stack below is inlined on purpose to keep this vite-plugin-vuetify
 // config file self-contained; it MUST stay in sync with
-// $font-family-sans-serif in ./_mri-bootstrap-variables.scss.
+// $font-family-sans-serif in ./_app-variables.scss.
 // $heading-font-family defaults to $body-font-family, so setting body also
 // covers the .text-* typography classes.
 @use 'vuetify/settings' with (

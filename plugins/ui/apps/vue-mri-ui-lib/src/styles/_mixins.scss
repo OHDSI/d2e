@@ -1,5 +1,5 @@
-@use './mri-bootstrap-variables' as *;
-@forward './mri-bootstrap-variables';
+@use './app-variables' as *;
+@forward './app-variables';
 
 @mixin mriBaseStyle {
   font-family: $font-family-base;
