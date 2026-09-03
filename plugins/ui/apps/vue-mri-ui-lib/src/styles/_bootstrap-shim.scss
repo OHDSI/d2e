@@ -104,6 +104,13 @@ section {
   display: block;
 }
 
+// Programmatic or mouse focus on a tabindex=-1 element must not paint a ring.
+// Used by ResizeObserver, bs-dropdown-item, app-tab, app-segmented-button and
+// Drawer.
+[tabindex='-1']:focus:not(:focus-visible) {
+  outline: 0 !important;
+}
+
 hr {
   box-sizing: content-box;
   height: 0;
@@ -582,6 +589,13 @@ textarea.form-control {
 }
 
 // $font-size-sm is $font-size-base * 0.875 = 0.765625rem, not 0.875rem.
+input[type='date'].form-control,
+input[type='time'].form-control,
+input[type='datetime-local'].form-control,
+input[type='month'].form-control {
+  appearance: none;
+}
+
 .form-control-sm {
   height: calc(1.3484375rem + 1px);
   padding: 0.1rem 0.35rem;
@@ -626,9 +640,14 @@ textarea.form-control {
   color: #dc3545;
 }
 
-.form-control.is-invalid ~ .invalid-feedback {
-  display: block;
-}
+// Deliberately NOT carried over: Bootstrap's
+// `.is-invalid ~ .invalid-feedback { display: block }`. Its mixin interpolates
+// `&`, so nested inside .mri-app-vue-container it compiled to the compound
+// selector `.mri-app-vue-container.is-invalid ~ .invalid-feedback`, which
+// never matched. The app depends on that: FiltersFooter and QueryFilterModern
+// each place several .invalid-feedback siblings after one input and reveal the
+// right one with an inline `display: block`. A live rule shows them all at
+// once.
 
 .form-control.is-invalid {
   border-color: #dc3545;
@@ -637,6 +656,16 @@ textarea.form-control {
   background-repeat: no-repeat;
   background-position: right calc(0.375em + 0.1875rem) center;
   background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+
+select.form-control.is-invalid {
+  padding-right: 3rem !important;
+  background-position: right 1.5rem center;
+}
+
+textarea.form-control.is-invalid {
+  padding-right: 1.6875rem;
+  background-position: top calc(0.375em + 0.1875rem) right calc(0.375em + 0.1875rem);
 }
 
 .form-control.is-invalid:focus {
@@ -1030,4 +1059,11 @@ textarea.form-control {
   .spinner-border {
     animation-duration: 1.5s;
   }
+}
+
+// Focus ring retained while the button is held down.
+.btn-primary:not(:disabled):not(.disabled):active:focus,
+.btn-secondary:not(:disabled):not(.disabled):active:focus,
+.btn-outline-primary:not(:disabled):not(.disabled):active:focus {
+  box-shadow: 0 0 0 0.2rem rgba(38, 143, 255, 0.5);
 }
