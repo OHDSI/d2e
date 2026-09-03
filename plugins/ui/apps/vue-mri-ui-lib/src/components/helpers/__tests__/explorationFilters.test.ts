@@ -133,6 +133,32 @@ describe('date range semantics (lastMaterialized used as the representative rang
   })
 })
 
+/**
+ * `lastUpdated` is the one range that does not read a date field directly: it
+ * goes through `lastUpdatedMs()`, which returns milliseconds and falls back
+ * across three fields. Its own tests, because the representative range above
+ * cannot exercise that path.
+ */
+describe('lastUpdated range', () => {
+  it('reads bookmark.dateModified', () => {
+    const filters = { ...emptyFilters(), lastUpdated: { from: '2026-01-01', to: '2026-01-31' } }
+    expect(matchesFilters(card({ bookmark: { dateModified: '2026-01-15T09:00:00' } }), filters)).toBe(true)
+    expect(matchesFilters(card({ bookmark: { dateModified: '2025-12-31T09:00:00' } }), filters)).toBe(false)
+  })
+
+  it('falls back to the atlas updatedOn when there is no bookmark', () => {
+    const filters = { ...emptyFilters(), lastUpdated: { from: '2026-01-01', to: '2026-01-31' } }
+    expect(matchesFilters(card({ atlasCohortDefinition: { updatedOn: '2026-01-15T09:00:00' } }), filters)).toBe(true)
+    expect(matchesFilters(card({ atlasCohortDefinition: { updatedOn: '2026-03-01T09:00:00' } }), filters)).toBe(false)
+  })
+
+  it('drops a card with no date anywhere, and keeps it when the range is empty', () => {
+    const undated = card({ displayName: 'undated' })
+    expect(matchesFilters(undated, { ...emptyFilters(), lastUpdated: { from: '2026-01-01', to: null } })).toBe(false)
+    expect(matchesFilters(undated, emptyFilters())).toBe(true)
+  })
+})
+
 describe('AND across filters', () => {
   it('author and a date range together are AND, not OR', () => {
     const alice = card({
