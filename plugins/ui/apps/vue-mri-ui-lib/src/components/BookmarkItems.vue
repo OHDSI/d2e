@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatNumber } from '../utils/NumberUtils'
-import { onMounted, computed, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import CohortDefinitionIcon from './icons/CohortDefinitionIcon.vue'
 import PatientsActiveIcon from './icons/PatientsActiveIcon.vue'
@@ -326,11 +326,6 @@ const goToNextPage = () => {
   }
 }
 
-// Lifecycle hooks
-onMounted(() => {
-  console.log('Component mounted!')
-})
-
 onErrorCaptured((err, instance, info) => {
   console.error('Captured error:', err, instance, info)
   // Stop propagation to prevent the error from reaching parent handlers
@@ -367,7 +362,6 @@ onErrorCaptured((err, instance, info) => {
           background-color: white;
           font-size: 12px;
         "
-        @click="console.log('OUTER CARD CLICKED:', bookmarkDisplay.displayName)"
       >
         <div
           style="flex: 1"

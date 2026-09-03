@@ -53,8 +53,11 @@
         :name="card.name"
         :selected="explorations.isSelected(card.id)"
         :metadata="card.metadata"
+        :bookmark="card.bookmarkRows"
+        :bookmark-title="BOOKMARK_PANEL_TITLE"
         :checkbox-label="`${getText('MRI_PA_EXPLORATIONS_SELECT')} ${card.name}`"
         @update:selected="explorations.toggle(card.id, $event)"
+        @click="onCardClick(card, $event)"
       >
         <template #toolbar>
           <D2eIconButton
@@ -79,15 +82,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { D2eButton, D2eExplorationCard, D2eIconButton, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
-import { usePortalContextStore } from '../stores/portalContext'
+import { usePortalContext } from '../composables/usePortalContext'
+
+const emit = defineEmits<{ (e: 'open-exploration', bmkId: string, chartType: string | null): void }>()
 
 const store = useStore()
-const portalContext = usePortalContextStore()
+const portalContext = usePortalContext()
 const explorations = useExplorationsStore()
+
+// The card's own checkbox and quick-action buttons sit inside the card root, so
+// their clicks bubble up to it. Opening the exploration from those would fight
+// the control the user actually pressed.
+const IGNORED_CLICK_TARGETS = '.d2e-exploration-card__checkbox, .d2e-exploration-card__actions'
+const BOOKMARK_PANEL_TITLE = 'Exploration bookmark'
+const EMPTY_VALUE = '-'
 
 const searchQuery = ref('')
 
@@ -101,14 +113,9 @@ const getText = (key: string): string => {
 }
 
 const load = (): void => {
-  store
-    .dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } })
-    .catch(() => {})
-    .finally(() => {
-      // PatientAnalytics owns completeInitialLoad in the cohort view; the
-      // exploration view must clear the splash itself.
-      store.dispatch('completeInitialLoad')
-    })
+  // Failures land in the store as loadError and render as the error state, so
+  // swallow the rejection here rather than leaving it unhandled.
+  store.dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } }).catch(() => {})
 }
 
 const cards = computed(() => {
@@ -117,29 +124,57 @@ const cards = computed(() => {
   return all
     .filter(card => !query || (card.displayName || '').toLowerCase().includes(query))
     .map(card => {
-      const id = card.bookmark?.id ?? card.cohortDefinition?.id ?? card.atlasCohortDefinition?.id ?? card.displayName
-      const description = card.cohortDefinition?.description || card.atlasCohortDefinition?.description || ''
-      const metadata: Array<{ label: string; value: string }> = [{ label: 'Exploration ID', value: id }]
-      if (description) {
-        metadata.push({ label: 'Description', value: description })
-      }
+      const bookmark = card.bookmark
+      const cohortDefinition = card.cohortDefinition
+      const atlas = card.atlasCohortDefinition
+      const id = bookmark?.id ?? cohortDefinition?.id ?? atlas?.id ?? card.displayName
+      // A never-materialised exploration keeps its rows and shows a dash, rather
+      // than dropping them and changing the card's height (Figma 1810:241322).
       return {
         id,
         name: card.displayName,
-        metadata,
+        bmkId: bookmark?.id ?? null,
+        chartType: bookmark?.chartType ?? null,
+        metadata: [
+          { label: 'Last Materialised on', value: cohortDefinition?.createdOnFormatted || EMPTY_VALUE },
+          { label: 'Exploration ID', value: id || EMPTY_VALUE },
+          {
+            label: 'Description',
+            value: cohortDefinition?.description || atlas?.description || EMPTY_VALUE,
+          },
+        ],
+        bookmarkRows: [
+          { label: 'Created by', value: bookmark?.username || atlas?.username || EMPTY_VALUE },
+          { label: 'Last updated', value: bookmark?.dateModifiedFormatted || EMPTY_VALUE },
+          { label: 'Version', value: bookmark?.version ?? EMPTY_VALUE },
+        ],
       }
     })
 })
 
-onMounted(load)
+const onCardClick = (card: { bmkId: string | null; chartType: string | null }, event: MouseEvent): void => {
+  if (!card.bmkId) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest(IGNORED_CLICK_TARGETS)) return
+  // Allows highlighting text on the card without opening it, as BookmarkItems does.
+  if ((window.getSelection()?.toString().length ?? 0) > 0) return
+  emit('open-exploration', card.bmkId, card.chartType)
+}
 </script>
 
 <style scoped lang="scss">
+/* The frame draws the page as one rounded card inset 24px from the viewport,
+   not as a bare pane (Figma 1676:221307). */
 .explorations-page {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: 100%;
+  margin: 24px;
   padding: 24px;
+  overflow-y: auto;
+  background: var(--d2e-color-white);
+  border-radius: 16px;
   font-family: var(--d2e-font-family);
 
   &__header {
@@ -220,7 +255,9 @@ onMounted(load)
   &__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(324px, 1fr));
-    gap: 16px;
+    /* 16px between columns, 40px between rows (Figma 1676:222326). */
+    column-gap: 16px;
+    row-gap: 40px;
   }
 }
 </style>

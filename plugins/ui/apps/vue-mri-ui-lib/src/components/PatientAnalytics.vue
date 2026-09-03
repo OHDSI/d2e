@@ -1,7 +1,8 @@
 <template>
   <div :class="['pa-component-wrapper']">
     <AtlasView v-if="atlasStore.showAtlas" />
-    <div :class="['fullHeight', 'pa-splitter', { 'right-pane-opened': rightPaneEverOpened }]">
+    <ExplorationsPage v-if="displayCohorts" @open-exploration="loadExploration" />
+    <div v-else :class="['fullHeight', 'pa-splitter', { 'right-pane-opened': rightPaneEverOpened }]">
       <splitpanes class="default-theme" @resize="onSplitterDrag($event)">
         <pane :size="paneSize" :min-size="hideLeftPane ? 0 : splitterMinWidth">
           <div id="pane-left" class="split" data-testid="pa-pane-left">
@@ -33,18 +34,7 @@
               </div>
             </div>
             <div class="pane-left-content">
-              <bookmarks
-                @unloadBookmarkEv="toggleCohorts"
-                @loadAtlasCohortDefinition="handleLoadAtlasCohortDefinition"
-                :init-bookmark-id="querystring.bmkId"
-                v-if="getMriFrontendConfig && displayCohorts"
-              ></bookmarks>
-
-              <filters
-                ref="filtersRef"
-                v-if="!showQueryFilter && !displayCohorts"
-                v-bind:class="{ hidden: displayCohorts }"
-              ></filters>
+              <filters ref="filtersRef" v-if="!showQueryFilter && !displayCohorts"></filters>
 
               <QueryFilter
                 v-else-if="showQueryFilter"
@@ -173,7 +163,7 @@ import icon from '../lib/ui/app-icon.vue'
 import appButton from '../lib/ui/app-button.vue'
 import appIcon from '../lib/ui/app-icon.vue'
 import appLink from '../lib/ui/app-link.vue'
-import Bookmarks from './Bookmarks.vue'
+import ExplorationsPage from './ExplorationsPage.vue'
 import ChartController from './ChartController.vue'
 import ChartToolbar from './ChartToolbar.vue'
 import FilterCardSummary from './FilterCardSummary.vue'
@@ -187,6 +177,7 @@ import 'splitpanes/dist/splitpanes.css'
 import { QueryFilter } from '@/query-filter'
 import AtlasView from '../views/AtlasView.vue'
 import { useAtlasStore } from '../stores/atlas'
+import { useUnsavedChanges } from '../composables/useUnsavedChanges'
 
 const PANE_SIZE = {
   FULL: 100,
@@ -200,6 +191,11 @@ const PANEL = {
 
 export default {
   name: 'patientanalytics',
+  setup() {
+    return {
+      unsavedChanges: useUnsavedChanges(),
+    }
+  },
   data() {
     return {
       displayCohorts: true,
@@ -227,6 +223,13 @@ export default {
   },
   created() {},
   watch: {
+    'querystring.bmkId'(bmkId) {
+      // Restore the bookmark referenced by the URL (?bmkId=). This watch used to
+      // live in Bookmarks.vue, which is no longer mounted.
+      if (bmkId) {
+        this.loadExploration(bmkId)
+      }
+    },
     getActiveBookmark(newVal, oldVal) {
       // Auto-switch to cohort view when a bookmark is loaded (e.g., from deep link)
       // Only trigger when going from no bookmark to having one
@@ -392,6 +395,15 @@ export default {
       this.showQueryFilter = show
       this.displayCohorts = !show
     },
+    loadExploration(bmkId, chartType = null) {
+      // Mirrors Bookmarks.loadBookmark: guard unsaved filter changes, load the
+      // bookmark into the store, then swap to the splitter view.
+      this.unsavedChanges.guard(() => {
+        this.loadbookmarkToState({ bmkId, chartType })
+          .then(() => this.toggleCohorts(false))
+          .catch(() => {})
+      })
+    },
     toggleCohorts(isDisplayCohort, isPaAtlas = false) {
       if (isDisplayCohort) {
         this.toggleQueryFilter(false)
@@ -538,7 +550,7 @@ export default {
     icon,
     appButton,
     appLink,
-    Bookmarks,
+    ExplorationsPage,
     ChartToolbar,
     ChartController,
     filters,
