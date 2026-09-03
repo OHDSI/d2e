@@ -28,3 +28,4 @@ yarn-error.log*
 *.sw*
 
 !library-preload.js
+/dist-atlas-native
