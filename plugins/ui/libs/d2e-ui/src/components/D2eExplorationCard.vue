@@ -3,6 +3,10 @@
     class="d2e-exploration-card"
     :class="{ 'd2e-exploration-card--clickable': clickable }"
     :style="{ width }"
+    :tabindex="clickable ? 0 : undefined"
+    :role="clickable ? 'button' : undefined"
+    @keydown.enter.self="onActivate"
+    @keydown.space.prevent.self="onActivate"
   >
     <div class="d2e-exploration-card__head">
       <div class="d2e-exploration-card__title-row">
@@ -112,6 +116,13 @@ interface Props {
   bookmark?: D2eExplorationCardRow[];
   /** Paints the hover state and a pointer cursor, for a card that opens on click. */
   clickable?: boolean;
+}
+
+// A clickable card is reachable by keyboard: without this the focus-visible
+// ring below can never be seen, and the only way to open an exploration is a
+// mouse.
+function onActivate(event: KeyboardEvent) {
+  (event.currentTarget as HTMLElement | null)?.click();
 }
 
 const props = withDefaults(defineProps<Props>(), {

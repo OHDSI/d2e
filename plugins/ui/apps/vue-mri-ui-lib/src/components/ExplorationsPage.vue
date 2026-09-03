@@ -79,7 +79,7 @@
         v-for="card in cards"
         :key="card.id"
         width="100%"
-        clickable
+        :clickable="Boolean(card.bmkId)"
         :name="card.name"
         :selected="explorations.isSelected(card.id)"
         :status="card.status"
@@ -96,7 +96,7 @@
         <template v-if="!card.isMaterialised" #lead>
           <D2eButton
             variant="secondary"
-            :disabled="!canMaterialize"
+            :disabled="!canMaterialize || !card.canBeMaterialised"
             :data-testid="`explorations-materialize-lead-${card.id}`"
             @click="openMaterialize(card.source)"
           >
@@ -117,7 +117,7 @@
               <span v-bind="tooltipProps">
                 <D2eIconButton
                   category="no-stroke"
-                  :disabled="!canMaterialize"
+                  :disabled="!canMaterialize || !card.canBeMaterialised"
                   :aria-label="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
                   :data-testid="`explorations-materialize-btn-${card.id}`"
                   @click="openMaterialize(card.source)"
@@ -194,8 +194,10 @@
       @update:model-value="onMaterializeClose"
     />
 
-    <RenameExplorationDialog v-model="renameOpen" :bookmark-display="actionTarget" @saved="load" />
-    <DeleteExplorationDialog v-model="deleteOpen" :bookmark-display="actionTarget" @deleted="load" />
+    <!-- Both dialogs reload the list before they emit, so no @saved / @deleted
+         handler is wired here; adding one doubles the request. -->
+    <RenameExplorationDialog v-model="renameOpen" :bookmark-display="actionTarget" />
+    <DeleteExplorationDialog v-model="deleteOpen" :bookmark-display="actionTarget" />
   </div>
 </template>
 
@@ -232,9 +234,10 @@ const explorations = useExplorationsStore()
 const IGNORED_CLICK_TARGETS = [
   '.d2e-exploration-card__checkbox',
   '.d2e-exploration-card__actions',
-  // The lead row carries the Materialize button on a not-run card. Without it
-  // here, that click bubbles up and opens the exploration instead.
-  '.d2e-exploration-card__lead-row',
+  // The lead row carries the Materialize button on a not-run card. Scope this to
+  // the button: the row also holds the person count and the status chip, and
+  // those must not become dead zones.
+  '.d2e-exploration-card__lead-row .v-btn',
 ].join(', ')
 
 // #3119 data quality, #3120 filter summary and #3121 analyze are not wired yet.
@@ -288,11 +291,20 @@ const onSortSelect = (value: string): void => {
 
 const cards = computed(() => {
   const all = store.getters.getDisplayBookmarks(false, portalContext.username) || []
-  return filterAndSort(all, searchQuery.value, sortKey.value).map((card: Record<string, never>) => {
+  return filterAndSort(all, searchQuery.value, sortKey.value).map((card: BookmarkDisplay) => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
-    const id = bookmark?.id ?? cohortDefinition?.id ?? atlas?.id ?? card.displayName
+    // Namespaced: a bookmark id and a cohort-definition id come from different
+    // tables and can collide, and two never-materialized records can share a
+    // displayName. Either collision makes one checkbox select two cards.
+    const id = bookmark?.id
+      ? `bookmark:${bookmark.id}`
+      : cohortDefinition?.id
+        ? `cohort:${cohortDefinition.id}`
+        : atlas?.id
+          ? `atlas:${atlas.id}`
+          : `name:${card.displayName}`
     // An Atlas record is a cohort; a D2E bookmark is an exploration.
     const idLabel = ['A', 'A+M'].includes(getBookmarkType(card))
       ? getText('MRI_PA_EXPLORATIONS_COHORT_ID_LABEL')
@@ -305,6 +317,9 @@ const cards = computed(() => {
       bmkId: bookmark?.id ?? null,
       chartType: bookmark?.chartType ?? null,
       isMaterialised: Boolean(cohortDefinition),
+      // A type 'M' record has neither a bookmark nor an Atlas definition, so
+      // there is nothing to materialise; offering it posts a URL with "null".
+      canBeMaterialised: Boolean(bookmark || atlas),
       status: cohortDefinition ? 'ready' : 'not-run',
       // The card prop is documented as pre-formatted, so localise here.
       personCount:
@@ -352,13 +367,13 @@ const onCardClick = (card: { bmkId: string | null; chartType: string | null }, e
 
 /* ---- card actions ---------------------------------------------------- */
 
-const actionTarget = ref<Record<string, never> | null>(null)
+const actionTarget = ref<BookmarkDisplay | null>(null)
 const renameOpen = ref(false)
 const deleteOpen = ref(false)
-const materializeTarget = ref<Record<string, never> | null>(null)
+const materializeTarget = ref<BookmarkDisplay | null>(null)
 const materializeOpen = ref(false)
 
-const openMaterialize = (source: Record<string, never>): void => {
+const openMaterialize = (source: BookmarkDisplay): void => {
   materializeTarget.value = source
   materializeOpen.value = true
 }
@@ -370,7 +385,7 @@ const materializeProps = computed(() => {
   if (target?.bookmark) {
     return {
       bookmarkId: target.bookmark.id,
-      bookmarkName: target.bookmark.bookmarkname ?? target.displayName,
+      bookmarkName: target.bookmark.name ?? target.displayName,
       cohortDefinitionType: 'D2E',
       atlasCohortDefinitionId: null,
     }
@@ -390,13 +405,22 @@ const onMaterializeClose = (open: boolean): void => {
   }
 }
 
-const moreItems = (card: { source: Record<string, never> }) => {
+const moreItems = (card: { source: BookmarkDisplay }) => {
   // Do not offer an action the user cannot perform: the same ownership guard
   // BookmarkItems applies to rename and delete.
   const owner = card.source.bookmark ?? card.source.atlasCohortDefinition ?? null
   const disabled = !canModifyBookmark(owner, portalContext.username)
+  // Rename has no path for an Atlas-backed record: the D2E branch dereferences
+  // `bookmark.id` and the materialized branch renames the cohort rather than the
+  // definition. Bookmarks.vue gated on the type for exactly this reason.
+  const renameDisabled = disabled || !['D', 'M', 'D+M'].includes(getBookmarkType(card.source))
   return [
-    { label: getText('MRI_PA_BUTTON_RENAME'), value: 'rename', icon: 'mdi-pencil-outline', disabled },
+    {
+      label: getText('MRI_PA_BUTTON_RENAME'),
+      value: 'rename',
+      icon: 'mdi-pencil-outline',
+      disabled: renameDisabled,
+    },
     // #3123. The backend has no duplicate command yet, so the entry shows but
     // cannot be chosen.
     {
@@ -415,7 +439,7 @@ const moreItems = (card: { source: Record<string, never> }) => {
   ]
 }
 
-const onMoreSelect = (card: { source: Record<string, never> }, value: string): void => {
+const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void => {
   actionTarget.value = card.source
   if (value === 'rename') renameOpen.value = true
   if (value === 'delete') deleteOpen.value = true

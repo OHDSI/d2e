@@ -184,6 +184,7 @@ import * as types from '../store/mutation-types'
 import { useAtlasStore } from '../stores/atlas'
 import { useUnsavedChanges } from '../composables/useUnsavedChanges'
 import { usePortalContext } from '../composables/usePortalContext'
+import { useNotificationStore } from '../stores/notifications'
 
 const PANE_SIZE = {
   FULL: 100,
@@ -201,6 +202,7 @@ export default {
     return {
       unsavedChanges: useUnsavedChanges(),
       portalContext: usePortalContext(),
+      notifications: useNotificationStore(),
     }
   },
   data() {
@@ -431,12 +433,25 @@ export default {
       })
     },
     loadExploration(bmkId, chartType = null) {
-      // Mirrors Bookmarks.loadBookmark: guard unsaved filter changes, load the
-      // bookmark into the store, then swap to the splitter view.
+      // Mirrors Bookmarks.loadBookmarkCheck: reopening the exploration that is
+      // already active must not re-load it, or an in-progress edit is discarded
+      // and the unsaved-changes guard fires for a no-op.
+      if (this.getActiveBookmark && bmkId === this.getActiveBookmark.bmkId) {
+        this.toggleCohorts(false)
+        return
+      }
       this.unsavedChanges.guard(() => {
         this.loadbookmarkToState({ bmkId, chartType })
           .then(() => this.toggleCohorts(false))
-          .catch(() => {})
+          .catch(() => {
+            // The saved filter does not fit the active config. Bookmarks.vue
+            // showed a message box for this; without it the click looks dead.
+            this.notifications.setAlertMessage({
+              message: this.getText('MRI_PA_BMK_COMPATIBLE_ERROR'),
+              messageType: 'error',
+              title: this.getText('MRI_PA_NOTIFICATION_ERROR'),
+            })
+          })
       })
     },
     toggleCohorts(isDisplayCohort, isPaAtlas = false) {

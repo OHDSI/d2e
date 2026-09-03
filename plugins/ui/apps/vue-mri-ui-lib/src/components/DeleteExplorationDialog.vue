@@ -65,8 +65,7 @@ export default {
       'fireBookmarkQuery',
       'fireDeleteMaterializedCohortQuery',
       'fireDeleteAtlasCohortDefinitionQuery',
-      'setIFRState',
-      'setupChartDefaults',
+      'resetChart',
     ]),
     ...mapMutations([types.SET_ACTIVE_BOOKMARK]),
     close() {
@@ -103,10 +102,12 @@ export default {
 
         if (!isMaterializedCohort && activeBookmark && activeBookmark.bookmarkname === bookmarkDisplay.bookmark?.name) {
           // The deleted record is the one loaded in the builder, so clear it and
-          // put the chart back to the config's initial state.
+          // put the chart back to the config's initial state. resetChart also
+          // dispatches resetChartProperties, which clears the axis and display
+          // settings the deleted exploration set; doing only setIFRState plus
+          // setupChartDefaults leaves those behind.
           this[types.SET_ACTIVE_BOOKMARK](null)
-          await this.setIFRState({ ifr: this.$store.getters.getMriFrontendConfig.getInitialIFR() })
-          this.setupChartDefaults()
+          await this.resetChart()
         }
 
         this.$emit('deleted')
