@@ -2,8 +2,7 @@
   <div id="app" class="mri-app-vue-container" data-testid="pa-app-container">
     <NotificationStack />
     <SplashScreen v-if="showSplashScreen" :overlay="!getInitialLoad" />
-    <ExplorationsPage v-if="isExplorationView" v-show="!getInitialLoad" />
-    <patientanalytics v-else v-show="!getInitialLoad" />
+    <patientanalytics v-show="!getInitialLoad" />
     <UnsavedChangesDialog
       v-model="showUnsavedDialog"
       @leave="unsavedChanges.confirmLeave"
@@ -18,7 +17,6 @@
 import '@fontsource-variable/ibm-plex-sans'
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useStore } from 'vuex'
-import ExplorationsPage from './components/ExplorationsPage.vue'
 import patientanalytics from './components/PatientAnalytics.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import NotificationStack from './components/NotificationStack.vue'
@@ -26,16 +24,13 @@ import UnsavedChangesDialog from './components/UnsavedChangesDialog.vue'
 import { useDeepLink } from './composables/useDeepLink'
 import { useUnsavedChanges } from './composables/useUnsavedChanges'
 import { usePortalContext } from './composables/usePortalContext'
-import { usePortalContextStore } from './stores/portalContext'
 import CohortUrlCodec from './utils/CohortUrlCodec'
 
 const store = useStore()
-const portalContextStore = usePortalContextStore()
 const unsavedChanges = useUnsavedChanges()
 
 usePortalContext()
 
-const isExplorationView = computed<boolean>(() => portalContextStore.view === 'exploration')
 const getInitialLoad = computed<boolean>(() => store.getters.getInitialLoad)
 const getDatasetReloadInProgress = computed<boolean>(() => store.getters.getDatasetReloadInProgress)
 const showSplashScreen = computed<boolean>(() => getInitialLoad.value || getDatasetReloadInProgress.value)

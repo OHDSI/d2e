@@ -179,20 +179,6 @@
           {
             "visible": true,
             "type": "app",
-            "autoMount": false,
-            "name": "Explorations",
-            "pluginPath": "/mri/lifecycles.js",
-            "requiredRoles": [
-              "RESEARCHER"
-            ],
-            "route": "exploration",
-            "data": {
-              "view": "exploration"
-            }
-          },
-          {
-            "visible": true,
-            "type": "app",
             "autoMount": true,
             "featureFlag": "conceptSets",
             "defaultEnabled": true,

@@ -29,7 +29,6 @@ const toPortalContextProps = (props: Partial<PortalContextState>): PortalContext
   REACT_APP_USE_PUBLIC_WEBAPI_PROXY: props.REACT_APP_USE_PUBLIC_WEBAPI_PROXY,
   REACT_APP_PUBLIC_WEBAPI_DATASOURCE: props.REACT_APP_PUBLIC_WEBAPI_DATASOURCE,
   debug: props.debug,
-  view: props.view,
 })
 
 const lifecycles = singleSpaVue({

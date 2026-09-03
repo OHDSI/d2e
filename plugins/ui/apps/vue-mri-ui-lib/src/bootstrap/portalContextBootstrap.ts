@@ -56,7 +56,6 @@ export const resolvePortalContextProps = (
     REACT_APP_PUBLIC_WEBAPI_DATASOURCE:
       bootstrap.REACT_APP_PUBLIC_WEBAPI_DATASOURCE || bootstrap.datasource || env.VITE_DEFAULT_DATASOURCE || 'SYNPUF1K',
     debug: bootstrap.debug ?? toBoolean(env.VITE_DEBUG),
-    view: searchParams.get('view') || bootstrap.view || undefined,
   }
 }
 
