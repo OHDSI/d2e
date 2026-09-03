@@ -313,6 +313,7 @@ export default {
       'getActiveChart',
       'getPLModel',
       'getActiveBookmark',
+      'getBookmarks',
       'getBookmarkById',
       'getDatasetReloadInProgress',
     ]),
@@ -407,7 +408,7 @@ export default {
     checkCohortName(bookmarkName, suffix = '') {
       const username = this.portalContext.username
       const uniqueName = bookmarkName + (suffix ? ` ${suffix}` : '')
-      for (const bookmark of this.getBookmarks) {
+      for (const bookmark of this.getBookmarks || []) {
         if (username === bookmark.user_id && bookmark.bookmarkname === uniqueName) {
           return this.checkCohortName(bookmarkName, suffix ? parseInt(suffix) + 1 : 1)
         }
@@ -418,7 +419,7 @@ export default {
       // Moved from Bookmarks.addNewCohort, which no longer mounts. Opens the
       // builder on a fresh, uniquely named cohort.
       this.unsavedChanges.guard(async () => {
-        const cohortName = this.checkCohortName(this.getText('MRI_PA_VIEW_NEW_COHORT_TITLE') || 'New cohort')
+        const cohortName = this.checkCohortName(this.getText('MRI_PA_EXPLORATIONS_NEW_NAME'))
         this[types.SET_ACTIVE_BOOKMARK]({ bookmarkname: cohortName, isNew: true })
         this.toggleCohorts(false)
         await this.resetChart()

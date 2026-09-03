@@ -30,14 +30,6 @@
         />
       </div>
       <div class="explorations-page__toolbar-right">
-        <D2eIconButton
-          category="no-stroke"
-          icon="mdi-refresh"
-          :aria-label="getText('MRI_PA_BOOKMARKS_REFRESH')"
-          data-testid="explorations-refresh-btn"
-          @click="load"
-        />
-
         <D2eMenu :width="220" location="bottom end" :items="sortItems" @select="onSortSelect">
           <template #activator="activatorProps">
             <button
@@ -77,9 +69,11 @@
       <D2eExplorationCard
         v-for="card in cards"
         :key="card.id"
-        width="324px"
+        width="100%"
+        clickable
         :name="card.name"
         :selected="explorations.isSelected(card.id)"
+        :status="card.status"
         :person-count="card.personCount"
         :metadata="card.metadata"
         :bookmark="card.bookmarkRows"
@@ -93,7 +87,7 @@
         <template v-if="!card.isMaterialised" #lead>
           <D2eButton
             variant="secondary"
-            size="sm"
+            prepend-icon="mdi-account-multiple-plus-outline"
             :disabled="!canMaterialize"
             :data-testid="`explorations-materialize-lead-${card.id}`"
             @click="openMaterialize(card.source)"
@@ -113,6 +107,27 @@
                   :aria-label="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
                   :data-testid="`explorations-materialize-btn-${card.id}`"
                   @click="openMaterialize(card.source)"
+                />
+              </span>
+            </template>
+          </v-tooltip>
+
+          <!-- Placeholders, on purpose: data quality is #3119 (not ours), filter
+               summary is #3120 and analyze is #3121. They render so the bar
+               matches the frame, and do nothing yet. -->
+          <v-tooltip
+            v-for="placeholder in ACTION_PLACEHOLDERS"
+            :key="placeholder.testid"
+            location="top"
+            :text="getText(placeholder.labelKey)"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps">
+                <D2eIconButton
+                  category="no-stroke"
+                  :icon="placeholder.icon"
+                  :aria-label="getText(placeholder.labelKey)"
+                  :data-testid="`${placeholder.testid}-${card.id}`"
                 />
               </span>
             </template>
@@ -177,7 +192,25 @@ const explorations = useExplorationsStore()
 // The card's own checkbox and quick-action buttons sit inside the card root, so
 // their clicks bubble up to it. Opening the exploration from those would fight
 // the control the user actually pressed.
-const IGNORED_CLICK_TARGETS = '.d2e-exploration-card__checkbox, .d2e-exploration-card__actions'
+const IGNORED_CLICK_TARGETS = [
+  '.d2e-exploration-card__checkbox',
+  '.d2e-exploration-card__actions',
+  // The lead row carries the Materialize button on a not-run card. Without it
+  // here, that click bubbles up and opens the exploration instead.
+  '.d2e-exploration-card__lead-row',
+].join(', ')
+
+// #3119 data quality, #3120 filter summary and #3121 analyze are not wired yet.
+// They render so the action bar matches the frame.
+const ACTION_PLACEHOLDERS = [
+  { icon: 'mdi-medal-outline', labelKey: 'MRI_PA_EXPLORATIONS_DATA_QUALITY', testid: 'explorations-dq-btn' },
+  {
+    icon: 'mdi-file-document-outline',
+    labelKey: 'MRI_PA_EXPLORATIONS_FILTER_SUMMARY',
+    testid: 'explorations-filter-summary-btn',
+  },
+  { icon: 'mdi-chart-line', labelKey: 'MRI_PA_EXPLORATIONS_ANALYZE', testid: 'explorations-analyze-btn' },
+] as const
 const EMPTY_VALUE = '-'
 
 const searchQuery = ref('')
@@ -231,6 +264,7 @@ const cards = computed(() => {
       bmkId: bookmark?.id ?? null,
       chartType: bookmark?.chartType ?? null,
       isMaterialised: Boolean(cohortDefinition),
+      status: cohortDefinition ? 'ready' : 'not-run',
       // The card prop is documented as pre-formatted, so localise here.
       personCount:
         typeof cohortDefinition?.patientCount === 'number'
@@ -310,7 +344,6 @@ const onMaterializeClose = (open: boolean): void => {
   materializeOpen.value = open
   if (!open) {
     materializeTarget.value = null
-    load()
   }
 }
 
@@ -385,6 +418,9 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
   &__dataset {
     flex: 0 0 208px;
     min-width: 208px;
+    // The floating label sits above the border; without this it clips against
+    // the top of the header row.
+    margin-top: var(--d2e-spacing-xs);
   }
 
   /* Sort by is icon-plus-text with no box (Figma 1762:475284). */
