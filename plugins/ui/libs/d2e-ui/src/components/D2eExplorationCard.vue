@@ -225,6 +225,7 @@ const resolvedStatus = computed(() =>
     justify-content: space-between;
     gap: var(--d2e-spacing-xs);
     height: 40px;
+    margin-bottom: var(--d2e-spacing-xs);
     overflow: hidden;
   }
 

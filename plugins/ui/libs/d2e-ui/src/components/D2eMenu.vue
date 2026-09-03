@@ -25,6 +25,7 @@
         :class="{
           'd2e-menu__item--selected': item.selected,
           'd2e-menu__item--disabled': item.disabled,
+          'd2e-menu__item--danger': item.danger,
         }"
         role="menuitem"
         :disabled="item.disabled"
@@ -71,6 +72,8 @@ export interface D2eMenuItem {
   icon?: string;
   selected?: boolean;
   disabled?: boolean;
+  /** Destructive action: the label and icon paint in the alarm colour. */
+  danger?: boolean;
 }
 
 interface Props {
@@ -222,9 +225,9 @@ function onSelect(item: D2eMenuItem) {
     align-items: center;
     gap: 8px;
     width: 100%;
-    height: 40px;
-    padding: 0 8px;
-    color: var(--d2e-color-neutral-black);
+    height: 44px;
+    padding: 12px 24px 12px 16px;
+    color: var(--d2e-color-primary);
     background: transparent;
     border: 0;
     border-radius: 4px;
@@ -247,6 +250,11 @@ function onSelect(item: D2eMenuItem) {
     &--disabled {
       color: var(--d2e-color-neutral-light);
       cursor: not-allowed;
+    }
+
+    // Delete reads in the alarm colour (Figma 1801:215950).
+    &--danger:not(.d2e-menu__item--disabled) {
+      color: var(--d2e-color-alarm);
     }
   }
 

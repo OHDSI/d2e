@@ -31,22 +31,24 @@
           class="explorations-page__search"
           :placeholder="getText('MRI_PA_EXPLORATIONS_SEARCH')"
           prepend-inner-icon="mdi-magnify"
-          hide-details
+          :hide-details="true"
           data-testid="explorations-search"
         />
       </div>
       <div class="explorations-page__toolbar-right">
         <D2eMenu :width="220" location="bottom end" :items="sortItems" @select="onSortSelect">
           <template #activator="activatorProps">
-            <button
+            <D2eButton
               v-bind="activatorProps"
-              type="button"
+              variant="ghost"
               class="explorations-page__sort"
               data-testid="explorations-sort-btn"
             >
-              <v-icon icon="mdi-swap-vertical" size="20" />
-              <span>{{ getText('MRI_PA_EXPLORATIONS_SORT_BY') }}: {{ activeSortLabel }}</span>
-            </button>
+              <template #prepend>
+                <ExplorationSortIcon :size="22" />
+              </template>
+              {{ getText('MRI_PA_EXPLORATIONS_SORT_BY') }}: {{ activeSortLabel }}
+            </D2eButton>
           </template>
         </D2eMenu>
 
@@ -105,7 +107,11 @@
         </template>
 
         <template #toolbar>
-          <v-tooltip location="top" :text="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')">
+          <v-tooltip
+            location="top"
+            content-class="explorations-tooltip"
+            :text="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
+          >
             <template #activator="{ props: tooltipProps }">
               <span v-bind="tooltipProps">
                 <D2eIconButton
@@ -128,6 +134,7 @@
             v-for="placeholder in ACTION_PLACEHOLDERS"
             :key="placeholder.testid"
             location="top"
+            content-class="explorations-tooltip"
             :text="getText(placeholder.labelKey)"
           >
             <template #activator="{ props: tooltipProps }">
@@ -193,6 +200,7 @@ import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
 import ExplorationDataQualityIcon from './icons/ExplorationDataQualityIcon.vue'
 import ExplorationFilterSummaryIcon from './icons/ExplorationFilterSummaryIcon.vue'
 import ExplorationAnalyzeIcon from './icons/ExplorationAnalyzeIcon.vue'
+import ExplorationSortIcon from './icons/ExplorationSortIcon.vue'
 import ExplorationMoreIcon from './icons/ExplorationMoreIcon.vue'
 import AddCohort from './AddCohort.vue'
 import RenameExplorationDialog from './RenameExplorationDialog.vue'
@@ -377,8 +385,22 @@ const moreItems = (card: { source: Record<string, never> }) => {
   const owner = card.source.bookmark ?? card.source.atlasCohortDefinition ?? null
   const disabled = !canModifyBookmark(owner, portalContext.username)
   return [
-    { label: getText('MRI_PA_TOOLTIP_RENAME_BOOKMARK'), value: 'rename', disabled },
-    { label: getText('MRI_PA_TOOLTIP_DELETE_BOOKMARK'), value: 'delete', disabled },
+    { label: getText('MRI_PA_BUTTON_RENAME'), value: 'rename', icon: 'mdi-pencil-outline', disabled },
+    // #3123. The backend has no duplicate command yet, so the entry shows but
+    // cannot be chosen.
+    {
+      label: getText('MRI_PA_EXPLORATIONS_DUPLICATE'),
+      value: 'duplicate',
+      icon: 'mdi-content-copy',
+      disabled: true,
+    },
+    {
+      label: getText('MRI_PA_BUTTON_DELETE'),
+      value: 'delete',
+      icon: 'mdi-trash-can-outline',
+      danger: true,
+      disabled,
+    },
   ]
 }
 
@@ -471,19 +493,7 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
     margin-top: var(--d2e-spacing-xs);
   }
 
-  /* Sort by is icon-plus-text with no box (Figma 1762:475284). */
-  &__sort {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0;
-    background: none;
-    border: 0;
-    cursor: pointer;
-    font-size: 14px;
-    white-space: nowrap;
-    color: var(--d2e-color-neutral-black);
-  }
+
 
   &__toolbar {
     display: flex;
@@ -521,20 +531,45 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
       opacity: 1;
     }
 
+    /* 24px icon, 8px gap, then the placeholder. The field owns the 16px
+       inset; the input adds none, or the icon reads as a second slot. */
+    :deep(.v-field) {
+      padding-inline: 16px;
+    }
+
     :deep(.v-field__input) {
       min-height: 44px;
-      padding: 0 16px;
+      padding: 0;
       font-size: 16px;
     }
 
     :deep(.v-field__prepend-inner) {
-      padding-inline-start: 16px;
+      align-items: center;
+      padding: 0;
+      margin-inline-end: 8px;
 
       .v-icon {
         font-size: 24px;
         opacity: 1;
         color: var(--d2e-color-neutral-light);
       }
+    }
+  }
+
+  /* Text button: 22px icon, 8px gap, 16px Medium neutral label, no box
+     (Figma 2634:58663). */
+  &__sort {
+    :deep(.v-btn__content) {
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: normal;
+      text-transform: none;
+      color: var(--d2e-color-neutral);
+    }
+
+    :deep(.v-btn__prepend) {
+      margin-inline: 0 8px;
+      color: var(--d2e-color-neutral);
     }
   }
 
@@ -549,6 +584,11 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
     color: var(--d2e-color-neutral);
   }
 
+  /* The card's Materialize button outlines in Primary/Lightest. */
+  :deep(.d2e-exploration-card__lead-row .d2e-button.v-btn--variant-outlined) {
+    border-color: var(--d2e-color-primary-lightest);
+  }
+
   &__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, 324px);
@@ -557,5 +597,23 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
     row-gap: 40px;
     padding: 24px;
   }
+}
+</style>
+
+<!-- Not scoped: Vuetify teleports tooltip content to <body>, so a scoped rule
+     never reaches it. White surface, neutral text (Figma 1798:208323). -->
+<style lang="scss">
+.explorations-tooltip .v-overlay__content,
+.v-overlay__content.explorations-tooltip {
+  padding: 8px 12px;
+  background: var(--d2e-color-white);
+  color: var(--d2e-color-neutral);
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgb(0 0 0 / 22%);
+  font-family: var(--d2e-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 1;
 }
 </style>

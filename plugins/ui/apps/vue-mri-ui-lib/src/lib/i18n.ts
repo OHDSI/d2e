@@ -459,6 +459,7 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_DATA_QUALITY: 'Data quality',
     MRI_PA_EXPLORATIONS_FILTER_SUMMARY: 'Filter summary',
     MRI_PA_EXPLORATIONS_ANALYZE: 'Analyze',
+    MRI_PA_EXPLORATIONS_DUPLICATE: 'Duplicate',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: 'No cohort definition available',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TITLE: 'Overwrite Saved Filter',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TEXT: 'A saved filter with this name already exists. Do you want to overwrite it?',
@@ -1534,6 +1535,7 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_DATA_QUALITY: 'Datenqualität',
     MRI_PA_EXPLORATIONS_FILTER_SUMMARY: 'Filterübersicht',
     MRI_PA_EXPLORATIONS_ANALYZE: 'Analysieren',
+    MRI_PA_EXPLORATIONS_DUPLICATE: 'Duplizieren',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: 'Keine Kohortendefinition verfügbar',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TITLE: 'Gesicherten Filter überschreiben',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TEXT:
@@ -2578,6 +2580,7 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_DATA_QUALITY: '数据质量',
     MRI_PA_EXPLORATIONS_FILTER_SUMMARY: '筛选摘要',
     MRI_PA_EXPLORATIONS_ANALYZE: '分析',
+    MRI_PA_EXPLORATIONS_DUPLICATE: '复制',
     MRI_PA_BOOKMARK_NO_COHORT_DEFINITION: '没有可用的群组定义',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TITLE: '覆盖已保存的过滤器',
     MRI_PA_BOOKMARK_OVERWRITE_DIALOG_TEXT: '具有此名称的已保存的过滤器已存在。是否要覆盖？',
