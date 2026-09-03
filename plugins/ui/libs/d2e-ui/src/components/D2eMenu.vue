@@ -1,37 +1,70 @@
 <template>
-  <div class="d2e-menu" role="menu">
-    <button
-      v-for="item in items"
-      :key="item.value"
-      type="button"
-      class="d2e-menu__item"
-      :class="{
-        'd2e-menu__item--selected': item.selected,
-        'd2e-menu__item--disabled': item.disabled,
-      }"
-      role="menuitem"
-      :disabled="item.disabled"
-      @click="onSelect(item)"
+  <!--
+    With an `activator` slot the list becomes an anchored popover. With no
+    activator the wrapper is a pass-through and the list renders inline,
+    exactly as it did before the popover was added, so no existing consumer
+    can regress.
+  -->
+  <component :is="wrapper" v-bind="wrapperProps">
+    <template v-if="$slots.activator" #activator="{ props: activatorProps }">
+      <slot name="activator" v-bind="activatorProps" />
+    </template>
+
+    <div
+      class="d2e-menu"
+      role="menu"
+      :style="{ width: resolvedWidth }"
+      @keydown="onKeydown"
     >
-      <v-icon
-        v-if="item.icon"
-        :icon="item.icon"
-        size="20"
-        class="d2e-menu__item-icon"
-      />
-      <span class="d2e-menu__item-label">{{ item.label }}</span>
-      <v-icon
-        v-if="item.selected"
-        icon="mdi-check"
-        size="20"
-        class="d2e-menu__item-check"
-      />
-    </button>
-  </div>
+      <button
+        v-for="(item, index) in items"
+        :key="item.value"
+        :ref="(el) => setItemRef(el, index)"
+        type="button"
+        class="d2e-menu__item"
+        :class="{
+          'd2e-menu__item--selected': item.selected,
+          'd2e-menu__item--disabled': item.disabled,
+        }"
+        role="menuitem"
+        :disabled="item.disabled"
+        @click="onSelect(item)"
+      >
+        <v-icon
+          v-if="item.icon"
+          :icon="item.icon"
+          size="20"
+          class="d2e-menu__item-icon"
+        />
+        <span class="d2e-menu__item-label">{{ item.label }}</span>
+        <v-icon
+          v-if="item.selected"
+          icon="mdi-check"
+          size="20"
+          class="d2e-menu__item-check"
+        />
+      </button>
+    </div>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { VIcon } from "vuetify/components";
+import { VIcon, VMenu } from "vuetify/components";
+import {
+  computed,
+  defineComponent,
+  nextTick,
+  ref,
+  useSlots,
+  watch,
+  type ComponentPublicInstance,
+} from "vue";
+import {
+  firstEnabledIndex,
+  lastEnabledIndex,
+  nextEnabledIndex,
+} from "./menuNavigation";
+
 export interface D2eMenuItem {
   label: string;
   value: string;
@@ -42,25 +75,142 @@ export interface D2eMenuItem {
 
 interface Props {
   items: D2eMenuItem[];
+  /** Open state. Leave it unbound to let the menu own its open state. */
+  modelValue?: boolean;
+  /** Panel width. A number becomes px. A string passes through. */
+  width?: number | string;
+  /** Vuetify location string for the popover anchor. */
+  location?: string;
+  /** Close the popover after a select. */
+  closeOnSelect?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  modelValue: undefined,
+  width: 330,
+  location: "bottom end",
+  closeOnSelect: true,
+});
 
-const emit = defineEmits<{ select: [value: string] }>();
+const emit = defineEmits<{
+  select: [value: string];
+  "update:modelValue": [value: boolean];
+}>();
+
+const slots = useSlots();
+
+/** Renders its children with no wrapper element, for the no-activator path. */
+const PassThrough = defineComponent({
+  name: "D2eMenuPassThrough",
+  inheritAttrs: false,
+  setup(_, { slots: passThroughSlots }) {
+    return () => passThroughSlots.default?.();
+  },
+});
+
+const resolvedWidth = computed(() =>
+  typeof props.width === "number" ? `${props.width}px` : props.width,
+);
+
+// When `modelValue` is not bound, the menu keeps its own open state. An
+// activator then works without the caller wiring `v-model`.
+const internalOpen = ref(false);
+const isOpen = computed(() =>
+  props.modelValue === undefined ? internalOpen.value : props.modelValue,
+);
+
+function setOpen(value: boolean) {
+  internalOpen.value = value;
+  emit("update:modelValue", value);
+}
+
+const wrapper = computed(() => (slots.activator ? VMenu : PassThrough));
+
+const wrapperProps = computed(() =>
+  slots.activator
+    ? {
+        modelValue: isOpen.value,
+        location: props.location,
+        closeOnContentClick: false,
+        "onUpdate:modelValue": setOpen,
+      }
+    : {},
+);
+
+const itemEls = ref<(HTMLButtonElement | null)[]>([]);
+
+function setItemRef(
+  el: Element | ComponentPublicInstance | null,
+  index: number,
+) {
+  itemEls.value[index] = (el as HTMLButtonElement | null) ?? null;
+}
+
+function focusIndex(index: number) {
+  if (index < 0) return;
+  itemEls.value[index]?.focus();
+}
+
+/** Index of the focused item, or -1 when focus is elsewhere. */
+function focusedIndex(): number {
+  const active =
+    typeof document === "undefined" ? null : document.activeElement;
+  if (!active) return -1;
+  return itemEls.value.findIndex((el) => el !== null && el === active);
+}
+
+function onKeydown(event: KeyboardEvent) {
+  const from = focusedIndex();
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    focusIndex(nextEnabledIndex(props.items, from, 1));
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    focusIndex(
+      nextEnabledIndex(props.items, from < 0 ? props.items.length : from, -1),
+    );
+    return;
+  }
+
+  if (event.key === "Home") {
+    event.preventDefault();
+    focusIndex(firstEnabledIndex(props.items));
+    return;
+  }
+
+  if (event.key === "End") {
+    event.preventDefault();
+    focusIndex(lastEnabledIndex(props.items));
+  }
+}
+
+// VMenu returns focus to the activator on close, so only the open side needs
+// work here. The extra tick lets the popover content mount first.
+watch(isOpen, async (open) => {
+  if (!open) return;
+  await nextTick();
+  await nextTick();
+  focusIndex(firstEnabledIndex(props.items));
+});
 
 function onSelect(item: D2eMenuItem) {
   if (item.disabled) return;
   emit("select", item.value);
+  if (props.closeOnSelect) setOpen(false);
 }
 </script>
 
 <style scoped lang="scss">
 // Values from design-system/menu-dropdown.md: container 330 (showcase width),
 // radius 8, padding 16/12, elevation/8; rows 40 px, Body 1/Subtitle 1.
+// The width comes from the `width` prop as an inline style.
 .d2e-menu {
   display: flex;
   flex-direction: column;
-  width: 330px;
   padding: 12px 16px;
   background: var(--d2e-color-white);
   border-radius: 8px;
