@@ -6,18 +6,28 @@
         <h1 class="explorations-page__title">{{ getText('MRI_PA_EXPLORATIONS_TITLE') }}</h1>
         <p class="explorations-page__description">{{ getText('MRI_PA_EXPLORATIONS_DESCRIPTION') }}</p>
       </div>
-      <div class="explorations-page__dataset">
-        <span class="explorations-page__dataset-label">{{ getText('MRI_PA_EXPLORATIONS_DATASOURCE') }}</span>
-        <span class="explorations-page__dataset-value">{{ datasetName }}</span>
-      </div>
+      <D2eSelect
+        class="explorations-page__dataset"
+        size="sm"
+        disabled
+        :label="getText('MRI_PA_EXPLORATIONS_DATASOURCE')"
+        :items="datasetItems"
+        :model-value="datasetName"
+        prepend-icon="mdi-database-outline"
+        data-testid="explorations-datasource"
+      />
     </header>
 
     <div class="explorations-page__toolbar">
       <div class="explorations-page__toolbar-left">
-        <D2eTextField v-model="searchQuery" :label="getText('MRI_PA_EXPLORATIONS_SEARCH')" />
-        <D2eButton disabled data-testid="explorations-new-btn">
-          {{ getText('MRI_PA_BUTTON_NEW_EXPLORATION') }}
-        </D2eButton>
+        <D2eTextField
+          v-model="searchQuery"
+          class="explorations-page__search"
+          :placeholder="getText('MRI_PA_EXPLORATIONS_SEARCH')"
+          prepend-inner-icon="mdi-magnify"
+          hide-details
+          data-testid="explorations-search"
+        />
       </div>
       <div class="explorations-page__toolbar-right">
         <D2eIconButton
@@ -27,6 +37,24 @@
           data-testid="explorations-refresh-btn"
           @click="load"
         />
+
+        <D2eMenu :width="220" location="bottom end" :items="sortItems" @select="onSortSelect">
+          <template #activator="activatorProps">
+            <button
+              v-bind="activatorProps"
+              type="button"
+              class="explorations-page__sort"
+              data-testid="explorations-sort-btn"
+            >
+              <v-icon icon="mdi-swap-vertical" size="20" />
+              <span>{{ getText('MRI_PA_EXPLORATIONS_SORT_BY') }}: {{ activeSortLabel }}</span>
+            </button>
+          </template>
+        </D2eMenu>
+
+        <D2eButton prepend-icon="mdi-plus" data-testid="explorations-new-btn" @click="$emit('start-new-exploration')">
+          {{ getText('MRI_PA_BUTTON_NEW_EXPLORATION') }}
+        </D2eButton>
       </div>
     </div>
 
@@ -52,43 +80,95 @@
         width="324px"
         :name="card.name"
         :selected="explorations.isSelected(card.id)"
+        :person-count="card.personCount"
         :metadata="card.metadata"
         :bookmark="card.bookmarkRows"
-        :bookmark-title="BOOKMARK_PANEL_TITLE"
+        :bookmark-title="getText('MRI_PA_EXPLORATIONS_BOOKMARK_PANEL')"
         :checkbox-label="`${getText('MRI_PA_EXPLORATIONS_SELECT')} ${card.name}`"
         @update:selected="explorations.toggle(card.id, $event)"
         @click="onCardClick(card, $event)"
       >
+        <!-- A never-materialised card has no count, so the lead slot carries the
+             Materialize action in its place (Figma 1810:239211). -->
+        <template v-if="!card.isMaterialised" #lead>
+          <D2eButton
+            variant="secondary"
+            size="sm"
+            :disabled="!canMaterialize"
+            :data-testid="`explorations-materialize-lead-${card.id}`"
+            @click="openMaterialize(card.source)"
+          >
+            {{ getText('MRI_PA_BUTTON_MATERIALIZE') }}
+          </D2eButton>
+        </template>
+
         <template #toolbar>
-          <D2eIconButton
-            category="no-stroke"
-            icon="mdi-database-arrow-up"
-            :aria-label="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
-          />
-          <D2eIconButton
-            category="no-stroke"
-            icon="mdi-pencil"
-            :aria-label="getText('MRI_PA_TOOLTIP_RENAME_BOOKMARK')"
-          />
-          <D2eIconButton
-            category="no-stroke"
-            icon="mdi-delete"
-            :aria-label="getText('MRI_PA_TOOLTIP_DELETE_BOOKMARK')"
-          />
+          <v-tooltip location="top" :text="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')">
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps">
+                <D2eIconButton
+                  category="no-stroke"
+                  icon="mdi-account-multiple-plus-outline"
+                  :disabled="!canMaterialize"
+                  :aria-label="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
+                  :data-testid="`explorations-materialize-btn-${card.id}`"
+                  @click="openMaterialize(card.source)"
+                />
+              </span>
+            </template>
+          </v-tooltip>
+
+          <D2eMenu
+            :width="220"
+            location="bottom end"
+            :items="moreItems(card)"
+            @select="onMoreSelect(card, $event)"
+          >
+            <template #activator="activatorProps">
+              <D2eIconButton
+                v-bind="activatorProps"
+                category="no-stroke"
+                icon="mdi-dots-vertical"
+                :aria-label="getText('MRI_PA_EXPLORATIONS_MORE_ACTIONS')"
+                :data-testid="`explorations-more-btn-${card.id}`"
+              />
+            </template>
+          </D2eMenu>
         </template>
       </D2eExplorationCard>
     </div>
+
+    <AddCohort
+      v-if="materializeTarget"
+      v-model="materializeOpen"
+      :bookmark-id="materializeProps.bookmarkId"
+      :bookmark-name="materializeProps.bookmarkName"
+      :cohort-definition-type="materializeProps.cohortDefinitionType"
+      :atlas-cohort-definition-id="materializeProps.atlasCohortDefinitionId"
+      @update:model-value="onMaterializeClose"
+    />
+
+    <RenameExplorationDialog v-model="renameOpen" :bookmark-display="actionTarget" @saved="load" />
+    <DeleteExplorationDialog v-model="deleteOpen" :bookmark-display="actionTarget" @deleted="load" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
-import { D2eButton, D2eExplorationCard, D2eIconButton, D2eTextField } from '@d2e/ui'
+import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { usePortalContext } from '../composables/usePortalContext'
+import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
+import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
+import AddCohort from './AddCohort.vue'
+import RenameExplorationDialog from './RenameExplorationDialog.vue'
+import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
 
-const emit = defineEmits<{ (e: 'open-exploration', bmkId: string, chartType: string | null): void }>()
+const emit = defineEmits<{
+  (e: 'open-exploration', bmkId: string, chartType: string | null): void
+  (e: 'start-new-exploration'): void
+}>()
 
 const store = useStore()
 const portalContext = usePortalContext()
@@ -98,14 +178,16 @@ const explorations = useExplorationsStore()
 // their clicks bubble up to it. Opening the exploration from those would fight
 // the control the user actually pressed.
 const IGNORED_CLICK_TARGETS = '.d2e-exploration-card__checkbox, .d2e-exploration-card__actions'
-const BOOKMARK_PANEL_TITLE = 'Exploration bookmark'
 const EMPTY_VALUE = '-'
 
 const searchQuery = ref('')
+const sortKey = ref<ExplorationSortKey>('lastUpdated')
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
 const datasetName = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
+const datasetItems = computed(() => [{ label: datasetName.value, value: datasetName.value }])
+const canMaterialize = computed<boolean>(() => Boolean(store.getters.getCanDatasetMaterializeCohorts))
 
 const getText = (key: string): string => {
   const resolver = store.getters.getText
@@ -118,38 +200,68 @@ const load = (): void => {
   store.dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } }).catch(() => {})
 }
 
+const sortItems = computed(() =>
+  [
+    { label: getText('MRI_PA_EXPLORATIONS_SORT_LAST_UPDATED'), value: 'lastUpdated' },
+    { label: getText('MRI_PA_EXPLORATIONS_SORT_NAME_ASC'), value: 'nameAsc' },
+    { label: getText('MRI_PA_EXPLORATIONS_SORT_NAME_DESC'), value: 'nameDesc' },
+  ].map(item => ({ ...item, selected: item.value === sortKey.value })),
+)
+const activeSortLabel = computed(() => sortItems.value.find(i => i.selected)?.label ?? '')
+const onSortSelect = (value: string): void => {
+  sortKey.value = value as ExplorationSortKey
+}
+
 const cards = computed(() => {
   const all = store.getters.getDisplayBookmarks(false, portalContext.username) || []
-  const query = searchQuery.value.trim().toLowerCase()
-  return all
-    .filter(card => !query || (card.displayName || '').toLowerCase().includes(query))
-    .map(card => {
-      const bookmark = card.bookmark
-      const cohortDefinition = card.cohortDefinition
-      const atlas = card.atlasCohortDefinition
-      const id = bookmark?.id ?? cohortDefinition?.id ?? atlas?.id ?? card.displayName
+  return filterAndSort(all, searchQuery.value, sortKey.value).map((card: Record<string, never>) => {
+    const bookmark = card.bookmark
+    const cohortDefinition = card.cohortDefinition
+    const atlas = card.atlasCohortDefinition
+    const id = bookmark?.id ?? cohortDefinition?.id ?? atlas?.id ?? card.displayName
+    // An Atlas record is a cohort; a D2E bookmark is an exploration.
+    const idLabel = ['A', 'A+M'].includes(getBookmarkType(card))
+      ? getText('MRI_PA_EXPLORATIONS_COHORT_ID_LABEL')
+      : getText('MRI_PA_EXPLORATIONS_ID_LABEL')
+
+    return {
+      id,
+      source: card,
+      name: card.displayName,
+      bmkId: bookmark?.id ?? null,
+      chartType: bookmark?.chartType ?? null,
+      isMaterialised: Boolean(cohortDefinition),
+      // The card prop is documented as pre-formatted, so localise here.
+      personCount:
+        typeof cohortDefinition?.patientCount === 'number'
+          ? cohortDefinition.patientCount.toLocaleString()
+          : undefined,
       // A never-materialised exploration keeps its rows and shows a dash, rather
       // than dropping them and changing the card's height (Figma 1810:241322).
-      return {
-        id,
-        name: card.displayName,
-        bmkId: bookmark?.id ?? null,
-        chartType: bookmark?.chartType ?? null,
-        metadata: [
-          { label: 'Last Materialised on', value: cohortDefinition?.createdOnFormatted || EMPTY_VALUE },
-          { label: 'Exploration ID', value: id || EMPTY_VALUE },
-          {
-            label: 'Description',
-            value: cohortDefinition?.description || atlas?.description || EMPTY_VALUE,
-          },
-        ],
-        bookmarkRows: [
-          { label: 'Created by', value: bookmark?.username || atlas?.username || EMPTY_VALUE },
-          { label: 'Last updated', value: bookmark?.dateModifiedFormatted || EMPTY_VALUE },
-          { label: 'Version', value: bookmark?.version ?? EMPTY_VALUE },
-        ],
-      }
-    })
+      metadata: [
+        {
+          label: getText('MRI_PA_EXPLORATIONS_LAST_MATERIALISED'),
+          value: cohortDefinition?.createdOnFormatted || EMPTY_VALUE,
+        },
+        { label: idLabel, value: id || EMPTY_VALUE },
+        {
+          label: getText('MRI_PA_EXPLORATIONS_DESCRIPTION_LABEL'),
+          value: cohortDefinition?.description || atlas?.description || EMPTY_VALUE,
+        },
+      ],
+      bookmarkRows: [
+        {
+          label: getText('MRI_PA_EXPLORATIONS_CREATED_BY'),
+          value: bookmark?.username || atlas?.username || EMPTY_VALUE,
+        },
+        {
+          label: getText('MRI_PA_EXPLORATIONS_LAST_UPDATED'),
+          value: bookmark?.dateModifiedFormatted || atlas?.updatedOnFormatted || EMPTY_VALUE,
+        },
+        { label: getText('MRI_PA_EXPLORATIONS_VERSION'), value: bookmark?.version ?? EMPTY_VALUE },
+      ],
+    }
+  })
 })
 
 const onCardClick = (card: { bmkId: string | null; chartType: string | null }, event: MouseEvent): void => {
@@ -159,6 +271,64 @@ const onCardClick = (card: { bmkId: string | null; chartType: string | null }, e
   // Allows highlighting text on the card without opening it, as BookmarkItems does.
   if ((window.getSelection()?.toString().length ?? 0) > 0) return
   emit('open-exploration', card.bmkId, card.chartType)
+}
+
+/* ---- card actions ---------------------------------------------------- */
+
+const actionTarget = ref<Record<string, never> | null>(null)
+const renameOpen = ref(false)
+const deleteOpen = ref(false)
+const materializeTarget = ref<Record<string, never> | null>(null)
+const materializeOpen = ref(false)
+
+const openMaterialize = (source: Record<string, never>): void => {
+  materializeTarget.value = source
+  materializeOpen.value = true
+}
+
+// Mirrors Bookmarks.addCohort: a D2E record materialises its bookmark, an Atlas
+// record materialises its cohort definition.
+const materializeProps = computed(() => {
+  const target = materializeTarget.value
+  if (target?.bookmark) {
+    return {
+      bookmarkId: target.bookmark.id,
+      bookmarkName: target.bookmark.bookmarkname ?? target.displayName,
+      cohortDefinitionType: 'D2E',
+      atlasCohortDefinitionId: null,
+    }
+  }
+  return {
+    bookmarkId: target?.atlasCohortDefinition?.id ?? null,
+    bookmarkName: target?.displayName ?? '',
+    cohortDefinitionType: 'Atlas',
+    atlasCohortDefinitionId: target?.atlasCohortDefinition?.id ?? null,
+  }
+})
+
+const onMaterializeClose = (open: boolean): void => {
+  materializeOpen.value = open
+  if (!open) {
+    materializeTarget.value = null
+    load()
+  }
+}
+
+const moreItems = (card: { source: Record<string, never> }) => {
+  // Do not offer an action the user cannot perform: the same ownership guard
+  // BookmarkItems applies to rename and delete.
+  const owner = card.source.bookmark ?? card.source.atlasCohortDefinition ?? null
+  const disabled = !canModifyBookmark(owner, portalContext.username)
+  return [
+    { label: getText('MRI_PA_TOOLTIP_RENAME_BOOKMARK'), value: 'rename', disabled },
+    { label: getText('MRI_PA_TOOLTIP_DELETE_BOOKMARK'), value: 'delete', disabled },
+  ]
+}
+
+const onMoreSelect = (card: { source: Record<string, never> }, value: string): void => {
+  actionTarget.value = card.source
+  if (value === 'rename') renameOpen.value = true
+  if (value === 'delete') deleteOpen.value = true
 }
 </script>
 
@@ -210,22 +380,24 @@ const onCardClick = (card: { bmkId: string | null; chartType: string | null }, e
     color: var(--d2e-color-neutral);
   }
 
+  /* 208px in the frame. Read-only until #2956 settles the nav contract: the
+     dataset arrives through customProps and nothing flows back. */
   &__dataset {
+    flex: 0 0 208px;
+    min-width: 208px;
+  }
+
+  /* Sort by is icon-plus-text with no box (Figma 1762:475284). */
+  &__sort {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-    min-width: 200px;
-  }
-
-  &__dataset-label {
-    font-size: 12px;
-    color: var(--d2e-color-neutral-light);
-  }
-
-  &__dataset-value {
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
     font-size: 14px;
-    font-weight: 600;
+    white-space: nowrap;
     color: var(--d2e-color-neutral-black);
   }
 
@@ -236,11 +408,49 @@ const onCardClick = (card: { bmkId: string | null; chartType: string | null }, e
     gap: 16px;
   }
 
-  &__toolbar-left,
+  &__toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   &__toolbar-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 24px;
+  }
+
+  /* Search is 466x44 with a 1px #ACABA8 border and a 4px radius
+     (Figma 1762:475284). Vuetify's own outlined field is 56px tall. */
+  &__search {
+    flex: 0 0 466px;
+    max-width: 466px;
+
+    :deep(.v-field) {
+      border-radius: 4px;
+    }
+
+    :deep(.v-field__outline) {
+      --v-field-border-width: 1px;
+      color: var(--d2e-color-neutral-light);
+      opacity: 1;
+    }
+
+    :deep(.v-field__input) {
+      min-height: 44px;
+      padding: 0 16px;
+      font-size: 16px;
+    }
+
+    :deep(.v-field__prepend-inner) {
+      padding-inline-start: 16px;
+
+      .v-icon {
+        font-size: 24px;
+        opacity: 1;
+        color: var(--d2e-color-neutral-light);
+      }
+    }
   }
 
   &__status {

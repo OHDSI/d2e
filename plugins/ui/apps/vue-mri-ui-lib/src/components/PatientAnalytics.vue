@@ -1,7 +1,11 @@
 <template>
   <div :class="['pa-component-wrapper']">
     <AtlasView v-if="atlasStore.showAtlas" />
-    <ExplorationsPage v-if="displayCohorts" @open-exploration="loadExploration" />
+    <ExplorationsPage
+      v-if="displayCohorts"
+      @open-exploration="loadExploration"
+      @start-new-exploration="startNewExploration"
+    />
     <div v-else :class="['fullHeight', 'pa-splitter', { 'right-pane-opened': rightPaneEverOpened }]">
       <splitpanes class="default-theme" @resize="onSplitterDrag($event)">
         <pane :size="paneSize" :min-size="hideLeftPane ? 0 : splitterMinWidth">
@@ -156,7 +160,7 @@
 declare var sap
 const myWindow: any = window
 
-import { mapActions, mapGetters } from 'vuex'
+import { mapActions, mapGetters, mapMutations } from 'vuex'
 import { registerPaTools } from '@/ai/webmcpServer'
 import { publishPaTools } from '@/ai/paToolBridge'
 import icon from '../lib/ui/app-icon.vue'
@@ -176,8 +180,10 @@ import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import { QueryFilter } from '@/query-filter'
 import AtlasView from '../views/AtlasView.vue'
+import * as types from '../store/mutation-types'
 import { useAtlasStore } from '../stores/atlas'
 import { useUnsavedChanges } from '../composables/useUnsavedChanges'
+import { usePortalContext } from '../composables/usePortalContext'
 
 const PANE_SIZE = {
   FULL: 100,
@@ -194,6 +200,7 @@ export default {
   setup() {
     return {
       unsavedChanges: useUnsavedChanges(),
+      portalContext: usePortalContext(),
     }
   },
   data() {
@@ -355,7 +362,9 @@ export default {
       'fireCheckIfDatasetCanMaterializeCohorts',
       'setRightPaneMounted',
       'loadValuesForAttributePath',
+      'resetChart',
     ]),
+    ...mapMutations([types.SET_ACTIVE_BOOKMARK, types.SET_ACTIVE_BOOKMARK_BASELINE]),
     loadDefaultFilters() {
       this.setIFRState({ ifr: this.getMriFrontendConfig.getInitialIFR() })
       this.setupChartDefaults()
@@ -394,6 +403,31 @@ export default {
     toggleQueryFilter(show) {
       this.showQueryFilter = show
       this.displayCohorts = !show
+    },
+    checkCohortName(bookmarkName, suffix = '') {
+      const username = this.portalContext.username
+      const uniqueName = bookmarkName + (suffix ? ` ${suffix}` : '')
+      for (const bookmark of this.getBookmarks) {
+        if (username === bookmark.user_id && bookmark.bookmarkname === uniqueName) {
+          return this.checkCohortName(bookmarkName, suffix ? parseInt(suffix) + 1 : 1)
+        }
+      }
+      return uniqueName
+    },
+    startNewExploration() {
+      // Moved from Bookmarks.addNewCohort, which no longer mounts. Opens the
+      // builder on a fresh, uniquely named cohort.
+      this.unsavedChanges.guard(async () => {
+        const cohortName = this.checkCohortName(this.getText('MRI_PA_VIEW_NEW_COHORT_TITLE') || 'New cohort')
+        this[types.SET_ACTIVE_BOOKMARK]({ bookmarkname: cohortName, isNew: true })
+        this.toggleCohorts(false)
+        await this.resetChart()
+        // Let chart defaults that are applied reactively after resetChart (axes /
+        // auto-default colorAxis via onChartDataReady) flush before snapshotting the
+        // baseline; otherwise it captures the previous cohort's not-yet-reset state.
+        await this.$nextTick()
+        this[types.SET_ACTIVE_BOOKMARK_BASELINE](this.$store.getters.getBookmarksData)
+      })
     },
     loadExploration(bmkId, chartType = null) {
       // Mirrors Bookmarks.loadBookmark: guard unsaved filter changes, load the
