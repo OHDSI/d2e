@@ -36,11 +36,15 @@ describe('emptyFilters / EMPTY_FILTERS', () => {
     expect(isEmpty(b)).toBe(true)
   })
 
-  it('EMPTY_FILTERS is frozen', () => {
+  it('EMPTY_FILTERS is frozen all the way down', () => {
     expect(Object.isFrozen(EMPTY_FILTERS)).toBe(true)
-    expect(() => {
-      ;(EMPTY_FILTERS as ExplorationFilters).authors = ['x']
-    }).toThrow()
+    // The nested ranges matter more than the top level: they are the objects a
+    // shallow spread shares, and the ones the corruption bug writes into.
+    expect(Object.isFrozen(EMPTY_FILTERS.created)).toBe(true)
+    expect(Object.isFrozen(EMPTY_FILTERS.lastUpdated)).toBe(true)
+    expect(Object.isFrozen(EMPTY_FILTERS.lastMaterialized)).toBe(true)
+    expect(Object.isFrozen(EMPTY_FILTERS.authors)).toBe(true)
+    expect(Object.isFrozen(EMPTY_FILTERS.statuses)).toBe(true)
   })
 })
 

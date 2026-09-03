@@ -5,12 +5,18 @@
   <div class="filters-panel" data-testid="explorations-filters-panel">
     <header class="filters-panel__header">
       <span class="filters-panel__title">{{ getText('MRI_PA_EXPLORATIONS_FILTERS_TITLE') }}</span>
+      <!-- `@keydown.enter` is not redundant: D2eMenu sets
+           `close-on-content-click: false`, and Vuetify's VMenu keydown handler
+           on the overlay root then calls preventDefault() on Enter, which
+           cancels the browser's Enter-activates-a-button default. `.prevent`
+           and `.stop` here keep that from firing the action twice. -->
       <D2eButton
         variant="ghost"
         class="filters-panel__clear"
         :disabled="isEmpty(modelValue)"
         data-testid="explorations-filters-clear"
         @click="$emit('clear')"
+        @keydown.enter.prevent.stop="$emit('clear')"
       >
         {{ getText('MRI_PA_EXPLORATIONS_FILTERS_CLEAR') }}
       </D2eButton>
@@ -51,6 +57,7 @@
             :label="getText('MRI_PA_EXPLORATIONS_FILTER_FROM')"
             :max="modelValue[group.key].to"
             :disabled="group.disabled"
+            clearable
             :aria-label="`${getText(group.labelKey)} ${getText('MRI_PA_EXPLORATIONS_FILTER_FROM')}`"
             :data-testid="`explorations-filter-${group.key}-from`"
             @update:model-value="patchRange(group.key, { from: $event })"
@@ -60,6 +67,7 @@
             :label="getText('MRI_PA_EXPLORATIONS_FILTER_TO')"
             :min="modelValue[group.key].from"
             :disabled="group.disabled"
+            clearable
             :aria-label="`${getText(group.labelKey)} ${getText('MRI_PA_EXPLORATIONS_FILTER_TO')}`"
             :data-testid="`explorations-filter-${group.key}-to`"
             @update:model-value="patchRange(group.key, { to: $event })"

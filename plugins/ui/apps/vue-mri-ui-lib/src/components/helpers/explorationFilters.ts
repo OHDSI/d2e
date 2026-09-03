@@ -44,10 +44,22 @@ export const emptyFilters = (): ExplorationFilters => ({
  * `DateRange` objects by reference with this constant. The first
  * `filters.created.from = x` then mutates this module-level object in place,
  * after which `isEmpty()` never returns true again and "Clear all" stops
- * clearing. `emptyFilters()` exists to avoid that; `Object.freeze` makes a
- * future mutation attempt fail loudly instead of silently.
+ * clearing. `emptyFilters()` exists to avoid that; the freeze makes a future
+ * mutation attempt fail loudly instead of silently.
+ *
+ * The freeze reaches the three nested ranges as well. A top-level
+ * `Object.freeze` alone would leave `EMPTY_FILTERS.created` writable, which is
+ * precisely the object the bug above corrupts.
  */
-export const EMPTY_FILTERS: Readonly<ExplorationFilters> = Object.freeze(emptyFilters())
+export const EMPTY_FILTERS: Readonly<ExplorationFilters> = (() => {
+  const value = emptyFilters()
+  Object.freeze(value.authors)
+  Object.freeze(value.statuses)
+  Object.freeze(value.created)
+  Object.freeze(value.lastUpdated)
+  Object.freeze(value.lastMaterialized)
+  return Object.freeze(value)
+})()
 
 const isEmptyRange = (range: DateRange): boolean => range.from == null && range.to == null
 

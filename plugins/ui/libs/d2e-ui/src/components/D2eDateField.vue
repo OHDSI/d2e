@@ -15,7 +15,9 @@
         :model-value="modelValue"
         :placeholder="label"
         :disabled="disabled"
+        :clearable="clearable"
         :aria-label="ariaLabel"
+        @click:clear="onClear"
         v-bind="{ ...activatorProps, ...forwardAttrs }"
       />
     </template>
@@ -35,6 +37,13 @@ import { VDatePicker, VMenu, VTextField } from "vuetify/components";
 import { computed, ref, useAttrs } from "vue";
 import { fromIsoDate, toIsoDate } from "./dateFieldFormat";
 
+// The root is a `VMenu`, which does not stop inheritance either, so a
+// fallthrough attr travels on to `VOverlay` and is merged onto the teleported
+// `.v-overlay` div rather than the field: `width` would size the popup, and a
+// `data-testid` would exist on two nodes once the picker has opened.
+// `forwardAttrs` below puts every attr on the field instead.
+defineOptions({ inheritAttrs: false });
+
 interface Props {
   modelValue?: string | null;
   label?: string;
@@ -42,6 +51,15 @@ interface Props {
   min?: string | null;
   max?: string | null;
   ariaLabel?: string;
+  /**
+   * Show a clear affordance once a date is picked.
+   *
+   * Off by default, because the Figma field has none. Turn it on wherever the
+   * field is one bound of a range: `VDatePickerMonth` in single mode always
+   * assigns the clicked day and never deselects, so without this a picked
+   * date cannot be dropped short of resetting the whole form.
+   */
+  clearable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -51,6 +69,7 @@ const props = withDefaults(defineProps<Props>(), {
   min: null,
   max: null,
   ariaLabel: undefined,
+  clearable: false,
 });
 
 const emit = defineEmits<{
@@ -66,6 +85,7 @@ const forwardAttrs = computed(() => {
     min: _min,
     max: _max,
     ariaLabel: _ariaLabel,
+    clearable: _clearable,
     ...rest
   } = attrs as Record<string, unknown>;
   void _modelValue;
@@ -74,6 +94,7 @@ const forwardAttrs = computed(() => {
   void _min;
   void _max;
   void _ariaLabel;
+  void _clearable;
   return rest;
 });
 
@@ -84,6 +105,14 @@ const isOpen = computed({
     internalOpen.value = props.disabled ? false : value;
   },
 });
+
+/** The clear icon sits on the activator, so swallow the click that would
+    otherwise reopen the picker the moment the value is dropped. */
+function onClear(event: Event) {
+  event.stopPropagation();
+  emit("update:modelValue", null);
+  internalOpen.value = false;
+}
 
 function onPick(date: unknown) {
   emit("update:modelValue", toIsoDate(date instanceof Date ? date : null));
