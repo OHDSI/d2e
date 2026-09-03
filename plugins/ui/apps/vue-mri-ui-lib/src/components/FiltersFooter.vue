@@ -89,76 +89,48 @@
       </div>
     </div>
 
-    <messageBox v-if="showSaveBookmark" dim="true" @close="closeSaveBookmark" :busy="getBookmarksLoading">
-      <template v-slot:header>{{ getText('MRI_PA_TITLE_SAVE_BOOKMARK') }}</template>
-      <template v-slot:body>
-        <div>
-          <div class="save-bookmark">
-            <div class="form-group">
-              <div class="name" v-if="this.isNewCohort || this.isNotUserSharedBookmark">
-                <div class="row">
-                  <div class="col-sm-12 form-check col-form-label">
-                    <label v-if="this.isNewCohort">
-                      Enter a new name if you would like to overwrite the current name ({{
-                        this.getActiveBookmark.bookmarkname
-                      }}).
-                    </label>
-                    <label v-else> Enter a new name for the cohort. </label>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="col">
-                    <!-- maxLength for input is this.maxLength+1 to allow invalid-feedback to be shown -->
-                    <input
-                      class="form-control"
-                      :class="{ 'is-invalid': cohortNameValidationState !== 'valid' }"
-                      :placeholder="getText('MRI_PA_COLL_ENTER_NAME')"
-                      v-model="cohortName"
-                      tabindex="0"
-                      v-focus
-                      required
-                      :maxlength="this.maxLength + 1"
-                      @keydown.enter="saveBookmark"
-                    />
-                    <div
-                      class="invalid-feedback"
-                      v-bind:style="[cohortNameValidationState === 'invalid' && 'display: block;']"
-                    >
-                      {{ getText('MRI_PA_INVALID_NAME_ERROR') }}
-                    </div>
-                    <div class="invalid-feedback" v-bind:style="[hasExceededLength && 'display: block;']">
-                      Filter name must not exceed 255 characters
-                    </div>
-                    <div
-                      class="invalid-feedback"
-                      v-bind:style="[cohortNameValidationState === 'empty' && 'display: block;']"
-                    >
-                      {{ getText('MRI_PA_BMK_EMPTY_NAME_ERROR') }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <D2eDialog
+      v-model="showSaveBookmark"
+      :busy="getBookmarksLoading"
+      :title="getText('MRI_PA_TITLE_SAVE_BOOKMARK')"
+      data-testid="pa-modal-wrapper"
+      @close="closeSaveBookmark"
+    >
+      <p v-if="isNewCohort" class="save-bookmark__hint">
+        Enter a new name if you would like to overwrite the current name ({{
+          getActiveBookmark.bookmarkname
+        }}).
+      </p>
+      <p v-else-if="isNotUserSharedBookmark" class="save-bookmark__hint">
+        Enter a new name for the cohort.
+      </p>
+      <D2eTextField
+        v-model="cohortName"
+        :label="getText('MRI_PA_COLL_ENTER_NAME')"
+        :error-messages="cohortNameErrors"
+        :maxlength="maxLength + 1"
+        required
+        autofocus
+        data-testid="pa-save-dialog-name-input"
+        @keydown.enter="saveBookmark"
+      />
+      <template #actions>
+        <D2eButton
+          variant="secondary"
+          data-testid="pa-save-dialog-cancel-btn"
+          @click="closeSaveBookmark"
+        >
+          {{ getText('MRI_PA_BUTTON_CANCEL') }}
+        </D2eButton>
+        <D2eButton
+          :disabled="hasExceededLength || getBookmarksLoading || isSavingBookmark"
+          data-testid="pa-save-dialog-save-btn"
+          @click="saveBookmark"
+        >
+          {{ getText('MRI_PA_BUTTON_SAVE') }}
+        </D2eButton>
       </template>
-      <template v-slot:footer>
-        <div class="flex-spacer"></div>
-        <appButton
-          :click="saveBookmark"
-          :text="getText('MRI_PA_BUTTON_SAVE')"
-          :tooltip="getText('MRI_PA_BUTTON_SAVE')"
-          :disabled="this.hasExceededLength || getBookmarksLoading || this.isSavingBookmark"
-          testId="pa-save-dialog-save-btn"
-        ></appButton>
-        <appButton
-          :click="closeSaveBookmark"
-          :text="getText('MRI_PA_BUTTON_CANCEL')"
-          :tooltip="getText('MRI_PA_BUTTON_CANCEL')"
-          testId="pa-save-dialog-cancel-btn"
-        ></appButton>
-      </template>
-    </messageBox>
+    </D2eDialog>
 
     <messageBox dim="true" dialogWidth="400px" v-if="showResetDialog" @close="closeResetDialog">
       <template v-slot:header>{{ getText('MRI_PA_RESET_FILTERS_TITLE') }}</template>
@@ -193,6 +165,7 @@ import bsDropdownItemButton from '../lib/ui/bs-dropdown-item-button.vue'
 import * as types from '../store/mutation-types'
 import DialogBox from './DialogBox.vue'
 import messageBox from './MessageBox.vue'
+import { D2eButton, D2eDialog, D2eTextField } from '@d2e/ui'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useNotificationStore } from '../stores/notifications'
 import { useUserRole } from '../composables/useUserRole'
@@ -255,6 +228,19 @@ export default {
     },
     isNewCohort() {
       return this.getActiveBookmark?.isNew
+    },
+    cohortNameErrors(): string[] {
+      const errors: string[] = []
+      if (this.cohortNameValidationState === 'invalid') {
+        errors.push(this.getText('MRI_PA_INVALID_NAME_ERROR'))
+      }
+      if (this.cohortNameValidationState === 'empty') {
+        errors.push(this.getText('MRI_PA_BMK_EMPTY_NAME_ERROR'))
+      }
+      if (this.hasExceededLength) {
+        errors.push('Filter name must not exceed 255 characters')
+      }
+      return errors
     },
     hasExceededLength() {
       return this.cohortName.length > this.maxLength
@@ -415,6 +401,9 @@ export default {
     bsDropdownItemButton,
     DialogBox,
     messageBox,
+    D2eButton,
+    D2eDialog,
+    D2eTextField,
   },
 }
 </script>
