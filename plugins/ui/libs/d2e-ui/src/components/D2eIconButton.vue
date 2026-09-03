@@ -10,7 +10,11 @@
     :disabled="disabled"
     @click="$emit('click', $event)"
   >
-    <v-icon :icon="icon" :size="iconSize" />
+    <!-- Default slot carries an exported SVG when the design's glyph is not in
+         the MDI set; otherwise the `icon` prop names an MDI glyph. -->
+    <slot :size="iconSize">
+      <v-icon :icon="icon" :size="iconSize" />
+    </slot>
   </v-btn>
 </template>
 

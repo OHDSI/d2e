@@ -1,8 +1,14 @@
 <template>
   <div class="explorations-page" data-testid="explorations-page">
-    <header class="explorations-page__header">
+    <div class="explorations-page__card">
+      <header class="explorations-page__header">
       <div class="explorations-page__heading">
-        <p class="explorations-page__breadcrumb">D2E · {{ getText('MRI_PA_EXPLORATIONS_TITLE') }}</p>
+        <p class="explorations-page__breadcrumb">
+          <span>D2E</span>
+          <span class="explorations-page__breadcrumb-dot">·</span>
+          <span>{{ getText('MRI_PA_EXPLORATIONS_TITLE') }}</span>
+          <span class="explorations-page__breadcrumb-rule" />
+        </p>
         <h1 class="explorations-page__title">{{ getText('MRI_PA_EXPLORATIONS_TITLE') }}</h1>
         <p class="explorations-page__description">{{ getText('MRI_PA_EXPLORATIONS_DESCRIPTION') }}</p>
       </div>
@@ -87,11 +93,13 @@
         <template v-if="!card.isMaterialised" #lead>
           <D2eButton
             variant="secondary"
-            prepend-icon="mdi-account-multiple-plus-outline"
             :disabled="!canMaterialize"
             :data-testid="`explorations-materialize-lead-${card.id}`"
             @click="openMaterialize(card.source)"
           >
+            <template #prepend>
+              <ExplorationMaterializeIcon :size="22" />
+            </template>
             {{ getText('MRI_PA_BUTTON_MATERIALIZE') }}
           </D2eButton>
         </template>
@@ -102,12 +110,13 @@
               <span v-bind="tooltipProps">
                 <D2eIconButton
                   category="no-stroke"
-                  icon="mdi-account-multiple-plus-outline"
                   :disabled="!canMaterialize"
                   :aria-label="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
                   :data-testid="`explorations-materialize-btn-${card.id}`"
                   @click="openMaterialize(card.source)"
-                />
+                >
+                  <ExplorationMaterializeIcon />
+                </D2eIconButton>
               </span>
             </template>
           </v-tooltip>
@@ -125,10 +134,11 @@
               <span v-bind="tooltipProps">
                 <D2eIconButton
                   category="no-stroke"
-                  :icon="placeholder.icon"
                   :aria-label="getText(placeholder.labelKey)"
                   :data-testid="`${placeholder.testid}-${card.id}`"
-                />
+                >
+                  <component :is="placeholder.icon" />
+                </D2eIconButton>
               </span>
             </template>
           </v-tooltip>
@@ -143,14 +153,17 @@
               <D2eIconButton
                 v-bind="activatorProps"
                 category="no-stroke"
-                icon="mdi-dots-vertical"
                 :aria-label="getText('MRI_PA_EXPLORATIONS_MORE_ACTIONS')"
                 :data-testid="`explorations-more-btn-${card.id}`"
-              />
+              >
+                <ExplorationMoreIcon />
+              </D2eIconButton>
             </template>
           </D2eMenu>
         </template>
       </D2eExplorationCard>
+    </div>
+
     </div>
 
     <AddCohort
@@ -176,6 +189,11 @@ import { useExplorationsStore } from '../stores/explorations'
 import { usePortalContext } from '../composables/usePortalContext'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
+import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
+import ExplorationDataQualityIcon from './icons/ExplorationDataQualityIcon.vue'
+import ExplorationFilterSummaryIcon from './icons/ExplorationFilterSummaryIcon.vue'
+import ExplorationAnalyzeIcon from './icons/ExplorationAnalyzeIcon.vue'
+import ExplorationMoreIcon from './icons/ExplorationMoreIcon.vue'
 import AddCohort from './AddCohort.vue'
 import RenameExplorationDialog from './RenameExplorationDialog.vue'
 import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
@@ -203,14 +221,18 @@ const IGNORED_CLICK_TARGETS = [
 // #3119 data quality, #3120 filter summary and #3121 analyze are not wired yet.
 // They render so the action bar matches the frame.
 const ACTION_PLACEHOLDERS = [
-  { icon: 'mdi-medal-outline', labelKey: 'MRI_PA_EXPLORATIONS_DATA_QUALITY', testid: 'explorations-dq-btn' },
   {
-    icon: 'mdi-file-document-outline',
+    icon: ExplorationDataQualityIcon,
+    labelKey: 'MRI_PA_EXPLORATIONS_DATA_QUALITY',
+    testid: 'explorations-dq-btn',
+  },
+  {
+    icon: ExplorationFilterSummaryIcon,
     labelKey: 'MRI_PA_EXPLORATIONS_FILTER_SUMMARY',
     testid: 'explorations-filter-summary-btn',
   },
-  { icon: 'mdi-chart-line', labelKey: 'MRI_PA_EXPLORATIONS_ANALYZE', testid: 'explorations-analyze-btn' },
-] as const
+  { icon: ExplorationAnalyzeIcon, labelKey: 'MRI_PA_EXPLORATIONS_ANALYZE', testid: 'explorations-analyze-btn' },
+]
 const EMPTY_VALUE = '-'
 
 const searchQuery = ref('')
@@ -277,7 +299,9 @@ const cards = computed(() => {
           label: getText('MRI_PA_EXPLORATIONS_LAST_MATERIALISED'),
           value: cohortDefinition?.createdOnFormatted || EMPTY_VALUE,
         },
-        { label: idLabel, value: id || EMPTY_VALUE },
+        // The frame's id row is the materialised cohort's id, so a card that has
+        // never been materialised shows a dash (Figma 1798:192928).
+        { label: idLabel, value: cohortDefinition?.id ?? EMPTY_VALUE },
         {
           label: getText('MRI_PA_EXPLORATIONS_DESCRIPTION_LABEL'),
           value: cohortDefinition?.description || atlas?.description || EMPTY_VALUE,
@@ -366,34 +390,58 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
 </script>
 
 <style scoped lang="scss">
-/* The frame draws the page as one rounded card inset 24px from the viewport,
-   not as a bare pane (Figma 1676:221307). */
+/* The page is a tinted surface holding one rounded white card inset 24px
+   (Figma 1676:221311, a 1392x1011 frame at 24,24). */
 .explorations-page {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
   height: 100%;
-  margin: 24px;
   padding: 24px;
   overflow-y: auto;
-  background: var(--d2e-color-white);
-  border-radius: 16px;
+  background: var(--d2e-color-neutral-xtra-lightest);
   font-family: var(--d2e-font-family);
+
+  &__card {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    background: var(--d2e-color-white);
+    border-radius: var(--d2e-radius-lg);
+  }
 
   &__header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 24px;
+    padding: 24px;
   }
 
+  /* 10px Medium, 1px tracking, closed by a 24x2 secondary rule
+     (Figma 1676:221313). */
   &__breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 0 0 8px;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.5;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--d2e-color-primary);
+  }
+
+  &__breadcrumb-dot {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    color: var(--d2e-color-neutral-black);
+  }
+
+  &__breadcrumb-rule {
+    width: 24px;
+    height: 2px;
+    border-radius: 200px;
+    background: var(--d2e-color-secondary);
   }
 
   &__title {
@@ -442,6 +490,7 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    padding: 8px 24px;
   }
 
   &__toolbar-left {
@@ -453,7 +502,7 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
   &__toolbar-right {
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 8px;
   }
 
   /* Search is 466x44 with a 1px #ACABA8 border and a 4px radius
@@ -495,15 +544,18 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
     align-items: center;
     gap: 12px;
     padding: 48px 24px;
+    flex: 1 0 auto;
+    justify-content: center;
     color: var(--d2e-color-neutral);
   }
 
   &__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(324px, 1fr));
-    /* 16px between columns, 40px between rows (Figma 1676:222326). */
+    grid-template-columns: repeat(auto-fill, 324px);
+    justify-content: start;
     column-gap: 16px;
     row-gap: 40px;
+    padding: 24px;
   }
 }
 </style>
