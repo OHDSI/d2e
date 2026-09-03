@@ -168,6 +168,11 @@ const forwardAttrs = computed(() => {
   :deep(.v-field-label--floating) {
     padding-inline: var(--d2e-spacing-xxs);
     background: var(--d2e-color-white);
+    // Figma gives the floating label a 12px line-height at a 12px font size,
+    // which clips the top of the glyphs once it is rendered. Let the line box
+    // grow instead; the label's position is set by Vuetify's transform.
+    line-height: 1.2;
+    overflow: visible;
   }
 
   :deep(.v-field--focused .v-field-label) {

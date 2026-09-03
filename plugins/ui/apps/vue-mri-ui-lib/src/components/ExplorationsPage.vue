@@ -20,6 +20,7 @@
         :items="datasetItems"
         :model-value="datasetName"
         prepend-icon="mdi-database-outline"
+        hide-details
         data-testid="explorations-datasource"
       />
     </header>
@@ -157,14 +158,24 @@
             @select="onMoreSelect(card, $event)"
           >
             <template #activator="activatorProps">
-              <D2eIconButton
-                v-bind="activatorProps"
-                category="no-stroke"
-                :aria-label="getText('MRI_PA_EXPLORATIONS_MORE_ACTIONS')"
-                :data-testid="`explorations-more-btn-${card.id}`"
+              <v-tooltip
+                location="top"
+                content-class="explorations-tooltip"
+                :text="getText('MRI_PA_EXPLORATIONS_MORE_ACTIONS')"
               >
-                <ExplorationMoreIcon />
-              </D2eIconButton>
+                <template #activator="{ props: tooltipProps }">
+                  <span v-bind="tooltipProps">
+                    <D2eIconButton
+                      v-bind="activatorProps"
+                      category="no-stroke"
+                      :aria-label="getText('MRI_PA_EXPLORATIONS_MORE_ACTIONS')"
+                      :data-testid="`explorations-more-btn-${card.id}`"
+                    >
+                      <ExplorationMoreIcon />
+                    </D2eIconButton>
+                  </span>
+                </template>
+              </v-tooltip>
             </template>
           </D2eMenu>
         </template>
@@ -491,6 +502,22 @@ const onMoreSelect = (card: { source: Record<string, never> }, value: string): v
     // The floating label sits above the border; without this it clips against
     // the top of the header row.
     margin-top: var(--d2e-spacing-xs);
+
+    // Read-only, not broken: keep it at full contrast rather than Vuetify's
+    // dimmed disabled treatment, and drop the empty details row whose rule
+    // renders as a stray line under the field.
+    :deep(.v-input__details) {
+      display: none;
+    }
+
+    :deep(.v-field--disabled) {
+      opacity: 1;
+    }
+
+    :deep(.v-field__input),
+    :deep(.v-field-label) {
+      opacity: 1;
+    }
   }
 
 

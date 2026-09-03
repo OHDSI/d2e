@@ -259,7 +259,7 @@ function onSelect(item: D2eMenuItem) {
   }
 
   &__item-icon {
-    color: var(--d2e-color-neutral-light);
+    color: currentColor;
   }
 
   &__item-check {
