@@ -713,6 +713,15 @@ textarea.form-control {
   pointer-events: none;
 }
 
+// TODO(#3253 review): these three keep Bootstrap's hardcoded colours and win a
+// specificity tie against bs-button.vue's own theme-aware rules — both are
+// (0,2,0), so source order decides and style.scss lands last. The Delete
+// button in AdvancedTime.vue (the only bs-button call site) therefore renders
+// Bootstrap grey rather than the navy outline the component asks for.
+// Pre-existing, not introduced by the shim, and deliberately left alone here
+// because fixing it recolours a shipping button. Pick it up with the redesign,
+// where a recolour is expected.
+
 .btn-primary {
   color: #fff;
   background-color: #007bff;
