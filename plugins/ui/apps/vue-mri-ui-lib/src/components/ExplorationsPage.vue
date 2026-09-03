@@ -35,6 +35,31 @@
           :hide-details="true"
           data-testid="explorations-search"
         />
+
+        <!-- The panel anchors bottom-end: node positions put its right edge on
+             the button's right edge, with no vertical offset (Figma 2634:58660
+             at x 524 w 101, panel 2697:211983 at x 205 w 420). -->
+        <D2eMenu v-model="filtersOpen" location="bottom end" :items="[]">
+          <template #activator="activatorProps">
+            <D2eButton
+              v-bind="activatorProps"
+              variant="secondary"
+              class="explorations-page__filters"
+              data-testid="explorations-filters-btn"
+            >
+              <template #prepend>
+                <ExplorationFilterIcon :size="22" />
+              </template>
+              {{ getText('MRI_PA_EXPLORATIONS_FILTERS') }}
+            </D2eButton>
+          </template>
+
+          <ExplorationFiltersPanel
+            v-model="filters"
+            :authors="authorNames"
+            @clear="filters = emptyFilters()"
+          />
+        </D2eMenu>
       </div>
       <div class="explorations-page__toolbar-right">
         <D2eMenu :width="220" location="bottom end" :items="sortItems" @select="onSortSelect">
@@ -208,16 +233,19 @@ import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTe
 import { useExplorationsStore } from '../stores/explorations'
 import { usePortalContext } from '../composables/usePortalContext'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
+import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
 import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
 import ExplorationDataQualityIcon from './icons/ExplorationDataQualityIcon.vue'
 import ExplorationFilterSummaryIcon from './icons/ExplorationFilterSummaryIcon.vue'
 import ExplorationAnalyzeIcon from './icons/ExplorationAnalyzeIcon.vue'
 import ExplorationSortIcon from './icons/ExplorationSortIcon.vue'
+import ExplorationFilterIcon from './icons/ExplorationFilterIcon.vue'
 import ExplorationMoreIcon from './icons/ExplorationMoreIcon.vue'
 import AddCohort from './AddCohort.vue'
 import RenameExplorationDialog from './RenameExplorationDialog.vue'
 import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
+import ExplorationFiltersPanel from './ExplorationFiltersPanel.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -259,6 +287,8 @@ const EMPTY_VALUE = '-'
 
 const searchQuery = ref('')
 const sortKey = ref<ExplorationSortKey>('lastUpdated')
+const filters = ref<ExplorationFilters>(emptyFilters())
+const filtersOpen = ref(false)
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
@@ -289,9 +319,20 @@ const onSortSelect = (value: string): void => {
   sortKey.value = value as ExplorationSortKey
 }
 
+/** The raw list, before filtering. Both the filter panel's option list and
+    the filter step read this, never the filtered result. */
+const allCards = computed(() => store.getters.getDisplayBookmarks(false, portalContext.username) || [])
+
+/** Every author in the dataset, not only the authors of the visible cards —
+    otherwise selecting one author removes every other option and the filter
+    cannot be widened again. */
+const authorNames = computed<string[]>(() => authorOptions(allCards.value))
+
 const cards = computed(() => {
-  const all = store.getters.getDisplayBookmarks(false, portalContext.username) || []
-  return filterAndSort(all, searchQuery.value, sortKey.value).map((card: BookmarkDisplay) => {
+  // Filter, then search, then sort. Searching inside a filtered set is what
+  // the user expects, and it is cheaper.
+  const filtered = applyFilters(allCards.value, filters.value)
+  return filterAndSort(filtered, searchQuery.value, sortKey.value).map((card: BookmarkDisplay) => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
@@ -604,6 +645,21 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
         opacity: 1;
         color: var(--d2e-color-neutral-light);
       }
+    }
+  }
+
+  /* 101x40, 8px radius, 8px gap. `secondary` is outlined in the theme
+     `primary`; the frame outlines it in Primary/Light (Figma 2634:58660). */
+  &__filters {
+    min-width: 101px;
+    padding: var(--d2e-spacing-xs) var(--d2e-spacing-xs-s);
+
+    &.v-btn--variant-outlined {
+      border-color: var(--d2e-color-primary-light);
+    }
+
+    :deep(.v-btn__prepend) {
+      margin-inline: 0 var(--d2e-spacing-xs);
     }
   }
 
