@@ -25,6 +25,13 @@
     border-style: none;
   }
 
+  // Same cause: VDivider renders an <hr>, and without Vuetify's reset the UA
+  // default 0.5em block margin applies. A dialog has two dividers, so that is
+  // 28px of dead space the Figma frames do not have.
+  .v-divider {
+    margin: 0;
+  }
+
   @include mriBaseStyle;
   height: 100%;
   width: 100%;

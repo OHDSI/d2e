@@ -8,6 +8,7 @@
     :maxlength="maxlength"
     :placeholder="placeholder"
     :autofocus="autofocus"
+    :hide-details="hideDetails"
     v-bind="forwardAttrs"
     @update:model-value="$emit('update:modelValue', $event)"
   />
@@ -25,6 +26,12 @@ interface Props {
   maxlength?: number | string;
   placeholder?: string;
   autofocus?: boolean;
+  /**
+   * Vuetify reserves 22px under every field for validation messages, which
+   * shows as a permanent gap. `"auto"` reserves it only when a message is
+   * present, which is what the Figma frames show.
+   */
+  hideDetails?: boolean | "auto";
 }
 
 withDefaults(defineProps<Props>(), {
@@ -35,6 +42,7 @@ withDefaults(defineProps<Props>(), {
   maxlength: undefined,
   placeholder: undefined,
   autofocus: false,
+  hideDetails: "auto",
 });
 
 defineEmits<{
@@ -51,6 +59,7 @@ const forwardAttrs = computed(() => {
     maxlength: _maxlength,
     placeholder: _placeholder,
     autofocus: _autofocus,
+    hideDetails: _hideDetails,
     ...rest
   } = attrs as Record<string, unknown>;
   void _modelValue;
@@ -60,6 +69,7 @@ const forwardAttrs = computed(() => {
   void _maxlength;
   void _placeholder;
   void _autofocus;
+  void _hideDetails;
   return rest;
 });
 </script>
