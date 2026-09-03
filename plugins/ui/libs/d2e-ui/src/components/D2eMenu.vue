@@ -10,42 +10,49 @@
       <slot name="activator" v-bind="activatorProps" />
     </template>
 
-    <div
-      class="d2e-menu"
-      role="menu"
-      :style="{ width: resolvedWidth }"
-      @keydown="onKeydown"
-    >
-      <button
-        v-for="(item, index) in items"
-        :key="item.value"
-        :ref="(el) => setItemRef(el, index)"
-        type="button"
-        class="d2e-menu__item"
-        :class="{
-          'd2e-menu__item--selected': item.selected,
-          'd2e-menu__item--disabled': item.disabled,
-          'd2e-menu__item--danger': item.danger,
-        }"
-        role="menuitem"
-        :disabled="item.disabled"
-        @click="onSelect(item)"
+    <!--
+      The default slot replaces the item list, so an activator can anchor
+      arbitrary content — the #3150 filter panel is the first such consumer.
+      With no default slot the `items` path is untouched.
+    -->
+    <slot>
+      <div
+        class="d2e-menu"
+        role="menu"
+        :style="{ width: resolvedWidth }"
+        @keydown="onKeydown"
       >
-        <v-icon
-          v-if="item.icon"
-          :icon="item.icon"
-          size="20"
-          class="d2e-menu__item-icon"
-        />
-        <span class="d2e-menu__item-label">{{ item.label }}</span>
-        <v-icon
-          v-if="item.selected"
-          icon="mdi-check"
-          size="20"
-          class="d2e-menu__item-check"
-        />
-      </button>
-    </div>
+        <button
+          v-for="(item, index) in items"
+          :key="item.value"
+          :ref="(el) => setItemRef(el, index)"
+          type="button"
+          class="d2e-menu__item"
+          :class="{
+            'd2e-menu__item--selected': item.selected,
+            'd2e-menu__item--disabled': item.disabled,
+            'd2e-menu__item--danger': item.danger,
+          }"
+          role="menuitem"
+          :disabled="item.disabled"
+          @click="onSelect(item)"
+        >
+          <v-icon
+            v-if="item.icon"
+            :icon="item.icon"
+            size="20"
+            class="d2e-menu__item-icon"
+          />
+          <span class="d2e-menu__item-label">{{ item.label }}</span>
+          <v-icon
+            v-if="item.selected"
+            icon="mdi-check"
+            size="20"
+            class="d2e-menu__item-check"
+          />
+        </button>
+      </div>
+    </slot>
   </component>
 </template>
 

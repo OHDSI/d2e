@@ -1,0 +1,156 @@
+<template>
+  <v-menu
+    v-model="isOpen"
+    class="d2e-date-field__menu"
+    :close-on-content-click="false"
+  >
+    <template #activator="{ props: activatorProps }">
+      <v-text-field
+        class="d2e-date-field"
+        variant="outlined"
+        density="compact"
+        readonly
+        hide-details
+        prepend-inner-icon="mdi-calendar-today"
+        :model-value="modelValue"
+        :placeholder="label"
+        :disabled="disabled"
+        :aria-label="ariaLabel"
+        v-bind="{ ...activatorProps, ...forwardAttrs }"
+      />
+    </template>
+
+    <v-date-picker
+      hide-header
+      :model-value="fromIsoDate(modelValue)"
+      :min="fromIsoDate(min)"
+      :max="fromIsoDate(max)"
+      @update:model-value="onPick"
+    />
+  </v-menu>
+</template>
+
+<script setup lang="ts">
+import { VDatePicker, VMenu, VTextField } from "vuetify/components";
+import { computed, ref, useAttrs } from "vue";
+import { fromIsoDate, toIsoDate } from "./dateFieldFormat";
+
+interface Props {
+  modelValue?: string | null;
+  label?: string;
+  disabled?: boolean;
+  min?: string | null;
+  max?: string | null;
+  ariaLabel?: string;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  modelValue: null,
+  label: undefined,
+  disabled: false,
+  min: null,
+  max: null,
+  ariaLabel: undefined,
+});
+
+const emit = defineEmits<{
+  "update:modelValue": [value: string | null];
+}>();
+
+const attrs = useAttrs();
+const forwardAttrs = computed(() => {
+  const {
+    modelValue: _modelValue,
+    label: _label,
+    disabled: _disabled,
+    min: _min,
+    max: _max,
+    ariaLabel: _ariaLabel,
+    ...rest
+  } = attrs as Record<string, unknown>;
+  void _modelValue;
+  void _label;
+  void _disabled;
+  void _min;
+  void _max;
+  void _ariaLabel;
+  return rest;
+});
+
+const internalOpen = ref(false);
+const isOpen = computed({
+  get: () => internalOpen.value,
+  set: (value: boolean) => {
+    internalOpen.value = props.disabled ? false : value;
+  },
+});
+
+function onPick(date: unknown) {
+  emit("update:modelValue", toIsoDate(date instanceof Date ? date : null));
+  internalOpen.value = false;
+}
+</script>
+
+<style scoped lang="scss">
+// Same problem as D2eSelect (Figma node 2697:211995): the outlined field's
+// default radius is 4px and the focused border takes the theme `primary`
+// where the design uses `primary-light`. Corrected here the same way.
+.d2e-date-field {
+  font-family: var(--d2e-font-family);
+
+  :deep(.v-field) {
+    min-height: 40px;
+    border-radius: var(--d2e-radius-md);
+    padding-inline: 14px;
+    color: var(--d2e-color-neutral-black);
+  }
+
+  // 24px content + 8px top + 8px bottom = the frame's 40px box. Do not copy
+  // D2eSelect's 16px here: that is what makes it render 56px tall.
+  :deep(.v-field__input) {
+    min-height: 24px;
+    padding-top: var(--d2e-spacing-xs);
+    padding-bottom: var(--d2e-spacing-xs);
+    padding-inline: 0;
+    font-size: var(--d2e-font-body1-size);
+    font-weight: var(--d2e-font-body1-weight);
+    color: var(--d2e-color-neutral-black);
+  }
+
+  // A text field's input IS `.v-field__input`, unlike a select's, where the
+  // input is a child of it. Both forms are needed or the placeholder falls
+  // back to the UA's black.
+  :deep(.v-field__input::placeholder),
+  :deep(.v-field__input input::placeholder) {
+    font-size: var(--d2e-font-body1-size);
+    font-weight: var(--d2e-font-body1-weight);
+    line-height: 24px;
+    letter-spacing: 0.15px;
+    color: var(--d2e-color-neutral-light);
+    opacity: 1;
+  }
+
+  // Enabled and disabled share the same 1px neutral-light border.
+  :deep(.v-field__outline) {
+    --v-field-border-width: var(--d2e-border-width-sm);
+    --v-field-border-opacity: 1;
+    color: var(--d2e-color-neutral-light);
+  }
+
+  :deep(.v-field__outline .v-field__outline__notch::before),
+  :deep(.v-field__outline .v-field__outline__notch::after) {
+    border-width: var(--v-field-border-width) 0 0;
+  }
+
+  :deep(.v-field--focused .v-field__outline) {
+    --v-field-border-width: var(--d2e-border-width-md);
+    color: var(--d2e-color-primary-light);
+  }
+
+  :deep(.v-field__prepend-inner .v-icon) {
+    font-size: 24px;
+    margin-inline-end: var(--d2e-spacing-xs);
+    color: var(--d2e-color-neutral-light);
+  }
+}
+</style>
