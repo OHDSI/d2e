@@ -96,14 +96,6 @@
       data-testid="pa-modal-wrapper"
       @close="closeSaveBookmark"
     >
-      <p v-if="isNewCohort" class="save-bookmark__hint">
-        Enter a new name if you would like to overwrite the current name ({{
-          getActiveBookmark.bookmarkname
-        }}).
-      </p>
-      <p v-else-if="isNotUserSharedBookmark" class="save-bookmark__hint">
-        Enter a new name for the cohort.
-      </p>
       <D2eTextField
         v-model="cohortName"
         :label="getText('MRI_PA_COLL_ENTER_NAME')"
@@ -132,28 +124,30 @@
       </template>
     </D2eDialog>
 
-    <messageBox dim="true" dialogWidth="400px" v-if="showResetDialog" @close="closeResetDialog">
-      <template v-slot:header>{{ getText('MRI_PA_RESET_FILTERS_TITLE') }}</template>
-      <template v-slot:body>
-        <div>
-          <div class="div-reset-text">{{ getText('MRI_PA_TXT_RESET_FILTERS') }}</div>
-        </div>
+    <D2eDialog
+      v-model="showResetDialog"
+      :title="getText('MRI_PA_RESET_FILTERS_TITLE')"
+      data-testid="pa-modal-wrapper"
+      @close="closeResetDialog"
+    >
+      <p class="reset-dialog-text">{{ getText('MRI_PA_TXT_RESET_FILTERS') }}</p>
+      <template #actions>
+        <D2eButton
+          variant="secondary"
+          data-testid="pa-reset-dialog-cancel-btn"
+          @click="closeResetDialog"
+        >
+          {{ getText('MRI_PA_BUTTON_CANCEL') }}
+        </D2eButton>
+        <D2eButton
+          autofocus
+          data-testid="pa-reset-dialog-confirm-btn"
+          @click="reset"
+        >
+          {{ getText('MRI_PA_RESET_FILTERS_OK') }}
+        </D2eButton>
       </template>
-      <template v-slot:footer>
-        <div class="flex-spacer"></div>
-        <appButton
-          :click="reset"
-          :text="getText('MRI_PA_RESET_FILTERS_OK')"
-          :tooltip="getText('MRI_PA_RESET_FILTERS_OK')"
-          v-focus
-        ></appButton>
-        <appButton
-          :click="closeResetDialog"
-          :text="getText('MRI_PA_BUTTON_CANCEL')"
-          :tooltip="getText('MRI_PA_BUTTON_CANCEL')"
-        ></appButton>
-      </template>
-    </messageBox>
+    </D2eDialog>
   </div>
 </template>
 
@@ -164,7 +158,6 @@ import bsDropdown from '../lib/ui/bs-dropdown.vue'
 import bsDropdownItemButton from '../lib/ui/bs-dropdown-item-button.vue'
 import * as types from '../store/mutation-types'
 import DialogBox from './DialogBox.vue'
-import messageBox from './MessageBox.vue'
 import { D2eButton, D2eDialog, D2eTextField } from '@d2e/ui'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useNotificationStore } from '../stores/notifications'
@@ -400,7 +393,6 @@ export default {
     bsDropdown,
     bsDropdownItemButton,
     DialogBox,
-    messageBox,
     D2eButton,
     D2eDialog,
     D2eTextField,

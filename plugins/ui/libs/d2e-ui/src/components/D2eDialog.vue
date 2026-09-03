@@ -215,6 +215,14 @@ function closeFromButton() {
   &__body {
     position: relative;
     padding: 16px 24px 24px;
+
+    // A <p> in the body carries its own bottom margin, which stacks on this
+    // padding and doubles the space above the divider. Collapse the last
+    // child's margin rather than dropping the padding, so bodies that end in
+    // a field (which has no margin) keep their 24px.
+    > :last-child {
+      margin-bottom: 0;
+    }
     font-size: var(--d2e-font-body1-size);
     line-height: var(--d2e-font-body1-line-height);
     color: var(--d2e-color-neutral-black);
