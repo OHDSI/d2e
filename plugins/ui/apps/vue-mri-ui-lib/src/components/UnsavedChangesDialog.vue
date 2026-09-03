@@ -68,9 +68,12 @@ watch(
   { immediate: true }
 )
 
-function onModelValueUpdate() {
+function onModelValueUpdate(value: boolean) {
   // The unsaved-changes dialog is persistent: any close attempt means the user
-  // stays on the page.
+  // stays on the page. Forward the v-model update as well, so a consumer that
+  // binds only v-model still sees the dialog close instead of relying on the
+  // `stay` handler to clear the flag itself.
+  emit('update:modelValue', value)
   emit('stay')
 }
 </script>

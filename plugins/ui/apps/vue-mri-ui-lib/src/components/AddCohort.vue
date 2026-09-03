@@ -2,7 +2,7 @@
   <D2eDialog
     :model-value="modelValue"
     :busy="cohortBusy"
-    :title="getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')"
+    :title="dialogTitle"
     data-testid="pa-modal-wrapper"
     @update:model-value="onModelValueUpdate"
   >
@@ -23,7 +23,9 @@
     </div>
 
     <!-- TODO: Customize dialog body for Atlas -->
-    <div v-if="cohortDefinitionType === 'Atlas' && !messageStrip.show">Click OK to materialize this cohort.</div>
+    <p v-if="cohortDefinitionType === 'Atlas' && !messageStrip.show">
+      {{ getText('MRI_PA_COLL_CONFIRM_MATERIALIZE') }}
+    </p>
 
     <template #actions>
       <D2eButton variant="secondary" :disabled="cohortBusy" @click="closeWindow">
@@ -68,6 +70,10 @@ export default {
     },
   },
   computed: {
+    dialogTitle(): string {
+      const base = this.getText('MRI_PA_BUTTON_ADD_TO_COLLECTION')
+      return this.bookmarkName ? `${base} (${this.bookmarkName})` : base
+    },
     ...mapGetters([
       'getText',
       'getSelectedCohort',

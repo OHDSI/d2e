@@ -16,8 +16,8 @@
         {{ getText('MRI_PA_BUTTON_CANCEL') }}
       </D2eButton>
       <D2eButton
+        v-focus
         :disabled="busy"
-        autofocus
         data-testid="pa-download-csv-download-btn"
         @click="download"
       >

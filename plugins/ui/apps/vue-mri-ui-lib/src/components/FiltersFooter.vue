@@ -140,7 +140,7 @@
           {{ getText('MRI_PA_BUTTON_CANCEL') }}
         </D2eButton>
         <D2eButton
-          autofocus
+          v-focus
           data-testid="pa-reset-dialog-confirm-btn"
           @click="reset"
         >

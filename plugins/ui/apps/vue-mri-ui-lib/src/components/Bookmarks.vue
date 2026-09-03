@@ -316,11 +316,22 @@ export default {
     hasExceededLength() {
       return this.renamedBookmark.length > this.maxLength
     },
-    renameErrorMessages() {
-      if (this.cohortNameValidationState === 'invalid') return this.getText('MRI_PA_INVALID_NAME_ERROR')
-      if (this.hasExceededLength) return 'Filter name must not exceed 255 characters'
-      if (this.cohortNameValidationState === 'empty') return this.getText('MRI_PA_BMK_EMPTY_NAME_ERROR')
-      return []
+    renameErrorMessages(): string[] {
+      // Accumulate rather than return the first match: a name can be both a
+      // duplicate and too long, and the Rename button is disabled on length,
+      // so showing only the duplicate error leaves the button dead with no
+      // explanation. Matches FiltersFooter.cohortNameErrors.
+      const errors: string[] = []
+      if (this.cohortNameValidationState === 'invalid') {
+        errors.push(this.getText('MRI_PA_INVALID_NAME_ERROR'))
+      }
+      if (this.cohortNameValidationState === 'empty') {
+        errors.push(this.getText('MRI_PA_BMK_EMPTY_NAME_ERROR'))
+      }
+      if (this.hasExceededLength) {
+        errors.push('Filter name must not exceed 255 characters')
+      }
+      return errors
     },
     isBookmarksLoading() {
       return this.bookmarksDisplay.length === 0 && this.getBookmarksLoading
