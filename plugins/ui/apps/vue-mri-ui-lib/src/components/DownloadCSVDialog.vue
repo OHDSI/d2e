@@ -1,24 +1,35 @@
 <template>
-  <messageBox @close="cancel" :busy="busy">
-    <template v-slot:header>{{ getText('MRI_PA_PATIENT_LIST_DOWNLOAD_AS_CSV') }}</template>
-    <template v-slot:body>
-      <div>
-        <div style="padding: 24px">{{ getText('MRI_PA_PATIENT_LIST_DOWNLOAD_AS_CSV_FULL') }}</div>
-      </div>
+  <D2eDialog
+    :model-value="true"
+    :busy="busy"
+    :title="getText('MRI_PA_PATIENT_LIST_DOWNLOAD_AS_CSV')"
+    data-testid="pa-modal-wrapper"
+    @close="cancel"
+  >
+    <p>{{ getText('MRI_PA_PATIENT_LIST_DOWNLOAD_AS_CSV_FULL') }}</p>
+    <template #actions>
+      <D2eButton
+        variant="secondary"
+        data-testid="pa-download-csv-cancel-btn"
+        @click="cancel"
+      >
+        {{ getText('MRI_PA_BUTTON_CANCEL') }}
+      </D2eButton>
+      <D2eButton
+        :disabled="busy"
+        autofocus
+        data-testid="pa-download-csv-download-btn"
+        @click="download"
+      >
+        {{ getText('MRI_PA_BUTTON_DOWNLOAD') }}
+      </D2eButton>
     </template>
-    <template v-slot:footer>
-      <div class="flex-spacer"></div>
-      <appButton :click="download" :text="getText('MRI_PA_BUTTON_DOWNLOAD')" :disabled="busy" v-focus></appButton>
-      <appButton :click="cancel" :text="getText('MRI_PA_BUTTON_CANCEL')"></appButton>
-    </template>
-  </messageBox>
+  </D2eDialog>
 </template>
 
 <script lang="ts">
 import { mapActions, mapGetters } from 'vuex'
-import appButton from '../lib/ui/app-button.vue'
-import LoadingAnimation from './LoadingAnimation.vue'
-import messageBox from './MessageBox.vue'
+import { D2eButton, D2eDialog } from '@d2e/ui'
 
 export default {
   name: 'download-csv-dialog',
@@ -55,9 +66,8 @@ export default {
     },
   },
   components: {
-    messageBox,
-    LoadingAnimation,
-    appButton,
+    D2eButton,
+    D2eDialog,
   },
 }
 </script>
