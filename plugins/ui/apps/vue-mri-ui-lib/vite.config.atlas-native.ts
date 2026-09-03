@@ -11,8 +11,10 @@ import { createRequire } from 'module'
 // runtime relative to the importing chunk's URL, invisible to Rollup's static
 // analysis. Here the importing chunk is the single entry index.system.js at the
 // output root, so ship the whole esm dist (loader, runtime, entry chunks,
-// polyfills) at the output root; src/bootstrap/d4lLoaderNativeEsm.ts loads the
-// loader from there so only one Stencil runtime instance exists.
+// polyfills) at the output root; src/bootstrap/d4lLoaderNativeImport.ts loads
+// the loader from there with a native dynamic import (Rollup's system format
+// rewrites import() to context.import(), and SystemJS cannot evaluate the ESM
+// loader), so only one Stencil runtime instance exists.
 // The package location is resolved through createRequire because bun hoists
 // workspace deps to plugins/ui/node_modules instead of the app folder.
 function copyD4lStencilChunks(): PluginOption {
@@ -84,7 +86,7 @@ export default defineConfig({
     alias: {
       // Load the d4l loader from the un-bundled Stencil esm files staged next
       // to index.system.js (see copyD4lStencilChunks above)
-      '@d4l/web-components-library/dist/loader': path.resolve(__dirname, 'src/bootstrap/d4lLoaderNativeEsm.ts'),
+      '@d4l/web-components-library/dist/loader': path.resolve(__dirname, 'src/bootstrap/d4lLoaderNativeImport.ts'),
       '@': path.resolve(__dirname, './src'),
       // Dedupe Vue to prevent multiple instances (matching webpack alias)
       vue: path.resolve(__dirname, 'node_modules/vue'),

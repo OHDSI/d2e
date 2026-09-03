@@ -37,6 +37,26 @@ const normalizeProps = (props: AtlasProps): AtlasProps => ({
   releaseId: props.releaseId ?? '',
 })
 
+/**
+ * Atlas3 resolves customProps.domElement with getElementById at mount time.
+ * When that runs before PluginContainer has rendered, domElement arrives null
+ * and single-spa-vue appends its own div to document.body — the app then
+ * renders outside the host layout. Poll briefly for the container the host
+ * promises (`plugin-<appId>`) before falling back to the host's value.
+ */
+const resolveDomElement = async (props: AtlasProps, timeoutMs = 5000): Promise<HTMLElement | null> => {
+  if (props.domElement instanceof HTMLElement) return props.domElement
+  const containerId = props.containerId || (props.appId ? `plugin-${props.appId}` : null)
+  if (!containerId) return props.domElement ?? null
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const el = document.getElementById(containerId)
+    if (el) return el
+    if (Date.now() >= deadline) return null
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
 type TerminologyCloseValues = {
   currentConceptSet?: { id: string; name: string }
 }
@@ -102,6 +122,8 @@ export const unmount = portalUnmount
 
 export const mount = async (props: AtlasProps) => {
   const normalizedProps = normalizeProps(props ?? {})
+  const domElement = await resolveDomElement(normalizedProps)
+  if (domElement) normalizedProps.domElement = domElement
   // portalMount runs single-spa-vue's handleInstance with these props, which
   // sets up the portal-context store; install the bridge right after, with
   // the messageBus captured from the same props.
