@@ -1,13 +1,47 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import plotly from '@/lib/CustomPlotly'
-import { COLORS_ARRAY, FUNNEL_THRESHOLDS, FUNNEL_LEGEND_LABELS } from '../constants'
+import {
+  COLORS_ARRAY,
+  FUNNEL_THRESHOLDS,
+  FUNNEL_LEGEND_LABELS,
+  FUNNEL_FONT_FAMILY,
+  FUNNEL_FONT_SIZE,
+  FUNNEL_LABEL_MAX_LINES,
+  FUNNEL_LABEL_MAX_WIDTH,
+} from '../constants'
 import type { InclusionReportResponse, RuleFilterCardDetails } from '@/query-filter/types/InclusionReportTypes'
 import { getRuleDisplayName } from '@/utils/filterCardUtils'
+import { wrapTextToLineLimit } from '@/utils/ExportUtils'
 
 export interface FunnelChartData {
   labels: string[]
   values: number[]
   hoverTexts: string[]
+}
+
+/**
+ * Widths of the y axis labels are measured off-screen with the font plotly renders them in.
+ * Environments without a canvas (jsdom) fall back to an average glyph width, which is close
+ * enough to keep wrapping sane in tests.
+ */
+const APPROX_GLYPH_WIDTH_RATIO = 0.55
+const approxMeasureCtx = {
+  measureText: (s: string) => ({ width: s.length * FUNNEL_FONT_SIZE * APPROX_GLYPH_WIDTH_RATIO }),
+} as unknown as CanvasRenderingContext2D
+
+let labelMeasureCtx: CanvasRenderingContext2D | undefined
+const getLabelMeasureCtx = (): CanvasRenderingContext2D => {
+  if (!labelMeasureCtx) {
+    let ctx: CanvasRenderingContext2D | null = null
+    try {
+      ctx = document.createElement('canvas').getContext('2d')
+    } catch {
+      ctx = null
+    }
+    labelMeasureCtx = ctx ?? approxMeasureCtx
+    labelMeasureCtx.font = `${FUNNEL_FONT_SIZE}px ${FUNNEL_FONT_FAMILY}`
+  }
+  return labelMeasureCtx
 }
 
 export interface AttritionStat {
@@ -45,8 +79,15 @@ export function useFunnelChart(
     stats.forEach(stat => {
       const prefix = stat.isExclude ? '- ' : '+ '
       const fullName = ruleLabel(stat)
-      const name = fullName.length > 35 ? fullName.slice(0, 35) + '...' : fullName
-      labels.push(`${prefix}${name}`)
+      // Plotly renders <br> as a line break in tick labels; without it a long rule name is
+      // drawn as one line that keeps widening the left margin. The full name stays in the hover.
+      const label = wrapTextToLineLimit(
+        getLabelMeasureCtx(),
+        `${prefix}${fullName}`,
+        FUNNEL_LABEL_MAX_WIDTH,
+        FUNNEL_LABEL_MAX_LINES
+      ).join('<br>')
+      labels.push(label)
       values.push(stat.countSatisfying)
       hoverTexts.push(
         `${prefix}${fullName}<br>Count: ${stat.countSatisfying.toLocaleString()}<br>Percent: ${stat.percentSatisfying}`
@@ -124,7 +165,8 @@ export function useFunnelChart(
       // hoverable .
       hovermode: 'y',
       font: {
-        size: 16,
+        size: FUNNEL_FONT_SIZE,
+        family: FUNNEL_FONT_FAMILY,
       },
       height: 800,
       yaxis: {

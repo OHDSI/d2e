@@ -50,3 +50,18 @@ export const TREEMAP_LEGEND_ITEMS = [
  * Gray color used for filtered out/excluded items in treemap
  */
 export const EXCLUDED_COLOR = '#CCCCCC' as const
+
+/**
+ * Font the funnel chart is rendered with. Kept explicit (these are plotly's own defaults)
+ * so label widths can be measured off-screen with exactly the font plotly draws.
+ */
+export const FUNNEL_FONT_SIZE = 16
+export const FUNNEL_FONT_FAMILY = '"Open Sans", verdana, arial, sans-serif'
+
+/**
+ * Layout budget for the rule name labels down the left of the funnel chart: labels wrap
+ * at this width and are cut off with an ellipsis once they run past the line limit, so a
+ * long rule name can never squeeze the funnel itself.
+ */
+export const FUNNEL_LABEL_MAX_WIDTH = 220
+export const FUNNEL_LABEL_MAX_LINES = 3

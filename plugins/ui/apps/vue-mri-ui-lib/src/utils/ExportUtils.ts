@@ -290,6 +290,44 @@ export const wrapTextByWidth = (ctx: CanvasRenderingContext2D, text: string, max
   return lines.length ? lines : ['']
 }
 
+export const ELLIPSIS = '...'
+
+/**
+ * Shortens `text` until it plus a trailing ellipsis fits within `maxWidth` pixels.
+ * Text that already fits is returned with the ellipsis appended, marking it as cut off.
+ */
+export const truncateTextToWidth = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  ellipsis: string = ELLIPSIS
+): string => {
+  const fits = (s: string) => ctx.measureText(s).width <= maxWidth
+  let cut = text
+  while (cut && !fits(cut + ellipsis)) cut = cut.slice(0, -1)
+  return cut.replace(/\s+$/, '') + ellipsis
+}
+
+/**
+ * Wraps `text` like `wrapTextByWidth`, but to at most `maxLines` lines. Whatever does not
+ * fit is dropped and the last kept line is truncated with an ellipsis, so the block never
+ * grows past `maxWidth` x `maxLines`.
+ */
+export const wrapTextToLineLimit = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number
+): string[] => {
+  if (maxLines < 1) return []
+  const lines = wrapTextByWidth(ctx, text, maxWidth)
+  if (lines.length <= maxLines) return lines
+
+  const kept = lines.slice(0, maxLines)
+  kept[maxLines - 1] = truncateTextToWidth(ctx, kept[maxLines - 1], maxWidth)
+  return kept
+}
+
 const cropCanvas = (canvas, width, height, dx = 0, dy = 0) => {
   const croppedCanvas = document.createElement('canvas')
   croppedCanvas.width = width
