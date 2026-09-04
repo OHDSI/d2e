@@ -9,7 +9,6 @@
  * `explorationList.ts` next door for the same reasoning.
  */
 
-import { lastUpdatedMs } from './explorationList'
 
 export type MaterializationStatus = 'materialized' | 'not-materialized'
 
@@ -138,6 +137,22 @@ const inRange = (value: unknown, range: DateRange): boolean => {
 const created = (card: unknown): unknown =>
   (card as any)?.bookmark?.dateCreated ?? (card as any)?.atlasCohortDefinition?.createdOn
 
+/**
+ * The card's own "Last updated" value.
+ *
+ * Deliberately NOT `lastUpdatedMs()` from `./explorationList`, though it looks
+ * like the obvious reuse. That helper carries a third fallback to
+ * `cohortDefinition.createdOn` so that sorting has a total order over every
+ * record. Filtering must agree with what the user can read on the card, and
+ * `ExplorationsPage`'s "Last updated" row stops at these two fields — a
+ * materialised record with no bookmark and no Atlas definition shows a dash
+ * there, so matching it on its materialisation instant would drop or keep it
+ * for a reason nothing on screen explains. It would also make LAST UPDATED and
+ * LAST MATERIALIZED silently the same filter for those records.
+ */
+const lastUpdated = (card: unknown): unknown =>
+  (card as any)?.bookmark?.dateModified ?? (card as any)?.atlasCohortDefinition?.updatedOn
+
 const lastMaterialized = (card: unknown): unknown => (card as any)?.cohortDefinition?.createdOn
 
 /** True when the card satisfies every active constraint. */
@@ -152,7 +167,7 @@ export function matchesFilters(card: unknown, filters: ExplorationFilters): bool
   }
 
   if (!inRange(created(card), filters.created)) return false
-  if (!inRange(lastUpdatedMs(card) || null, filters.lastUpdated)) return false
+  if (!inRange(lastUpdated(card), filters.lastUpdated)) return false
   if (!inRange(lastMaterialized(card), filters.lastMaterialized)) return false
 
   return true

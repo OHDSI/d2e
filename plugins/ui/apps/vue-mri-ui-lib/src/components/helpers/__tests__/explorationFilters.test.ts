@@ -156,10 +156,67 @@ describe('lastUpdated range', () => {
     expect(matchesFilters(card({ atlasCohortDefinition: { updatedOn: '2026-03-01T09:00:00' } }), filters)).toBe(false)
   })
 
+  it('ignores the materialisation instant, which the card does not show as "last updated"', () => {
+    // A type-'M' record: materialised, with no bookmark and no Atlas
+    // definition. Its card renders "Last updated: -", so a LAST UPDATED range
+    // must not match it on cohortDefinition.createdOn.
+    const materializedOnly = card({ cohortDefinition: { createdOn: '2026-03-10T09:00:00' } })
+    const march = { ...emptyFilters(), lastUpdated: { from: '2026-03-01', to: '2026-03-31' } }
+    expect(matchesFilters(materializedOnly, march)).toBe(false)
+    // The same record is still reachable through LAST MATERIALIZED.
+    expect(
+      matchesFilters(materializedOnly, { ...emptyFilters(), lastMaterialized: { from: '2026-03-01', to: '2026-03-31' } }),
+    ).toBe(true)
+  })
+
   it('drops a card with no date anywhere, and keeps it when the range is empty', () => {
     const undated = card({ displayName: 'undated' })
     expect(matchesFilters(undated, { ...emptyFilters(), lastUpdated: { from: '2026-01-01', to: null } })).toBe(false)
     expect(matchesFilters(undated, emptyFilters())).toBe(true)
+  })
+})
+
+/**
+ * Real timestamps are UTC: `getDisplayBookmarks` normalises
+ * `cohortDefinition.createdOn` with `.toISOString()`, and `processBookmarksData`
+ * does the same for the Atlas `createdOn` / `updatedOn`. The naive local
+ * strings used above never exercise that, and the whole point of comparing
+ * local calendar days is that a `Z` timestamp lands on the day the card
+ * displays. Expectations are derived from the running timezone so the
+ * assertion holds under any TZ.
+ */
+describe('UTC timestamps land on the viewer local day', () => {
+  const UTC_INSTANT = '2026-01-31T20:00:00.000Z'
+  const localDayOf = (iso: string) => {
+    const d = new Date(iso)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const shiftDay = (day: string, by: number) => {
+    const [y, m, d] = day.split('-').map(Number)
+    return localDayOf(new Date(y, m - 1, d + by).toISOString())
+  }
+
+  it('a Z timestamp matches a range built from its own local day', () => {
+    const c = card({ cohortDefinition: { createdOn: UTC_INSTANT } })
+    const day = localDayOf(UTC_INSTANT)
+    expect(matchesFilters(c, { ...emptyFilters(), lastMaterialized: { from: day, to: day } })).toBe(true)
+  })
+
+  it('a Z timestamp is excluded by the neighbouring local days', () => {
+    const c = card({ cohortDefinition: { createdOn: UTC_INSTANT } })
+    const day = localDayOf(UTC_INSTANT)
+    const before = shiftDay(day, -1)
+    const after = shiftDay(day, 1)
+    expect(matchesFilters(c, { ...emptyFilters(), lastMaterialized: { from: null, to: before } })).toBe(false)
+    expect(matchesFilters(c, { ...emptyFilters(), lastMaterialized: { from: after, to: null } })).toBe(false)
+  })
+
+  it('agrees with the card display, which also reads local parts', () => {
+    // DateUtils.displayBookmarkDateFormat builds its label from getDate() /
+    // getMonth() / getFullYear(), so the filter and the card must land on the
+    // same calendar day for the same instant.
+    const d = new Date(UTC_INSTANT)
+    expect(localDayOf(UTC_INSTANT).endsWith(String(d.getDate()).padStart(2, '0'))).toBe(true)
   })
 })
 

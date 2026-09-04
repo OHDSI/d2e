@@ -18,7 +18,8 @@
         :clearable="clearable"
         :aria-label="ariaLabel"
         @click:clear="onClear"
-        v-bind="{ ...activatorProps, ...forwardAttrs }"
+        v-bind="mergeProps(activatorProps, forwardAttrs)"
+        @keydown.enter.prevent.stop="onActivatorEnter"
       />
     </template>
 
@@ -34,7 +35,7 @@
 
 <script setup lang="ts">
 import { VDatePicker, VMenu, VTextField } from "vuetify/components";
-import { computed, ref, useAttrs } from "vue";
+import { computed, mergeProps, ref, useAttrs } from "vue";
 import { fromIsoDate, toIsoDate } from "./dateFieldFormat";
 
 // The root is a `VMenu`, which does not stop inheritance either, so a
@@ -112,6 +113,23 @@ function onClear(event: Event) {
   event.stopPropagation();
   emit("update:modelValue", null);
   internalOpen.value = false;
+}
+
+/**
+ * Open the picker on Enter, and keep the key to ourselves.
+ *
+ * Two separate problems, both from the enclosing menu. A `VMenu` with
+ * `close-on-content-click: false` treats Enter on its content as "move to the
+ * next focusable child, and close if there is none" (`VMenu.js` onKeydown), so
+ * Enter on the last field in a filter panel closed the whole panel. It also
+ * calls `preventDefault()`, and `VMenu`'s activator handler only knows
+ * ArrowDown and ArrowUp, so Enter on this readonly input did nothing at all.
+ * `.stop` keeps the enclosing menu from seeing the key; opening here gives the
+ * field the keyboard behaviour a date input should have had anyway.
+ */
+function onActivatorEnter() {
+  if (props.disabled) return;
+  internalOpen.value = true;
 }
 
 function onPick(date: unknown) {

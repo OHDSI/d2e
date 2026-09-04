@@ -17,7 +17,7 @@
     :error-messages="errorMessages"
     :hint="hint"
     :density="size === 'sm' ? 'compact' : 'default'"
-    :menu-props="{ contentClass: 'd2e-select__menu' }"
+    :menu-props="{ contentClass: menuContentClass }"
     v-bind="forwardAttrs"
     @update:model-value="$emit('update:modelValue', $event)"
   >
@@ -73,6 +73,16 @@ defineEmits<{
 }>();
 
 const sizeSpec = computed(() => SELECT_SIZE_MAP[props.size]);
+
+// `mergeProps` special-cases `class`, `style` and `on*` only, so a
+// `contentClass` in `menuProps` REPLACES the one the component sets rather
+// than merging with it. Carry Vuetify's own class through by hand, or the
+// menu loses the layout rules that hang off it.
+const menuContentClass = computed(() =>
+  props.searchable
+    ? "v-autocomplete__content d2e-select__menu"
+    : "v-select__content d2e-select__menu",
+);
 
 // `disabled` on an item is a property of the rendered list row, not of the
 // item record, so Vuetify needs it mapped across.
@@ -137,6 +147,16 @@ const forwardAttrs = computed(() => {
     font-size: var(--d2e-font-body1-size);
     font-weight: var(--d2e-font-body1-weight);
     color: var(--d2e-color-neutral-black);
+  }
+
+  // VSelect takes its <input> out of flex flow — `position: absolute` with
+  // `align-self: flex-start` (VSelect.css:12-20) — so `align-items: center` on
+  // the row cannot reach it and it hangs from the top of the content box. An
+  // absolutely positioned flex child takes its static position from
+  // `align-self`, so centring it there is what actually moves it. VAutocomplete
+  // and VTextField keep their inputs in flow and are unaffected.
+  :deep(.v-field__input > input) {
+    align-self: center;
   }
 
   // An <input> does not inherit font, so the UA's 13.33px Arial applied and
