@@ -1,5 +1,6 @@
 <template>
-  <v-select
+  <component
+    :is="searchable ? VAutocomplete : VSelect"
     class="d2e-select"
     :class="`d2e-select--${size}`"
     :style="{ '--d2e-select-height': `${sizeSpec.height}px` }"
@@ -23,11 +24,11 @@
     <template v-if="prependIcon" #prepend-inner>
       <v-icon :icon="prependIcon" size="24" class="d2e-select__adornment" />
     </template>
-  </v-select>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { VIcon, VSelect } from "vuetify/components";
+import { VAutocomplete, VIcon, VSelect } from "vuetify/components";
 import { computed, useAttrs } from "vue";
 import { SELECT_SIZE_MAP } from "./selectSizes";
 import type { D2eSelectItem, D2eSelectSize } from "./selectSizes";
@@ -44,6 +45,13 @@ interface Props {
   hint?: string;
   /** The leading adornment, e.g. "mdi-account". */
   prependIcon?: string;
+  /**
+   * Let the user type to narrow the options, as a `VAutocomplete`.
+   *
+   * Worth turning on wherever the option list is data-driven and can grow —
+   * a fixed two-item list is faster to click than to type.
+   */
+  searchable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -57,6 +65,7 @@ const props = withDefaults(defineProps<Props>(), {
   errorMessages: undefined,
   hint: undefined,
   prependIcon: undefined,
+  searchable: false,
 });
 
 defineEmits<{
@@ -84,6 +93,7 @@ const forwardAttrs = computed(() => {
     errorMessages: _errorMessages,
     hint: _hint,
     prependIcon: _prependIcon,
+    searchable: _searchable,
     ...rest
   } = attrs as Record<string, unknown>;
   void _modelValue;
@@ -96,6 +106,7 @@ const forwardAttrs = computed(() => {
   void _errorMessages;
   void _hint;
   void _prependIcon;
+  void _searchable;
   return rest;
 });
 </script>
@@ -115,13 +126,27 @@ const forwardAttrs = computed(() => {
     color: var(--d2e-color-neutral-black);
   }
 
+  // Fill the box and let flex centring do the work. With vertical padding the
+  // content sits its own height plus 16px from the top, which reads as text
+  // riding high in the field rather than centred in it.
   :deep(.v-field__input) {
-    min-height: 24px;
-    padding-top: var(--d2e-spacing-s);
-    padding-bottom: var(--d2e-spacing-s);
+    align-items: center;
+    min-height: var(--d2e-select-height);
+    padding-block: 0;
     padding-inline: 0;
     font-size: var(--d2e-font-body1-size);
     font-weight: var(--d2e-font-body1-weight);
+    color: var(--d2e-color-neutral-black);
+  }
+
+  // An <input> does not inherit font, so the UA's 13.33px Arial applied and
+  // the element was 17px tall while its placeholder painted at 16px. The two
+  // then disagreed about where the text baseline sits.
+  :deep(.v-field__input input) {
+    font-family: inherit;
+    font-size: var(--d2e-font-body1-size);
+    font-weight: var(--d2e-font-body1-weight);
+    line-height: normal;
     color: var(--d2e-color-neutral-black);
   }
 
@@ -141,10 +166,11 @@ const forwardAttrs = computed(() => {
     color: var(--d2e-color-neutral-light);
   }
 
-  :deep(.v-field__outline .v-field__outline__notch::before),
-  :deep(.v-field__outline .v-field__outline__notch::after) {
-    border-width: var(--v-field-border-width) 0 0;
-  }
+  // Vuetify already draws the notch's top rule on `::before` and its bottom
+  // rule on `::after`, both from `--v-field-border-width`, so neither needs
+  // restating. An earlier version set BOTH to a top border. Only `::before`
+  // gets Vuetify's `opacity: 0` once the label floats, so the reworked
+  // `::after` survived and drew a line straight through the floating label.
 
   :deep(.v-field--focused .v-field__outline) {
     --v-field-border-width: var(--d2e-border-width-md);

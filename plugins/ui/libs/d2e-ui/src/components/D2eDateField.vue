@@ -125,21 +125,25 @@ function onPick(date: unknown) {
 // default radius is 4px and the focused border takes the theme `primary`
 // where the design uses `primary-light`. Corrected here the same way.
 .d2e-date-field {
+  --d2e-date-field-height: 40px;
+
   font-family: var(--d2e-font-family);
 
   :deep(.v-field) {
-    min-height: 40px;
+    min-height: var(--d2e-date-field-height);
     border-radius: var(--d2e-radius-md);
     padding-inline: 14px;
     color: var(--d2e-color-neutral-black);
   }
 
-  // 24px content + 8px top + 8px bottom = the frame's 40px box. Do not copy
-  // D2eSelect's 16px here: that is what makes it render 56px tall.
+  // A text field's own <input> IS `.v-field__input`. With vertical padding it
+  // takes its intrinsic 34px and sits flush against the field's top edge,
+  // leaving 6px below and reading as text riding high. Give it the full box
+  // instead; a browser centres an input's text in its content height.
   :deep(.v-field__input) {
-    min-height: 24px;
-    padding-top: var(--d2e-spacing-xs);
-    padding-bottom: var(--d2e-spacing-xs);
+    min-height: var(--d2e-date-field-height);
+    height: var(--d2e-date-field-height);
+    padding-block: 0;
     padding-inline: 0;
     font-size: var(--d2e-font-body1-size);
     font-weight: var(--d2e-font-body1-weight);
@@ -166,10 +170,10 @@ function onPick(date: unknown) {
     color: var(--d2e-color-neutral-light);
   }
 
-  :deep(.v-field__outline .v-field__outline__notch::before),
-  :deep(.v-field__outline .v-field__outline__notch::after) {
-    border-width: var(--v-field-border-width) 0 0;
-  }
+  // Vuetify's own notch rules already read `--v-field-border-width`. Setting
+  // both `::before` and `::after` to a top border draws a line through a
+  // floating label, because only `::before` fades out when the label floats.
+  // This field has no floating label, but the rule is a landmine either way.
 
   :deep(.v-field--focused .v-field__outline) {
     --v-field-border-width: var(--d2e-border-width-md);

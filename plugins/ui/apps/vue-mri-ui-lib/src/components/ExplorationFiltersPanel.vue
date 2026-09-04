@@ -31,6 +31,7 @@
         :model-value="modelValue.authors"
         :placeholder="getText('MRI_PA_EXPLORATIONS_FILTER_AUTHOR')"
         prepend-icon="mdi-account-outline"
+        searchable
         data-testid="explorations-filter-author"
         @update:model-value="patch({ authors: ($event as string[]) ?? [] })"
       />
