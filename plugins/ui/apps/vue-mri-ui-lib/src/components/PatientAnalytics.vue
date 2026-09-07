@@ -185,6 +185,7 @@ import { useAtlasStore } from '../stores/atlas'
 import { useUnsavedChanges } from '../composables/useUnsavedChanges'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useNotificationStore } from '../stores/notifications'
+import { useExplorationsStore } from '../stores/explorations'
 
 const PANE_SIZE = {
   FULL: 100,
@@ -203,6 +204,7 @@ export default {
       unsavedChanges: useUnsavedChanges(),
       portalContext: usePortalContext(),
       notifications: useNotificationStore(),
+      explorations: useExplorationsStore(),
     }
   },
   data() {
@@ -240,6 +242,10 @@ export default {
       }
     },
     getActiveBookmark(newVal, oldVal) {
+      // The Analyze card action also sets the active bookmark (dashboardContext
+      // needs it), but it must not trigger this auto-switch: it would unmount
+      // ExplorationsPage, and the wizard modals mounted inside it, mid-click.
+      if (this.explorations.analyzeInProgress) return
       // Auto-switch to cohort view when a bookmark is loaded (e.g., from deep link)
       // Only trigger when going from no bookmark to having one
       if (newVal && !oldVal && this.displayCohorts) {

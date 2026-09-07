@@ -172,9 +172,28 @@
             </template>
           </v-tooltip>
 
-          <!-- Placeholders, on purpose: data quality is #3119 (not ours) and
-               analyze is #3121. They render so the bar matches the frame,
-               and do nothing yet. -->
+          <v-tooltip
+            location="top"
+            content-class="explorations-tooltip"
+            :text="canAnalyze ? getText('MRI_PA_EXPLORATIONS_ANALYZE') : getText('MRI_PA_OPEN_DASHBOARD_TOOLTIP_DISABLED')"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps">
+                <D2eIconButton
+                  category="no-stroke"
+                  :disabled="!canAnalyze"
+                  :aria-label="getText('MRI_PA_EXPLORATIONS_ANALYZE')"
+                  :data-testid="`explorations-analyze-btn-${card.id}`"
+                  @click="openAnalyze(card)"
+                >
+                  <ExplorationAnalyzeIcon />
+                </D2eIconButton>
+              </span>
+            </template>
+          </v-tooltip>
+
+          <!-- Placeholder, on purpose: data quality is #3119, not ours. It
+               renders so the bar matches the frame, and does nothing yet. -->
           <v-tooltip
             v-for="placeholder in ACTION_PLACEHOLDERS"
             :key="placeholder.testid"
@@ -228,6 +247,23 @@
 
     </div>
 
+    <!--
+      Mounted only while the flow is live. These modals `<Teleport to="#app">`,
+      and #app is an ancestor of this page, so leaving them mounted meant that
+      unmounting the page — which is what clicking a card does — tore down a
+      teleport whose target was itself being removed. Vue threw
+      "Cannot destructure property 'bum' of 'ne' as it is null" during unmount,
+      the update aborted, and the card click silently stopped navigating to the
+      cohort builder. `analyzeInProgress` keeps the page mounted for the
+      duration of the flow, so the two never overlap.
+    -->
+    <DashboardFlowModals
+      v-if="explorations.analyzeInProgress || dashboardFlowModalOpen"
+      :flow="dashboardFlow"
+      :dataset-id="store.getters.getSelectedDataset?.id ?? portalContext.datasetId"
+      :cohort-id="(dashboardFlow.savedCohortId ?? store.getters.getActiveCohortMaterializedId)?.toString() || ''"
+    />
+
     <AddCohort
       v-if="materializeTarget"
       v-model="materializeOpen"
@@ -261,12 +297,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
+import { useDashboardFlow } from '../composables/useDashboardFlow'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
@@ -283,6 +320,7 @@ import RenameExplorationDialog from './RenameExplorationDialog.vue'
 import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
 import ExplorationFiltersPanel from './ExplorationFiltersPanel.vue'
 import FilterCardSummary from './FilterCardSummary.vue'
+import DashboardFlowModals from './DashboardFlowModals.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -293,6 +331,11 @@ const store = useStore()
 const portalContext = usePortalContext()
 const explorations = useExplorationsStore()
 const notifications = useNotificationStore()
+// Wrapped in `reactive()` so its nested refs unwrap the same way ChartToolbar's
+// copy does through its (deeply reactive) `data()` — without this, reading
+// e.g. `dashboardFlow.showDashboardModal` here or in the template would return
+// the Ref instance itself rather than its value.
+const dashboardFlow = reactive(useDashboardFlow(store.dispatch, store.getters))
 
 // The card's own checkbox and quick-action buttons sit inside the card root, so
 // their clicks bubble up to it. Opening the exploration from those would fight
@@ -306,15 +349,14 @@ const IGNORED_CLICK_TARGETS = [
   '.d2e-exploration-card__lead-row .v-btn',
 ].join(', ')
 
-// #3119 data quality and #3121 analyze are not wired yet. They render so the
-// action bar matches the frame. #3120 filter summary is wired below.
+// #3119 data quality is not wired yet. It renders so the action bar matches
+// the frame. #3120 filter summary and #3121 analyze are wired below.
 const ACTION_PLACEHOLDERS = [
   {
     icon: ExplorationDataQualityIcon,
     labelKey: 'MRI_PA_EXPLORATIONS_DATA_QUALITY',
     testid: 'explorations-dq-btn',
   },
-  { icon: ExplorationAnalyzeIcon, labelKey: 'MRI_PA_EXPLORATIONS_ANALYZE', testid: 'explorations-analyze-btn' },
 ]
 const EMPTY_VALUE = '-'
 
@@ -341,6 +383,12 @@ const loadError = computed(() => store.getters.getBookmarksLoadError)
 const datasetName = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
 const datasetItems = computed(() => [{ label: datasetName.value, value: datasetName.value }])
 const canMaterialize = computed<boolean>(() => Boolean(store.getters.getCanDatasetMaterializeCohorts))
+
+// Matches ChartToolbar.vue's isWizardFeatureEnabled / canOpenDashboard.
+const isWizardEnabled = computed(
+  () => portalContext.features?.some(f => f.feature === 'wizards' && f.isEnabled === true) ?? false,
+)
+const canAnalyze = computed(() => Boolean(store.getters.getCanDatasetMaterializeCohorts) && isWizardEnabled.value)
 
 const getText = (key: string): string => {
   const resolver = store.getters.getText
@@ -604,6 +652,62 @@ const openFilterSummary = async (card: {
     summaryBusy.value = false
   }
 }
+
+/**
+ * Open the dashboard-wizard flow for a card.
+ *
+ * Unlike Filter summary, this genuinely needs the active bookmark set —
+ * `dashboardFlow.dashboardContext` returns nulls without one — so it calls
+ * `loadbookmarkToState` (which commits SET_ACTIVE_BOOKMARK), not the private
+ * action Filter summary uses to avoid that. `explorations.analyzeInProgress`
+ * (set below) stops PatientAnalytics' getActiveBookmark watcher from reading
+ * that as a reason to auto-switch to the cohort builder mid-click.
+ */
+const openAnalyze = async (card: { source: BookmarkDisplay }): Promise<void> => {
+  // Only a bookmark id: a cohort-definition or Atlas id comes from a different
+  // table and can collide with one, the same reason `openFilterSummary` above
+  // only reads `source.bookmark?.id`.
+  const bmkId = card.source.bookmark?.id
+  if (!bmkId) return
+  explorations.analyzeInProgress = true
+  try {
+    await store.dispatch('loadbookmarkToState', { bmkId, chartType: card.source.bookmark?.chartType })
+    dashboardFlow.openDashboardModal()
+  } catch (error) {
+    explorations.analyzeInProgress = false
+    // Mirrors PatientAnalytics.loadExploration's own catch: the saved filter
+    // does not fit the active config.
+    notifications.setAlertMessage({
+      message: getText('MRI_PA_BMK_COMPATIBLE_ERROR'),
+      messageType: 'error',
+      title: getText('MRI_PA_NOTIFICATION_ERROR'),
+    })
+    console.error('[ExplorationsPage] Analyze could not load the exploration', error)
+  }
+}
+
+// True while any of the five wizard-flow modals is open. Watched below so
+// closing (finishing or cancelling) can clean up the shared Vuex state the
+// flow mutated — otherwise the cohort builder opens next carrying filters
+// the user never chose there.
+const dashboardFlowModalOpen = computed(
+  () =>
+    dashboardFlow.showDashboardSelectionModal ||
+    dashboardFlow.showRequiredFiltersModal ||
+    dashboardFlow.showTable1ConfigModal ||
+    dashboardFlow.showDashboardModal ||
+    dashboardFlow.showSaveCohortModal,
+)
+
+watch(dashboardFlowModalOpen, (isOpen, wasOpen) => {
+  if (isOpen || !wasOpen) return
+  // Resetting mid-flow (e.g. between the selection modal closing and the next
+  // one opening) breaks the wizard; ChartToolbar.vue guards its own reset the
+  // same way.
+  if (dashboardFlow.isProcessingDashboardFlow()) return
+  dashboardFlow.resetDashboardFlowState()
+  explorations.analyzeInProgress = false
+})
 
 // Mirrors Bookmarks.addCohort: a D2E record materialises its bookmark, an Atlas
 // record materialises its cohort definition.
