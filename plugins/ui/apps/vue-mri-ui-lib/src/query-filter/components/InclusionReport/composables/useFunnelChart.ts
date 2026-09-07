@@ -8,40 +8,83 @@ import {
   FUNNEL_FONT_SIZE,
   FUNNEL_LABEL_MAX_LINES,
   FUNNEL_LABEL_MAX_WIDTH,
+  FUNNEL_HOVER_MAX_WIDTH,
+  FUNNEL_HOVER_FONT_SIZE,
 } from '../constants'
 import type { InclusionReportResponse, RuleFilterCardDetails } from '@/query-filter/types/InclusionReportTypes'
 import { getRuleDisplayName } from '@/utils/filterCardUtils'
-import { wrapTextToLineLimit } from '@/utils/ExportUtils'
+import { wrapTextByWidth, wrapTextToLineLimit } from '@/utils/ExportUtils'
 
 export interface FunnelChartData {
   labels: string[]
   values: number[]
   hoverTexts: string[]
+  /** Funnel point index, keyed by the y axis label plotly draws for it */
+  labelPoints: Record<string, number>
+}
+
+/** The funnel is plotted first, with the legend placeholder traces after it. */
+const FUNNEL_TRACE_INDEX = 0
+
+/** The graph div plotly hands back: an element that also carries plotly's event emitter API. */
+type PlotlyGraphDiv = HTMLElement & {
+  on?: (event: string, handler: () => void) => void
+  removeAllListeners?: (event: string) => void
 }
 
 /**
- * Widths of the y axis labels are measured off-screen with the font plotly renders them in.
- * Environments without a canvas (jsdom) fall back to an average glyph width, which is close
- * enough to keep wrapping sane in tests.
+ * Text is measured off-screen with the font plotly renders it in - the chart font for the y axis
+ * labels, plotly's own hover font for the tooltips. Environments without a canvas (jsdom) fall
+ * back to an average glyph width, which is close enough to keep wrapping sane in tests.
  */
 const APPROX_GLYPH_WIDTH_RATIO = 0.55
-const approxMeasureCtx = {
-  measureText: (s: string) => ({ width: s.length * FUNNEL_FONT_SIZE * APPROX_GLYPH_WIDTH_RATIO }),
-} as unknown as CanvasRenderingContext2D
+const approxMeasureCtx = (fontSize: number) =>
+  ({
+    measureText: (s: string) => ({ width: s.length * fontSize * APPROX_GLYPH_WIDTH_RATIO }),
+  }) as unknown as CanvasRenderingContext2D
 
-let labelMeasureCtx: CanvasRenderingContext2D | undefined
-const getLabelMeasureCtx = (): CanvasRenderingContext2D => {
-  if (!labelMeasureCtx) {
-    let ctx: CanvasRenderingContext2D | null = null
-    try {
-      ctx = document.createElement('canvas').getContext('2d')
-    } catch {
-      ctx = null
-    }
-    labelMeasureCtx = ctx ?? approxMeasureCtx
-    labelMeasureCtx.font = `${FUNNEL_FONT_SIZE}px ${FUNNEL_FONT_FAMILY}`
+const measureCtxByFont = new Map<string, CanvasRenderingContext2D>()
+const getMeasureCtx = (fontSize: number, fontFamily: string): CanvasRenderingContext2D => {
+  const font = `${fontSize}px ${fontFamily}`
+  const cached = measureCtxByFont.get(font)
+  if (cached) return cached
+
+  let ctx: CanvasRenderingContext2D | null = null
+  try {
+    ctx = document.createElement('canvas').getContext('2d')
+  } catch {
+    ctx = null
   }
-  return labelMeasureCtx
+  // Test DOMs hand back a context stub with no measureText, so check the method, not the object.
+  const measureCtx = typeof ctx?.measureText === 'function' ? ctx : approxMeasureCtx(fontSize)
+  measureCtx.font = font
+  measureCtxByFont.set(font, measureCtx)
+  return measureCtx
+}
+
+/**
+ * Plotly's hover only covers the plot area, so a y axis label triggers the hover for its own funnel
+ * layer by hand - the same tooltip, holding the full rule name, that the layer itself shows, which
+ * is how a label the wrapping cut short gives up its full text. Plotly draws each label as an
+ * unclassed <text> inside a `g.ytick` and keeps the string it was handed - <br>s and all - in
+ * `data-unformatted`, so that is what keys the lookup. Pointer events need re-enabling per label
+ * because `.main-svg` switches them off for everything outside the drag layer.
+ */
+const attachLabelHovers = (graphDiv: PlotlyGraphDiv, pointsByLabel: Record<string, number>) => {
+  graphDiv.querySelectorAll<SVGTextElement>('g.ytick > text').forEach(tick => {
+    const pointNumber = pointsByLabel[tick.getAttribute('data-unformatted') ?? '']
+    // Assigned rather than added as listeners: plotly reuses the tick elements across redraws,
+    // so this has to overwrite what a previous render left behind instead of stacking on it.
+    if (pointNumber === undefined) {
+      tick.onmouseover = null
+      tick.onmouseout = null
+      return
+    }
+
+    tick.style.pointerEvents = 'all'
+    tick.onmouseover = () => plotly.Fx.hover(graphDiv, [{ curveNumber: FUNNEL_TRACE_INDEX, pointNumber }])
+    tick.onmouseout = () => plotly.Fx.unhover(graphDiv)
+  })
 }
 
 export interface AttritionStat {
@@ -79,22 +122,35 @@ export function useFunnelChart(
     stats.forEach(stat => {
       const prefix = stat.isExclude ? '- ' : '+ '
       const fullName = ruleLabel(stat)
+      const fullLabel = `${prefix}${fullName}`
       // Plotly renders <br> as a line break in tick labels; without it a long rule name is
       // drawn as one line that keeps widening the left margin. The full name stays in the hover.
-      const label = wrapTextToLineLimit(
-        getLabelMeasureCtx(),
-        `${prefix}${fullName}`,
+      const lines = wrapTextToLineLimit(
+        getMeasureCtx(FUNNEL_FONT_SIZE, FUNNEL_FONT_FAMILY),
+        fullLabel,
         FUNNEL_LABEL_MAX_WIDTH,
         FUNNEL_LABEL_MAX_LINES
-      ).join('<br>')
-      labels.push(label)
+      )
+      labels.push(lines.join('<br>'))
       values.push(stat.countSatisfying)
+      // Wrapped so the tooltip stays narrow enough to sit beside its bar like every other row's.
+      const hoverName = wrapTextByWidth(
+        getMeasureCtx(FUNNEL_HOVER_FONT_SIZE, FUNNEL_FONT_FAMILY),
+        fullLabel,
+        FUNNEL_HOVER_MAX_WIDTH
+      ).join('<br>')
       hoverTexts.push(
-        `${prefix}${fullName}<br>Count: ${stat.countSatisfying.toLocaleString()}<br>Percent: ${stat.percentSatisfying}`
+        `${hoverName}<br>Count: ${stat.countSatisfying.toLocaleString()}<br>Percent: ${stat.percentSatisfying}`
       )
     })
 
-    return { labels, values, hoverTexts }
+    // Every label is hoverable, so each one maps to the funnel point it was drawn for.
+    const labelPoints: Record<string, number> = {}
+    labels.forEach((label, pointNumber) => {
+      labelPoints[label] = pointNumber
+    })
+
+    return { labels, values, hoverTexts, labelPoints }
   })
 
   const renderFunnelChart = () => {
@@ -130,6 +186,12 @@ export function useFunnelChart(
       },
       hoverlabel: {
         bgcolor: '#f9f9f9', // css var doesn't work here
+        // Plotly's hover labels default to Arial rather than the layout font, so they are told
+        // to use the chart font too - which is also the font the hover text is wrapped against.
+        font: {
+          size: FUNNEL_HOVER_FONT_SIZE,
+          family: FUNNEL_FONT_FAMILY,
+        },
       },
       showlegend: false, // Hide legend for main trace
       connector: {
@@ -201,9 +263,22 @@ export function useFunnelChart(
     const chartConfig = {
       responsive: true,
       displayModeBar: false,
+      // The drag handles plotly puts along each axis sit on top of the last 20px of every tick
+      // label; without them the label tooltips are hoverable across their full width.
+      showAxisDragHandles: false,
     }
 
-    plotly.newPlot(funnelChartRef.value, [trace, ...legendTraces], layout, chartConfig)
+    const { labelPoints } = funnelChartData.value
+
+    plotly
+      .newPlot(funnelChartRef.value, [trace, ...legendTraces], layout, chartConfig)
+      .then((graphDiv: PlotlyGraphDiv) => {
+        attachLabelHovers(graphDiv, labelPoints)
+        // A responsive resize redraws the tick labels and takes the handlers with them, so they
+        // are re-attached after every redraw.
+        graphDiv.removeAllListeners?.('plotly_afterplot')
+        graphDiv.on?.('plotly_afterplot', () => attachLabelHovers(graphDiv, labelPoints))
+      })
   }
 
   const downloadFunnelChart = () => {
