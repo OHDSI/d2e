@@ -11,9 +11,11 @@
   color: var(--color-ui-dark-text);
 }
 
-// TODO: remove filtercard-summary below, as the style guide is under progress
-.bookmark-container,
-.filtercard-summary {
+// `.filtercard-summary` used to share this block, which painted it #f2f0f1.
+// The panel now owns its own surface (white, per Figma 1801:213241) in
+// FilterCardSummary.vue's scoped styles, so it is dropped from the selector —
+// completing the TODO that stood here while the style guide was in progress.
+.bookmark-container {
   width: 100%;
   height: auto;
   position: relative !important;

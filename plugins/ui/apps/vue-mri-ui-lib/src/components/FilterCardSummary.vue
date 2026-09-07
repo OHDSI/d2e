@@ -337,10 +337,20 @@ export default {
 </script>
 
 <style scoped lang="scss">
+// The panel owns its own surface. `styles/bookmark.scss` used to give it a
+// hardcoded #f2f0f1 alongside `.bookmark-container`; that grey showed through
+// the outlined SQL buttons, which are transparent by design. The layout
+// properties it also supplied are restated here so both mount sites keep them.
 .filtercard-summary {
+  position: relative;
   display: flex;
+  flex: 1;
   flex-direction: column;
+  width: 100%;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--d2e-color-white);
   font-family: var(--d2e-font-family);
 
   &__header {
