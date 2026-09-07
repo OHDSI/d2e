@@ -10,6 +10,28 @@
 
 .mri-app-vue-container {
   @import './bootstrap-shim';
+  // Vuetify is configured with `$reset: false` in vuetify-settings.scss, so its
+  // reset never runs. That reset is what removes the UA border from form
+  // controls (`button, input, select, textarea { border-style: none }`).
+  // Without it a Vuetify outlined field keeps the browser's 2px inset border,
+  // which draws straight through the floating label — the label looks struck
+  // through. Reproduce just that rule, scoped to Vuetify's own fields so the
+  // app's Bootstrap-style inputs are untouched.
+  .v-field__input,
+  .v-field input,
+  .v-field select,
+  .v-field textarea {
+    background-color: transparent;
+    border-style: none;
+  }
+
+  // Same cause: VDivider renders an <hr>, and without Vuetify's reset the UA
+  // default 0.5em block margin applies. A dialog has two dividers, so that is
+  // 28px of dead space the Figma frames do not have.
+  .v-divider {
+    margin: 0;
+  }
+
   @include mriBaseStyle;
   height: 100%;
   width: 100%;

@@ -49,7 +49,7 @@ const queryStayButton = (): HTMLElement | null => document.querySelector('[data-
 
 const queryLeaveButton = (): HTMLElement | null => document.querySelector('[data-testid="leave-page-button"]')
 
-const queryCloseButton = (): HTMLElement | null => document.querySelector('[data-testid="close-dialog-button"]')
+const queryCloseButton = (): HTMLElement | null => document.querySelector('[data-testid="d2e-dialog-close"]')
 
 describe('UnsavedChangesDialog', () => {
   beforeEach(() => {
@@ -88,13 +88,13 @@ describe('UnsavedChangesDialog', () => {
     wrapper.unmount()
   })
 
-  it('renders Stay on Page as primary elevated button', async () => {
+  it('renders Stay on Page as primary flat button', async () => {
     const wrapper = mountDialog(true)
     await wrapper.vm.$nextTick()
     const stayButton = queryStayButton()
     expect(stayButton).not.toBeNull()
     expect(stayButton?.textContent).toContain('MRI_PA_BUTTON_STAY_ON_PAGE')
-    expect(stayButton?.classList.contains('v-btn--variant-elevated')).toBe(true)
+    expect(stayButton?.classList.contains('v-btn--variant-flat')).toBe(true)
     wrapper.unmount()
   })
 

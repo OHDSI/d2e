@@ -6,87 +6,68 @@
       v-if="messageStrip.show"
       @closeEv="resetMessageStrip"
     />
-    <messageBox
-      dim="true"
-      dialogWidth="400px"
+    <D2eDialog
+      v-model="showRenameDialog"
       :busy="isRenamingBookmark"
-      v-if="showRenameDialog"
+      :title="getText('MRI_PA_EXPLORATION_RENAME_DIALOG_TITLE')"
+      data-testid="pa-modal-wrapper"
       @close="closeRenameBookmark"
     >
-      <template v-slot:header>{{ getText('MRI_PA_BOOKMARK_RENAME_DIALOG_TITLE') }}</template>
-      <template v-slot:body>
-        <div>
-          <div class="div-bookmark-dialog">
-            <span>{{ getText('MRI_PA_BOOKMARK_RENAME_DIALOG_TEXT') }}</span>
-            <div class="input-container">
-              <!-- maxLength for input is this.maxLength+1 to allow invalid-feedback to be shown -->
-              <input
-                class="form-control"
-                v-focus
-                required
-                :maxlength="this.maxLength + 1"
-                v-model="renamedBookmark"
-                @keydown.enter="confirmRenameBookmark"
-              />
-            </div>
-            <div class="invalid-feedback" v-bind:style="[cohortNameValidationState === 'invalid' && 'display: block;']">
-              {{ getText('MRI_PA_INVALID_NAME_ERROR') }}
-            </div>
-            <div class="invalid-feedback" v-bind:style="[hasExceededLength && 'display: block;']">
-              Filter name must not exceed 255 characters
-            </div>
-            <div class="invalid-feedback" v-bind:style="[cohortNameValidationState === 'empty' && 'display: block;']">
-              {{ getText('MRI_PA_BMK_EMPTY_NAME_ERROR') }}
-            </div>
-          </div>
-        </div>
-      </template>
-      <template v-slot:footer>
-        <div class="flex-spacer"></div>
-        <appButton
-          :click="confirmRenameBookmark"
-          :text="getText('MRI_PA_BUTTON_SAVE')"
-          :disabled="this.hasExceededLength || isRenamingBookmark"
-        ></appButton>
-        <appButton
-          :click="closeRenameBookmark"
-          :text="getText('MRI_PA_BUTTON_CANCEL')"
+      <D2eTextField
+        v-model="renamedBookmark"
+        :label="getText('MRI_PA_EXPLORATION_NAME_LABEL')"
+        required
+        :error-messages="renameErrorMessages"
+        :maxlength="maxLength + 1"
+        autofocus
+        @keydown.enter="confirmRenameBookmark"
+      />
+      <template #actions>
+        <D2eButton
+          variant="secondary"
           :disabled="isRenamingBookmark"
-        ></appButton>
+          data-testid="pa-save-dialog-cancel-btn"
+          @click="closeRenameBookmark"
+        >
+          {{ getText('MRI_PA_BUTTON_CANCEL') }}
+        </D2eButton>
+        <D2eButton
+          :disabled="hasExceededLength || isRenamingBookmark"
+          data-testid="pa-save-dialog-save-btn"
+          @click="confirmRenameBookmark"
+        >
+          {{ getText('MRI_PA_BUTTON_RENAME') }}
+        </D2eButton>
       </template>
-    </messageBox>
-    <messageBox
-      messageType="warning"
-      dim="true"
-      dialogWidth="400px"
+    </D2eDialog>
+    <D2eDialog
+      v-model="showDeleteDialog"
       :busy="isDeletingBookmark"
-      v-if="showDeleteDialog"
+      :title="getText('MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE')"
+      data-testid="pa-modal-wrapper"
       @close="closeDeleteBookmark"
     >
-      <template v-slot:header>{{ getText('MRI_PA_BOOKMARK_DELETE_DIALOG_TITLE') }}</template>
-      <template v-slot:body>
-        <div>
-          <div class="div-bookmark-dialog">
-            <div>{{ getText('MRI_PA_BOOKMARK_DELETE_DIALOG_TEXT') }}</div>
-            <div>{{ getText('MRI_PA_BOOKMARK_DELETE_DIALOG_QUESTION_TEXT') }}</div>
-          </div>
-        </div>
-      </template>
-      <template v-slot:footer>
-        <div class="flex-spacer"></div>
-        <appButton
-          :click="confirmDeleteBookmark"
-          :text="getText('MRI_PA_BUTTON_DELETE')"
+      <p class="delete-dialog-text">{{ getText('MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT') }}</p>
+      <template #actions>
+        <D2eButton
+          variant="secondary"
+          :disabled="isDeletingBookmark"
+          data-testid="pa-save-dialog-cancel-btn"
+          @click="closeDeleteBookmark"
+        >
+          {{ getText('MRI_PA_BUTTON_CANCEL') }}
+        </D2eButton>
+        <D2eButton
+          variant="danger"
           :disabled="isDeletingBookmark"
           v-focus
-        ></appButton>
-        <appButton
-          :click="closeDeleteBookmark"
-          :text="getText('MRI_PA_BUTTON_CANCEL')"
-          :disabled="isDeletingBookmark"
-        ></appButton>
+          data-testid="pa-save-dialog-save-btn"
+          @click="confirmDeleteBookmark"
+        >
+          {{ getText('MRI_PA_BUTTON_YES_DELETE') }}
+        </D2eButton>
       </template>
-    </messageBox>
+    </D2eDialog>
 
     <ImportAtlasCohortDefinitionDialog
       v-if="showImportAtlasCohortDefinition"
@@ -185,10 +166,9 @@
     </cohortListDialog>
 
     <addCohort
-      :openAddDialog="showAddCohortDialog"
+      v-model="showAddCohortDialog"
       :bookmarkId="this.selectedBookmark?.id"
       :bookmarkName="this.selectedBookmark?.name"
-      @closeEv="showAddCohortDialog = false"
       :cohortDefinitionType="cohortDefinitionType"
       :atlasCohortDefinitionId="atlasCohortDefinitionId"
     >
@@ -218,6 +198,7 @@
 <script lang="ts">
 declare var sap: any
 import { mapActions, mapGetters, mapMutations } from 'vuex'
+import { D2eButton, D2eDialog, D2eTextField } from '@d2e/ui'
 import appButton from '../lib/ui/app-button.vue'
 import appCheckbox from '../lib/ui/app-checkbox.vue'
 import cohortComparisonDialog from './CohortComparisonDialog.vue'
@@ -334,6 +315,23 @@ export default {
     },
     hasExceededLength() {
       return this.renamedBookmark.length > this.maxLength
+    },
+    renameErrorMessages(): string[] {
+      // Accumulate rather than return the first match: a name can be both a
+      // duplicate and too long, and the Rename button is disabled on length,
+      // so showing only the duplicate error leaves the button dead with no
+      // explanation. Matches FiltersFooter.cohortNameErrors.
+      const errors: string[] = []
+      if (this.cohortNameValidationState === 'invalid') {
+        errors.push(this.getText('MRI_PA_INVALID_NAME_ERROR'))
+      }
+      if (this.cohortNameValidationState === 'empty') {
+        errors.push(this.getText('MRI_PA_BMK_EMPTY_NAME_ERROR'))
+      }
+      if (this.hasExceededLength) {
+        errors.push('Filter name must not exceed 255 characters')
+      }
+      return errors
     },
     isBookmarksLoading() {
       return this.bookmarksDisplay.length === 0 && this.getBookmarksLoading
@@ -788,6 +786,9 @@ export default {
     },
   },
   components: {
+    D2eDialog,
+    D2eButton,
+    D2eTextField,
     messageBox,
     appButton,
     appCheckbox,

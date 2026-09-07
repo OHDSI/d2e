@@ -111,7 +111,11 @@ section {
   outline: 0 !important;
 }
 
-hr {
+// `:not(.v-divider)` keeps this off Vuetify's dividers, which render as <hr>.
+// Bootstrap's 1rem margins would add 32px around every one of them - two per
+// dialog, so 64px of dead space - and the border-top would override Vuetify's
+// own divider colour.
+hr:not(.v-divider) {
   box-sizing: content-box;
   height: 0;
   overflow: visible;
@@ -323,7 +327,10 @@ table {
   border-collapse: collapse;
 }
 
-label {
+// `:not(.v-label)` keeps this off Vuetify's field labels. The notch label is
+// `position: static`, so Bootstrap's 0.5rem would add real height inside an
+// outlined field's border gap.
+label:not(.v-label) {
   display: inline-block;
   margin-bottom: 0.5rem;
 }

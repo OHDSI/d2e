@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import { vi } from 'vitest'
 
 // Mock canvas context for tests that use canvas
@@ -46,3 +47,25 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   })
 }
 
+// Fail loudly if the install gives the test run more than one copy of Vue.
+// `@vue/test-utils` ships CommonJS, so its own `require('vue')` bypasses the
+// `vue` alias in vite.config.ts and resolves through node. If a workspace pins
+// an exact vue version, bun nests a second copy under the app and the two
+// halves disagree: `mount()` renders with one runtime while the compiled SFCs
+// call `renderSlot` on the other, whose `currentRenderingInstance` is always
+// null. The symptom is an opaque "Cannot read properties of null (reading
+// 'ce')". Keep vue ranges compatible across plugins/ui so bun hoists one copy.
+{
+  const require_ = createRequire(import.meta.url)
+  const appVue = require_.resolve('vue/package.json')
+  const testUtilsRequire = createRequire(require_.resolve('@vue/test-utils/package.json'))
+  const testUtilsVue = testUtilsRequire.resolve('vue/package.json')
+  if (appVue !== testUtilsVue) {
+    throw new Error(
+      `Duplicate Vue install detected.\n` +
+        `  app        -> ${appVue}\n` +
+        `  test-utils -> ${testUtilsVue}\n` +
+        `Align the "vue" ranges across plugins/ui so bun hoists a single copy.`
+    )
+  }
+}
