@@ -252,7 +252,7 @@
         <FilterCardSummary
           :chart-busy="summaryBusy"
           :exploration-name="filterSummaryName"
-          @unloadFilterCardSummaryEv="filterSummaryOpen = false"
+          @unloadFilterCardSummaryEv="closeFilterSummary"
         />
       </div>
     </Transition>
@@ -265,6 +265,7 @@ import { useStore } from 'vuex'
 import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
+import { useUnsavedChanges } from '../composables/useUnsavedChanges'
 import { usePortalContext } from '../composables/usePortalContext'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
@@ -292,6 +293,7 @@ const store = useStore()
 const portalContext = usePortalContext()
 const explorations = useExplorationsStore()
 const notifications = useNotificationStore()
+const unsavedChanges = useUnsavedChanges()
 
 // The card's own checkbox and quick-action buttons sit inside the card root, so
 // their clicks bubble up to it. Opening the exploration from those would fight
@@ -326,6 +328,11 @@ const filterSummaryOpen = ref(false)
 const summaryBusy = ref(false)
 /** The exploration whose filters the panel is showing, for its header. */
 const filterSummaryName = ref('')
+/**
+ * What the cohort builder had loaded before the panel borrowed the store, so
+ * closing can put it back. `null` means it had nothing loaded.
+ */
+const restoreTarget = ref<{ bmkId: string; chartType?: string } | null>(null)
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
@@ -434,6 +441,44 @@ const cards = computed(() => {
   })
 })
 
+/**
+ * Close the panel and put the cohort builder's state back.
+ *
+ * `_loadParsedBookmarkToState` is not a read-only probe: it rewrites the IFR,
+ * the axes and the chart type, and the query that follows overwrites the chart
+ * response. None of that is paired with the bookkeeping `loadbookmarkToState`
+ * does, so without this the builder would show this exploration's filters under
+ * whatever name it still had active — and saving there would overwrite that
+ * bookmark with these filters.
+ */
+const closeFilterSummary = async (): Promise<void> => {
+  filterSummaryOpen.value = false
+  const target = restoreTarget.value
+  restoreTarget.value = null
+  try {
+    // The response belongs to the exploration we just showed, never to the one
+    // we are restoring; the builder refetches when its chart mounts.
+    await store.dispatch('clearResponse')
+    if (target) {
+      const parsedBookmark = store.getters.getBookmarkById(target.bmkId)
+      if (parsedBookmark) {
+        await store.dispatch('_loadParsedBookmarkToState', {
+          parsedBookmark,
+          chartType: target.chartType,
+          skipFireRequest: true,
+        })
+      }
+    } else {
+      // Nothing was loaded before, so leave the store as the builder expects to
+      // find it. This is what FiltersFooter's own reset does.
+      await store.dispatch('queryReset')
+      await store.dispatch('resetChart')
+    }
+  } catch (error) {
+    console.error('[ExplorationsPage] could not restore the previous filter state', error)
+  }
+}
+
 const onCardClick = (card: { bmkId: string | null; chartType: string | null }, event: MouseEvent): void => {
   if (!card.bmkId) return
   const target = event.target as HTMLElement | null
@@ -475,7 +520,21 @@ const openMaterialize = (source: BookmarkDisplay): void => {
  * `summaryBusy` feeds the panel's existing `chartBusy` prop, which is what
  * disables its actions while the request is in flight.
  */
-const openFilterSummary = async (card: {
+/**
+ * Showing a summary rewrites store state the cohort builder owns, so the open
+ * is guarded and the close puts the previous exploration back. See
+ * `closeFilterSummary`.
+ */
+const openFilterSummary = (card: { source: BookmarkDisplay; name: string }): void => {
+  // The builder and this page share every Vuex module, so loading another
+  // exploration discards whatever is being edited there. `loadExploration` in
+  // PatientAnalytics guards the same hazard the same way.
+  unsavedChanges.guard(() => {
+    void loadFilterSummary(card)
+  })
+}
+
+const loadFilterSummary = async (card: {
   source: BookmarkDisplay
   name: string
 }): Promise<void> => {
@@ -490,6 +549,10 @@ const openFilterSummary = async (card: {
     notifications.setToastMessage({ text: getText('MRI_PA_FILTER_SUMMARY_UNAVAILABLE') })
     return
   }
+
+  // Remember what the builder had, before we overwrite it.
+  const active = store.getters.getActiveBookmark
+  restoreTarget.value = active?.bmkId ? { bmkId: active.bmkId, chartType: active.chartType } : null
 
   filterSummaryName.value = card.name
   filterSummaryOpen.value = true

@@ -352,6 +352,12 @@ export default {
   min-height: 0;
   overflow: hidden;
   background: var(--d2e-color-white);
+  // The deleted filterCardSummary.scss gave the panel a left-edge shadow. At
+  // the cohort-builder mount its flex sibling is `.chartController`, whose
+  // surface is also white, so without this the panel is white on white with no
+  // seam. The exploration drawer supplies its own shadow, where this is
+  // harmless because the panel fills the wrapper.
+  box-shadow: var(--d2e-elevation-card);
   font-family: var(--d2e-font-family);
 
   &__header {
