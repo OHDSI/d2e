@@ -29,6 +29,7 @@ import { tabNames } from "../../utils/constants";
 import SearchBar from "../../../components/SearchBar/SearchBar";
 import {
   mapd2eWebapiConcept,
+  mapTerminologyConcept,
   combinedConceptAndConceptRecordCounts,
 } from "../../utils/d2eWebapiMappers";
 import { i18nKeys } from "../../../context/state";
@@ -238,6 +239,35 @@ const TerminologyList: FC<TerminologyListProps> = ({
     setPage(0);
   }, []);
 
+// Only `webapi` datasets are registered as an OHDSI WebAPI source, so only they
+// can answer /d2e-webapi/vocabulary/:datasetId/search. Other dataset types
+// (omop, hana__omop, ...) have no source row, so the request never resolves and
+// the search silently returns nothing -- those fall back to d2e-native search.
+// Cached per dataset id: a dataset's type cannot change within a session.
+const webapiDatasetCache = new Map<string, boolean>();
+
+const isWebapiDataset = async (datasetId: string): Promise<boolean> => {
+  const cached = webapiDatasetCache.get(datasetId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  try {
+    const dataset = await api.portal.getDataset(datasetId);
+    const isWebapi = dataset?.type === "webapi";
+    webapiDatasetCache.set(datasetId, isWebapi);
+    return isWebapi;
+  } catch (e) {
+    // Cannot tell: keep the long-standing WebAPI behaviour rather than switch
+    // search backends because of a transient portal error. Not cached, so the
+    // next search retries the lookup.
+    console.warn(
+      "Could not resolve dataset type; defaulting to WebAPI concept search",
+      e
+    );
+    return true;
+  }
+};
+
   const fetchData = useCallback(async () => {
     // Abort any in-flight request and set up new abort controller
     if (fetchDataAbortControllerRef.current) {
@@ -299,6 +329,9 @@ const TerminologyList: FC<TerminologyListProps> = ({
       ) {
         // SEARCH tab - fetch terminologies from API
         let concepts, conceptsCount;
+        // Set only on the d2e-native path; already Concept-shaped.
+        let nativeConcepts: FhirValueSetExpansionContainsWithExt[] | null =
+          null;
         if (getPortalAPI()?.REACT_APP_USE_PUBLIC_WEBAPI_PROXY === "true") {
           [concepts, conceptsCount] =
             await api.publicWebapiProxyAPI.getTerminologies(
@@ -313,7 +346,7 @@ const TerminologyList: FC<TerminologyListProps> = ({
               validityFilters,
               controller.signal,
             );
-        } else {
+        } else if (await isWebapiDataset(datasetId)) {
           [concepts, conceptsCount] = await Promise.all([
             api.d2eWebapi.getTerminologies(
               page,
@@ -340,25 +373,49 @@ const TerminologyList: FC<TerminologyListProps> = ({
               controller.signal,
             ),
           ]);
+        } else {
+          // d2e-native search: the FHIR $expand response carries both the page
+          // of concepts and the total, so no separate count call is needed.
+          // It accepts no sortBy/sortOrder -- server-side sorting is WebAPI only.
+          const valueSet = await terminologyAPI.getTerminologies(
+            page,
+            rowsPerPage,
+            datasetId,
+            searchText.toLowerCase(),
+            conceptClassIdFilters,
+            domainIdFilters,
+            vocabularyIdFilters,
+            standardConceptFilters,
+            validityFilters
+          );
+          nativeConcepts = valueSet?.expansion?.contains ?? [];
+          concepts = [];
+          conceptsCount = valueSet?.expansion?.total ?? nativeConcepts.length;
         }
 
         // Transform concepts and fetch record counts only when enabled.
         let mappedConcepts;
-        const shouldFetchConceptRecordCounts =
-          showConceptRecordCounts && !isAtlas && concepts.length > 0;
-        if (shouldFetchConceptRecordCounts) {
-          const conceptRecordCounts =
-            await api.d2eWebapi.getConceptRecordCounts(
-              datasetId,
-              concepts.map((e) => e.CONCEPT_ID),
-              controller.signal,
-            );
-          mappedConcepts = combinedConceptAndConceptRecordCounts(
-            concepts.map(mapd2eWebapiConcept),
-            conceptRecordCounts,
-          );
+        if (nativeConcepts) {
+          // Record counts come from WebAPI, which this dataset has no source
+          // for, so the count columns stay empty on the native path.
+          mappedConcepts = nativeConcepts.map(mapTerminologyConcept);
         } else {
-          mappedConcepts = concepts.map(mapd2eWebapiConcept);
+          const shouldFetchConceptRecordCounts =
+            showConceptRecordCounts && !isAtlas && concepts.length > 0;
+          if (shouldFetchConceptRecordCounts) {
+            const conceptRecordCounts =
+              await api.d2eWebapi.getConceptRecordCounts(
+                datasetId,
+                concepts.map((e) => e.CONCEPT_ID),
+                controller.signal,
+              );
+            mappedConcepts = combinedConceptAndConceptRecordCounts(
+              concepts.map(mapd2eWebapiConcept),
+              conceptRecordCounts,
+            );
+          } else {
+            mappedConcepts = concepts.map(mapd2eWebapiConcept);
+          }
         }
 
         // Build response and normalize field names
