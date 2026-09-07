@@ -388,6 +388,14 @@ export default {
     padding: 16px;
   }
 
+  // The list is structural, not a bulleted list; the frame shows no marker.
+  // style.scss no longer resets it now that filterCardSummary.scss is gone.
+  ul.bookmark-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
   ul.bookmark-list li {
     width: 100%;
   }

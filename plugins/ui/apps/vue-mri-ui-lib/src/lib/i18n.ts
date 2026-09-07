@@ -371,7 +371,7 @@ export const i18n = {
     MRI_PA_CHART_NO_AXIS_SELECTED:
       'No axis is selected, so there is nothing to aggregate. Choose at least one attribute for an axis.',
     MRI_PA_MENUITEM_INTERACTIONS_GENERAL: 'Basic Data',
-    MRI_PA_TITLE_FILTER_SUMMARY: 'Filter Summary',
+    MRI_PA_TITLE_FILTER_SUMMARY: 'Filter summary',
     MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: 'Filter summary',
     MRI_PA_TITLE_SAVED_BOOKMARKS: 'Saved Filters',
     MRI_PA_TITLE_SAVE_BOOKMARK: 'Save Current Filters',
