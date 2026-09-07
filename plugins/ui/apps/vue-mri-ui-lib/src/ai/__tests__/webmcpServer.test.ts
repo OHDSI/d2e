@@ -214,6 +214,9 @@ describe('createPaTools', () => {
         appliedConstraints: [],
         // No bool-container tree on this minimal store, so nothing to group.
         cardGroups: [],
+        // Reported on every patch: an empty list is the caller's signal that the
+        // cohort carries no timing at all.
+        timeRelations: [],
       })
     })
 

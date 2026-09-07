@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import { applyCohortPatch, type PatchOp } from '../cohortPatch'
+import AdvancedTimeFilterModel from '../../lib/models/AdvancedTimeFilterModel'
 
 // A store stand-in that models just enough of the query module for the applier:
 // filter cards, constraints, the bool-container tree that carries the AND/OR
@@ -16,15 +17,32 @@ const makeStore = ({
   // attributePath -> config `domainFilter`, the OMOP domain a conceptSet
   // attribute's concepts must come from. Only set in the tests that exercise it.
   domains,
+  // The dataset's panelOptions.cohortEntryExit flag. Left undefined for the
+  // no-config-loaded case; every seeded D2E config ships it false.
+  cohortEntryExit,
 }: {
   existingCards?: string[]
   existingGroups?: string[][]
   axes?: any[]
   domains?: Record<string, string>
+  cohortEntryExit?: boolean
 } = {}) => {
-  const cards: Record<string, { props: { excludeFilter: boolean; name?: string } }> = {}
+  // Mirror FilterCardModel.buildLayout: every card carries an (initially empty)
+  // advanced-time layout, which is where temporal relations live.
+  const makeCard = (id: string, excludeFilter = false) => ({
+    props: {
+      excludeFilter,
+      name: id,
+      // FilterCardModel's defaults for the props the Entry/Exit menu reads.
+      inactive: false,
+      isEntry: false,
+      isExit: false,
+      layout: { advancedTimeLayout: { props: { timeFilterModel: { timeFilters: [] as any[] } } } },
+    },
+  })
+  const cards: Record<string, ReturnType<typeof makeCard>> = {}
   const groups: string[][] = existingGroups ?? existingCards.map(id => [id])
-  for (const id of groups.flat()) cards[id] = { props: { excludeFilter: false } }
+  for (const id of groups.flat()) cards[id] = makeCard(id)
   const constraints: Record<string, any> = {}
   // Instance numbers continue past whatever is already on the cohort, as they do live.
   let cardSeq = Object.keys(cards).filter(id => id !== 'patient').length
@@ -46,10 +64,12 @@ const makeStore = ({
       getBoolFilterContainer: (id: string) => ({ props: { filterCards: groupOf(id) ?? [] } }),
       getConstraintForAttribute: ({ filterCardId, key }: { filterCardId: string; key: string }) =>
         Object.values(constraints).find((c: any) => c.parent === filterCardId && c.props.attrKey === key) ?? null,
-      ...(domains
+      ...(domains || cohortEntryExit !== undefined
         ? {
             getMriFrontendConfig: {
-              getAttributeByPath: (path: string) => ({ getDomainFilter: () => domains[path] ?? '' }),
+              getAttributeByPath: (path: string) => ({ getDomainFilter: () => domains?.[path] ?? '' }),
+              // Where ChartController.vue reads the Entry/Exit gate from.
+              _internalConfig: { panelOptions: { cohortEntryExit: cohortEntryExit ?? false } },
             },
           }
         : {}),
@@ -73,7 +93,7 @@ const makeStore = ({
         // Mirror BoolFilterContainer.createFilterCard: the Basic Data card keeps its
         // config path as its instance id, interaction cards get an index suffix.
         const id = payload.configPath === 'patient' ? 'patient' : `${payload.configPath}.${++cardSeq}`
-        cards[id] = { props: { excludeFilter: payload.isExclusion ?? false } }
+        cards[id] = makeCard(id, payload.isExclusion ?? false)
         // No container id → a NEW group (AND). With one → join that group (OR).
         const target = payload.boolFilterContainerId ? groupOf(payload.boolFilterContainerId) : undefined
         if (target) {
@@ -147,6 +167,29 @@ const makeStore = ({
       }
       case 'deleteFilterCardConstraint': {
         delete constraints[payload.constraintId]
+        return Promise.resolve(undefined)
+      }
+      // Mirrors FILTERCARD_TOGGLE_IS_ENTRY_EXIT: one card, one role flag.
+      case 'updateCohortEntryExit': {
+        cards[payload.filterCardId].props[payload.key] = payload.toggle
+        return Promise.resolve(undefined)
+      }
+      // Mirrors FILTERCARD_RESET_ALL_ENTRY_EXIT: a null key clears BOTH roles.
+      case 'resetAllFilterCardEntryExit': {
+        for (const card of Object.values(cards)) {
+          if (payload.key) {
+            card.props[payload.key] = false
+          } else {
+            card.props.isEntry = false
+            card.props.isExit = false
+          }
+        }
+        return Promise.resolve(undefined)
+      }
+      // Mirrors ADVANCEDTIME_SET_TIMEFILTER: the array is assigned by reference.
+      case 'updateFilterCardTimeFilter': {
+        cards[payload.filterCardId].props.layout.advancedTimeLayout.props.timeFilterModel.timeFilters =
+          payload.timeFilters
         return Promise.resolve(undefined)
       }
       case 'deleteFilterCard': {
@@ -657,6 +700,107 @@ describe('applyCohortPatch', () => {
     })
   })
 
+  describe('date-range warnings', () => {
+    // A date range is the one constraint the model can fabricate without a lookup,
+    // so it is the one that lands cleanly when nobody asked for it: the reported
+    // symptom was an invented start-date window on the Observation Period card,
+    // added for a prior-observation requirement that belongs in set_time_relation.
+    // The applier cannot know what the user said, so it does not reject — it makes
+    // the range impossible to leave unmentioned.
+    const OBS = 'patient.interactions.obsperiod'
+    const OBS_START = `${OBS}.attributes.startdate`
+
+    it('warns about every date range that landed, naming the window and the alternatives', async () => {
+      const { store } = makeStore({ existingCards: ['patient', `${OBS}.1`] })
+      const res = await applyCohortPatch(store, [
+        {
+          op: 'add_constraint',
+          card: `${OBS}.1`,
+          attributePath: OBS_START,
+          value: { from: '2010-01-01', to: '2015-12-31' },
+        },
+      ])
+      expect(res.applied).toBe(true)
+      expect(res.warnings).toHaveLength(1)
+      const [warning] = res.warnings!
+      // The exact window, so the model cannot report the filter without the dates.
+      expect(warning).toContain('2010-01-01')
+      expect(warning).toContain('2015-12-31')
+      expect(warning).toContain(OBS_START)
+      // And the two ops it should have reached for instead.
+      expect(warning).toContain('set_time_relation')
+      expect(warning).toContain('set_entry_exit')
+      expect(warning).toContain('remove_constraint')
+    })
+
+    it('omits `warnings` entirely when no date range was applied', async () => {
+      // The result is resent on every agent turn, so an always-present empty array
+      // is pure context burn.
+      const DX = 'patient.interactions.conditionoccurrence'
+      const { store } = makeStore({ existingCards: ['patient', `${DX}.1`] })
+      const res = await applyCohortPatch(store, [
+        {
+          op: 'add_constraint',
+          card: `${DX}.1`,
+          attributePath: `${DX}.attributes.conditionconceptset`,
+          value: { conceptSetId: 37 },
+        },
+        { op: 'add_constraint', card: 'patient', attributePath: 'patient.attributes.age', value: 60, operator: '>=' },
+      ])
+      expect(res.applied).toBe(true)
+      expect('warnings' in res).toBe(false)
+    })
+
+    it('quotes the dates the OP asked for, not the shifted Date the store holds', async () => {
+      // updateDateConstraintValue shifts the value by the local timezone offset so
+      // it SERIALISES to the intended calendar day, so formatting the stored Date
+      // back prints the neighbouring day west of UTC. A warning that misquotes the
+      // window is worse than none — and the op's own strings are what the model has
+      // to justify anyway.
+      const { store, constraints } = makeStore({ existingCards: ['patient', `${OBS}.1`] })
+      const res = await applyCohortPatch(store, [
+        {
+          op: 'add_constraint',
+          card: `${OBS}.1`,
+          attributePath: OBS_START,
+          value: { from: '2010-01-01', to: '2015-12-31' },
+        },
+      ])
+      const stored = Object.values(constraints).find((c: any) => c.props.attrKey === 'startdate') as any
+      expect(stored.props.fromDate.value).toBeInstanceOf(Date)
+      expect(res.warnings![0]).toContain('Date range 2010-01-01 → 2015-12-31')
+    })
+
+    it('warns on a scalar date too — it pins both ends of the range to one day', async () => {
+      const { store } = makeStore({ existingCards: ['patient', `${OBS}.1`] })
+      const res = await applyCohortPatch(store, [
+        { op: 'add_constraint', card: `${OBS}.1`, attributePath: OBS_START, value: '2010-06-15' },
+      ])
+      expect(res.warnings).toHaveLength(1)
+      expect(res.warnings![0]).toContain('Date range 2010-06-15 → 2010-06-15')
+    })
+
+    it('warns per date range, so a from/to pair on two cards is two warnings', async () => {
+      const DX = 'patient.interactions.conditionoccurrence'
+      const { store } = makeStore({ existingCards: ['patient', `${OBS}.1`, `${DX}.1`] })
+      const res = await applyCohortPatch(store, [
+        {
+          op: 'add_constraint',
+          card: `${OBS}.1`,
+          attributePath: OBS_START,
+          value: { from: '2010-01-01', to: '2015-12-31' },
+        },
+        {
+          op: 'add_constraint',
+          card: `${DX}.1`,
+          attributePath: `${DX}.attributes.startdate`,
+          value: { from: '2012-01-01', to: '2012-12-31' },
+        },
+      ])
+      expect(res.warnings).toHaveLength(2)
+    })
+  })
+
   describe('removals', () => {
     const DX = 'patient.interactions.conditionoccurrence'
     const DX_SET = `${DX}.attributes.conditionconceptset`
@@ -787,5 +931,551 @@ describe('applyCohortPatch', () => {
     expect(store.dispatch).toHaveBeenCalledWith('releaseFireRequest', undefined)
     // No live refresh on failure.
     expect(store.dispatch).not.toHaveBeenCalledWith('refreshPatientCount', undefined)
+  })
+
+  describe('temporal relations', () => {
+    const DX = 'patient.interactions.conditionoccurrence.1'
+    const RX = 'patient.interactions.drugexposure.1'
+    const timeFiltersOn = (cards: any, id: string) =>
+      cards[id].props.layout.advancedTimeLayout.props.timeFilterModel.timeFilters
+
+    it('writes "within 90 days after" as a 0–90 range, not a bare 90', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+      const result = await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'within', days: 90, direction: 'after' },
+      ])
+
+      expect(timeFiltersOn(cards, RX)).toEqual([
+        {
+          originSelection: 'startdate',
+          targetSelection: 'after_startdate',
+          targetInteraction: DX,
+          // A bare "90" would mean the 90th day EXACTLY (see getRequest) — the
+          // single most likely way to get this wrong.
+          days: '[0-90]',
+        },
+      ])
+      expect(result.timeRelations).toEqual([
+        { card: RX, relativeTo: DX, description: `${RX} starts within 90 days after ${DX} starts` },
+      ])
+    })
+
+    // The point of building the `days` expression in the applier rather than
+    // taking it raw: prove the window the query gets is 0–90, not day 90.
+    it('round-trips through getRequest as a 0–90 day window', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+      await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'within', days: 90, direction: 'after' },
+      ])
+
+      const request = AdvancedTimeFilterModel.getRequest(cards[RX].props.layout.advancedTimeLayout)
+      // `after` negates the day count, so the window is [-90, 0]: the drug starts
+      // between 0 and 90 days after the diagnosis.
+      expect(request).toEqual([
+        {
+          and: [
+            {
+              value: DX,
+              filter: [
+                {
+                  this: 'startdate',
+                  other: 'startdate',
+                  and: [
+                    { op: '<=', value: -0 },
+                    { op: '>=', value: -90 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ])
+    })
+
+    // `within` is the second value nothing stops the model getting wrong (dates
+    // are the first): "the 2nd eGFR >=90 days after the 1st" built as within+90
+    // is the COMPLEMENT of the request, and it computes and renders like a
+    // success. The warning is what makes the bound impossible to leave unsaid.
+    it('warns that a "within" relation is a closed at-most window', async () => {
+      const { store } = makeStore({ existingCards: ['patient', DX, RX] })
+      const result = await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'within', days: 90, direction: 'after' },
+      ])
+
+      expect(result.warnings).toHaveLength(1)
+      expect(result.warnings![0]).toContain('0–90 days')
+      expect(result.warnings![0]).toContain('AT MOST 90 days apart')
+      // Names the op that fixes it, with the day count already filled in.
+      expect(result.warnings![0]).toContain('mode:"at_least", days:90')
+      // The mode was explicit here, so it is not reported as a default.
+      expect(result.warnings![0]).not.toContain('defaulted')
+    })
+
+    it('calls out the defaulted mode when the op omits it', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+      const result = await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, days: 90 },
+      ])
+
+      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '[0-90]' })
+      expect(result.warnings![0]).toContain('defaulted to "within"')
+    })
+
+    // A mode that carries its own bound needs no second-guessing, and a warning
+    // on every relation would train the reader to skip them.
+    it('does not warn for at_least / between / overlaps', async () => {
+      const { store } = makeStore({ existingCards: ['patient', DX, RX] })
+      for (const op of [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'at_least', days: 90 },
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'between', minDays: 30, maxDays: 90 },
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'overlaps' },
+      ] as const) {
+        const result = await applyCohortPatch(store, [op as any])
+        expect(result.warnings).toBeUndefined()
+      }
+    })
+
+    // The clinical shape the warning exists for, end to end: two instances of the
+    // same card, each carrying the threshold, with a floor between them.
+    it('expresses "2 values <60, the 2nd >=90d after the 1st" as at_least between two cards', async () => {
+      const LAB1 = 'patient.interactions.measurement.1'
+      const LAB2 = 'patient.interactions.measurement.2'
+      const { store, cards } = makeStore({ existingCards: ['patient', LAB1, LAB2] })
+      const result = await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: LAB2, relativeTo: LAB1, mode: 'at_least', days: 90, direction: 'after' },
+      ])
+
+      expect(timeFiltersOn(cards, LAB2)[0]).toMatchObject({
+        days: '>=90',
+        targetSelection: 'after_startdate',
+        targetInteraction: LAB1,
+      })
+      expect(result.warnings).toBeUndefined()
+      expect(result.timeRelations).toEqual([
+        { card: LAB2, relativeTo: LAB1, description: `${LAB2} starts at least 90 days after ${LAB1} starts` },
+      ])
+    })
+
+    it('mode "exactly" is a single day, and getIFR keeps it', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+      await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'exactly', days: 30, direction: 'before' },
+      ])
+
+      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '30', targetSelection: 'before_startdate' })
+      const ifr = AdvancedTimeFilterModel.getIFR(cards[RX].props.layout.advancedTimeLayout)
+      expect(ifr.filters).toEqual([
+        { value: DX, this: 'startdate', other: 'startdate', after_before: 'before', operator: '30' },
+      ])
+    })
+
+    it('supports end anchors, at_least/at_most/between and overlaps', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+      await applyCohortPatch(store, [
+        {
+          op: 'set_time_relation',
+          card: RX,
+          relativeTo: DX,
+          mode: 'between',
+          minDays: 30,
+          maxDays: 90,
+          toDate: 'end',
+        },
+      ])
+      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '[30-90]', targetSelection: 'after_enddate' })
+
+      await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'at_least', days: 7, fromDate: 'end' },
+      ])
+      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '>=7', originSelection: 'enddate' })
+
+      await applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'at_most', days: 7 }])
+      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '<=7' })
+
+      await applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'overlaps' }])
+      expect(timeFiltersOn(cards, RX)[0]).toEqual({
+        originSelection: 'overlap',
+        // Never left empty: AdvancedTime.vue resolves this key against its option
+        // list on mount and throws on an unknown one.
+        targetSelection: 'before_startdate',
+        targetInteraction: DX,
+        days: '',
+      })
+    })
+
+    it('rejects a day count that is not a whole number of days', async () => {
+      const { store } = makeStore({ existingCards: ['patient', DX, RX] })
+      await expect(
+        applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, days: 1.5 }])
+      ).rejects.toThrow(/whole number of days/)
+      await expect(
+        applyCohortPatch(store, [
+          { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'between', minDays: 90, maxDays: 30 },
+        ])
+      ).rejects.toThrow(/must not be greater than/)
+    })
+
+    it('refuses to time against an OR group, or against Basic Data / an exclusion card', async () => {
+      const OTHER_DX = 'patient.interactions.conditionoccurrence.2'
+      const { store } = makeStore({ existingGroups: [['patient'], [DX, OTHER_DX], [RX]] })
+
+      // The target is OR-ed with another card: there is no single interaction to
+      // measure the days from.
+      await expect(
+        applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, days: 90 }])
+      ).rejects.toThrow(/cannot time against an OR group/)
+
+      // Both cards in the same group: the cohort only requires that ONE matched.
+      await expect(
+        applyCohortPatch(store, [{ op: 'set_time_relation', card: OTHER_DX, relativeTo: DX, days: 90 }])
+      ).rejects.toThrow(/OR-ed together in the same group/)
+
+      await expect(
+        applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: 'patient', days: 90 }])
+      ).rejects.toThrow(/Basic Data card/)
+
+      await expect(
+        applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: RX, days: 90 }])
+      ).rejects.toThrow(/cannot be timed against itself/)
+    })
+
+    it('rejects a relation on an exclusion card, which the builder never renders', async () => {
+      const { store } = makeStore({ existingCards: ['patient', DX] })
+      await applyCohortPatch(store, [
+        { op: 'add_card', cardConfigPath: 'patient.interactions.drugexposure', exclude: true, ref: 'no_rx' },
+      ])
+      const excluded = 'patient.interactions.drugexposure.2'
+      await expect(
+        applyCohortPatch(store, [{ op: 'set_time_relation', card: excluded, relativeTo: DX, days: 90 }])
+      ).rejects.toThrow(/exclusion card/)
+    })
+
+    it('replaces the relation to the same target and keeps relations to others', async () => {
+      const DEATH = 'patient.interactions.death.1'
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX, DEATH] })
+      await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, days: 90 },
+        { op: 'set_time_relation', card: RX, relativeTo: DEATH, days: 30, direction: 'before' },
+        // Same pair again — a correction, not a second relation.
+        { op: 'set_time_relation', card: RX, relativeTo: DX, days: 180 },
+      ])
+
+      const filters = timeFiltersOn(cards, RX)
+      expect(filters).toHaveLength(2)
+      expect(filters.find((f: any) => f.targetInteraction === DX).days).toBe('[0-180]')
+      expect(filters.find((f: any) => f.targetInteraction === DEATH).days).toBe('[0-30]')
+    })
+
+    it('clears one relation or all of them', async () => {
+      const DEATH = 'patient.interactions.death.1'
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX, DEATH] })
+      await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, days: 90 },
+        { op: 'set_time_relation', card: RX, relativeTo: DEATH, days: 30 },
+      ])
+
+      await applyCohortPatch(store, [{ op: 'clear_time_relation', card: RX, relativeTo: DX }])
+      expect(timeFiltersOn(cards, RX).map((f: any) => f.targetInteraction)).toEqual([DEATH])
+
+      const result = await applyCohortPatch(store, [{ op: 'clear_time_relation', card: RX }])
+      expect(timeFiltersOn(cards, RX)).toEqual([])
+      expect(result.timeRelations).toEqual([])
+    })
+
+    it('restores the previous relation when a later op fails', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+      await applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, days: 90 }])
+
+      await expect(
+        applyCohortPatch(store, [
+          { op: 'set_time_relation', card: RX, relativeTo: DX, days: 7 },
+          { op: 'add_constraint', card: 'ghost', attributePath: 'patient.attributes.age', value: 1 },
+        ])
+      ).rejects.toThrow(/Unknown card/)
+
+      // The 90-day window the user already had is back — not the 7-day one the
+      // failed patch tried to set, and not an empty relation.
+      expect(timeFiltersOn(cards, RX)).toEqual([
+        { originSelection: 'startdate', targetSelection: 'after_startdate', targetInteraction: DX, days: '[0-90]' },
+      ])
+    })
+
+    it('can time a card created earlier in the same patch, by ref', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient'] })
+      const result = await applyCohortPatch(store, [
+        { op: 'add_card', cardConfigPath: 'patient.interactions.conditionoccurrence', ref: 'dx' },
+        { op: 'add_card', cardConfigPath: 'patient.interactions.drugexposure', ref: 'rx' },
+        { op: 'set_time_relation', card: 'rx', relativeTo: 'dx', mode: 'within', days: 90 },
+      ])
+
+      expect(timeFiltersOn(cards, 'patient.interactions.drugexposure.2')[0]).toMatchObject({
+        targetInteraction: 'patient.interactions.conditionoccurrence.1',
+        days: '[0-90]',
+      })
+      expect(result.timeRelations).toHaveLength(1)
+    })
+  })
+
+  // The observation window behind CohortEntryExit.vue's two buttons. Distinct from
+  // the temporal relations above: those constrain the gap BETWEEN interactions,
+  // these re-anchor the window everything is measured over.
+  describe('cohort entry / exit', () => {
+    const DX = 'patient.interactions.conditionoccurrence.1'
+    const RX = 'patient.interactions.drugexposure.1'
+    const supported = (over: Record<string, unknown> = {}) =>
+      makeStore({ existingCards: ['patient', DX, RX], cohortEntryExit: true, ...over })
+
+    it('flags the entry card and reports the window that landed', async () => {
+      const { store, cards } = supported()
+      const result = await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])
+
+      expect(cards[DX].props.isEntry).toBe(true)
+      expect(cards[DX].props.isExit).toBe(false)
+      expect(result.cohortEntryExit).toEqual({
+        supported: true,
+        entry: { filterCardId: DX, name: DX },
+        exit: null,
+      })
+    })
+
+    it('dispatches the reset-then-flag pair the Entry/Exit menu uses', async () => {
+      const { store } = supported()
+      await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'exit' }])
+
+      expect(store.dispatch).toHaveBeenCalledWith('resetAllFilterCardEntryExit', { key: 'isExit' })
+      expect(store.dispatch).toHaveBeenCalledWith('updateCohortEntryExit', {
+        filterCardId: DX,
+        key: 'isExit',
+        toggle: true,
+      })
+    })
+
+    it('sets both ends of the window in one patch', async () => {
+      const { store, cards } = supported()
+      const result = await applyCohortPatch(store, [
+        { op: 'set_entry_exit', card: DX, role: 'entry' },
+        { op: 'set_entry_exit', card: RX, role: 'exit' },
+      ])
+
+      expect(cards[DX].props.isEntry).toBe(true)
+      expect(cards[RX].props.isExit).toBe(true)
+      expect(result.cohortEntryExit).toMatchObject({
+        entry: { filterCardId: DX },
+        exit: { filterCardId: RX },
+      })
+    })
+
+    // Each role is single-valued: the failure this prevents is two cards claiming
+    // "entry", which the query resolves by whichever it happens to walk last.
+    it('moving a role to another card takes it off the first', async () => {
+      const { store, cards } = supported()
+      await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])
+      const result = await applyCohortPatch(store, [{ op: 'set_entry_exit', card: RX, role: 'entry' }])
+
+      expect(cards[DX].props.isEntry).toBe(false)
+      expect(cards[RX].props.isEntry).toBe(true)
+      expect(result.cohortEntryExit).toMatchObject({ entry: { filterCardId: RX } })
+    })
+
+    it('can anchor the window to a card created earlier in the same patch, by ref', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient'], cohortEntryExit: true })
+      await applyCohortPatch(store, [
+        { op: 'add_card', cardConfigPath: 'patient.interactions.conditionoccurrence', ref: 'dx' },
+        { op: 'set_entry_exit', card: 'dx', role: 'entry' },
+      ])
+
+      expect(cards['patient.interactions.conditionoccurrence.1'].props.isEntry).toBe(true)
+    })
+
+    describe('dataset support', () => {
+      // The common case, not an edge case: every seeded D2E config ships the flag
+      // off, and a flag written with it off is ignored by query-gen-svc — so the
+      // cohort would report a window it is not actually measured over.
+      it('refuses to write a flag the query would ignore, naming the config gate', async () => {
+        const { store, cards } = makeStore({ existingCards: ['patient', DX], cohortEntryExit: false })
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])).rejects.toThrow(
+          /does not support cohort entry\/exit.*panelOptions\.cohortEntryExit off/s
+        )
+        expect(cards[DX].props.isEntry).toBe(false)
+      })
+
+      it('fails closed when the frontend config is not loaded yet', async () => {
+        const { store } = makeStore({ existingCards: ['patient', DX] })
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])).rejects.toThrow(
+          /not loaded yet/
+        )
+      })
+
+      it('points at set_time_relation, which does work on such a dataset', async () => {
+        const { store } = makeStore({ existingCards: ['patient', DX], cohortEntryExit: false })
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])).rejects.toThrow(
+          /set_time_relation/
+        )
+      })
+
+      it('reads the gate through getPanelOptions when the config exposes it', async () => {
+        const { store, cards } = makeStore({ existingCards: ['patient', DX] })
+        store.getters.getMriFrontendConfig = { getPanelOptions: (key: string) => key === 'cohortEntryExit' }
+        await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])
+
+        expect(cards[DX].props.isEntry).toBe(true)
+      })
+
+      // getPanelOptions indexes panelOptions unguarded, so a half-loaded config
+      // throws rather than returning undefined.
+      it('falls back to the raw panelOptions read when getPanelOptions throws', async () => {
+        const { store, cards } = makeStore({ existingCards: ['patient', DX], cohortEntryExit: true })
+        store.getters.getMriFrontendConfig.getPanelOptions = () => {
+          throw new TypeError('panelOptions is undefined')
+        }
+        await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])
+
+        expect(cards[DX].props.isEntry).toBe(true)
+      })
+
+      it('omits cohortEntryExit from the result when the dataset has none and nothing is set', async () => {
+        const { store } = makeStore({ existingCards: ['patient', DX], cohortEntryExit: false })
+        const result = await applyCohortPatch(store, [
+          { op: 'add_constraint', card: 'patient', attributePath: 'patient.attributes.age', value: '>=65' },
+        ])
+
+        expect(result.cohortEntryExit).toBeUndefined()
+        expect(result.applied).toBe(true)
+      })
+    })
+
+    // Each rejection mirrors a card the builder's own Entry/Exit menu omits or
+    // greys out — a flag on any of them lands in the store, is dropped by
+    // BMGetChartableCards, and never reaches the query.
+    describe('cards the builder would not offer', () => {
+      it('rejects the Basic Data card — it has no interaction dates', async () => {
+        const { store } = supported()
+        await expect(
+          applyCohortPatch(store, [{ op: 'set_entry_exit', card: 'patient', role: 'entry' }])
+        ).rejects.toThrow(/Basic Data card cannot be the entry or exit event/)
+      })
+
+      it('rejects an exclusion card', async () => {
+        const { store, cards } = supported()
+        cards[RX].props.excludeFilter = true
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: RX, role: 'exit' }])).rejects.toThrow(
+          /exclusion card/
+        )
+      })
+
+      it('rejects an inactive card', async () => {
+        const { store, cards } = supported()
+        cards[RX].props.inactive = true
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: RX, role: 'exit' }])).rejects.toThrow(
+          /inactive/
+        )
+      })
+
+      it('rejects a card that is OR-ed with another, and says how to split it', async () => {
+        const { store } = makeStore({ existingGroups: [['patient'], [DX, RX]], cohortEntryExit: true })
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])).rejects.toThrow(
+          /OR-ed with .*set_card_join/s
+        )
+      })
+
+      it('rejects a card that already holds the other role', async () => {
+        const { store } = supported()
+        await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])
+        await expect(applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'exit' }])).rejects.toThrow(
+          /already the cohort entry event/
+        )
+      })
+
+      it('rejects a role that is neither entry nor exit', async () => {
+        const { store } = supported()
+        await expect(
+          applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'start' } as any])
+        ).rejects.toThrow(/role must be "entry".*or "exit"/)
+      })
+    })
+
+    describe('clear_entry_exit', () => {
+      it('clears one role and leaves the other', async () => {
+        const { store, cards } = supported()
+        await applyCohortPatch(store, [
+          { op: 'set_entry_exit', card: DX, role: 'entry' },
+          { op: 'set_entry_exit', card: RX, role: 'exit' },
+        ])
+        const result = await applyCohortPatch(store, [{ op: 'clear_entry_exit', role: 'entry' }])
+
+        expect(cards[DX].props.isEntry).toBe(false)
+        expect(cards[RX].props.isExit).toBe(true)
+        expect(result.cohortEntryExit).toMatchObject({ entry: null, exit: { filterCardId: RX } })
+      })
+
+      it('clears both roles when no role is given', async () => {
+        const { store, cards } = supported()
+        await applyCohortPatch(store, [
+          { op: 'set_entry_exit', card: DX, role: 'entry' },
+          { op: 'set_entry_exit', card: RX, role: 'exit' },
+        ])
+        const result = await applyCohortPatch(store, [{ op: 'clear_entry_exit' }])
+
+        expect(cards[DX].props.isEntry).toBe(false)
+        expect(cards[RX].props.isExit).toBe(false)
+        expect(store.dispatch).toHaveBeenCalledWith('resetAllFilterCardEntryExit', { key: null })
+        expect(result.cohortEntryExit).toMatchObject({ entry: null, exit: null })
+      })
+
+      // A bookmark saved while the dataset had the feature on still carries the
+      // flags after it is turned off; clearing can only ever remove a window, so
+      // unlike set_entry_exit it is not gated on support.
+      it('clears leftover flags even on a dataset that no longer supports the feature', async () => {
+        const { store, cards } = makeStore({ existingCards: ['patient', DX], cohortEntryExit: false })
+        cards[DX].props.isEntry = true
+
+        const result = await applyCohortPatch(store, [{ op: 'clear_entry_exit' }])
+
+        expect(cards[DX].props.isEntry).toBe(false)
+        // Reported so the caller can see the flag is gone AND that the dataset
+        // could not have honoured it anyway.
+        expect(result.cohortEntryExit).toEqual({ supported: false, entry: null, exit: null })
+      })
+
+      it('is a no-op when the role is already clear', async () => {
+        const { store } = supported()
+        await applyCohortPatch(store, [{ op: 'clear_entry_exit', role: 'entry' }])
+
+        expect(store.dispatch).not.toHaveBeenCalledWith('resetAllFilterCardEntryExit', expect.anything())
+      })
+    })
+
+    describe('rollback', () => {
+      it('puts the previous entry card back when a later op fails', async () => {
+        const { store, cards } = supported()
+        await applyCohortPatch(store, [{ op: 'set_entry_exit', card: DX, role: 'entry' }])
+
+        await expect(
+          applyCohortPatch(store, [
+            { op: 'set_entry_exit', card: RX, role: 'entry' },
+            { op: 'add_constraint', card: 'ghost', attributePath: 'patient.attributes.age', value: 1 },
+          ])
+        ).rejects.toThrow(/Unknown card/)
+
+        // Not merely "RX is no longer the entry": the window the user had is back.
+        expect(cards[DX].props.isEntry).toBe(true)
+        expect(cards[RX].props.isEntry).toBe(false)
+      })
+
+      it('leaves the window empty rather than pointing at a card the failed patch created', async () => {
+        const { store, cards } = makeStore({ existingCards: ['patient'], cohortEntryExit: true })
+
+        await expect(
+          applyCohortPatch(store, [
+            { op: 'add_card', cardConfigPath: 'patient.interactions.conditionoccurrence', ref: 'dx' },
+            { op: 'set_entry_exit', card: 'dx', role: 'entry' },
+            { op: 'add_constraint', card: 'ghost', attributePath: 'patient.attributes.age', value: 1 },
+          ])
+        ).rejects.toThrow(/Unknown card/)
+
+        expect(cards['patient.interactions.conditionoccurrence.1']).toBeUndefined()
+        expect(Object.values(cards).some((c: any) => c.props.isEntry || c.props.isExit)).toBe(false)
+      })
+    })
   })
 })
