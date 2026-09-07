@@ -1,10 +1,10 @@
 name: d2e-services
 description: A generated Helm Chart for deploy/k8s
-version: 0.18.9-beta
-appVersion: "0.18.4-beta"
+version: 0.18.10-beta
+appVersion: "0.18.5-beta"
 apiVersion: v2
 dependencies:
   - name: d2e-core
-    version: 0.18.9
+    version: 0.18.10
 keywords:
   - deploy/k8s
