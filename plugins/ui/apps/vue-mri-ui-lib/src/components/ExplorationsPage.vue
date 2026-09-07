@@ -327,6 +327,8 @@ const filterSummaryOpen = ref(false)
 const summaryBusy = ref(false)
 /** The exploration whose filters the panel is showing, for its header. */
 const filterSummaryName = ref('')
+/** Its bookmark id, so reopening the same one is a no-op. */
+const filterSummaryBmkId = ref<string | null>(null)
 /**
  * A snapshot of the live filter state the panel is about to overwrite, so
  * closing can put it back exactly — including edits that were never saved.
@@ -453,6 +455,7 @@ const cards = computed(() => {
  */
 const closeFilterSummary = async (): Promise<void> => {
   filterSummaryOpen.value = false
+  filterSummaryBmkId.value = null
   const snapshot = restoreTarget.value
   restoreTarget.value = null
   try {
@@ -542,6 +545,12 @@ const openFilterSummary = async (card: {
     return
   }
 
+  // Already showing this exploration: do nothing. Reloading would refire the
+  // query and flash the panel through its loading state to reach the same
+  // result. `PatientAnalytics.loadExploration` guards reopening the active
+  // exploration the same way.
+  if (filterSummaryOpen.value && filterSummaryBmkId.value === bmkId) return
+
   // Snapshot the live state before overwriting it. `getBookmarksData` is built
   // from the current IFR, so this captures unsaved edits too, and it is the
   // same shape `_loadParsedBookmarkToState` consumes. Only take it on the
@@ -553,6 +562,7 @@ const openFilterSummary = async (card: {
   }
 
   filterSummaryName.value = card.name
+  filterSummaryBmkId.value = bmkId
   filterSummaryOpen.value = true
   summaryBusy.value = true
   try {
