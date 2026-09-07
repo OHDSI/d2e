@@ -153,9 +153,28 @@
             </template>
           </v-tooltip>
 
-          <!-- Placeholders, on purpose: data quality is #3119 (not ours), filter
-               summary is #3120 and analyze is #3121. They render so the bar
-               matches the frame, and do nothing yet. -->
+          <v-tooltip
+            location="top"
+            content-class="explorations-tooltip"
+            :text="getText('MRI_PA_EXPLORATIONS_FILTER_SUMMARY')"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps">
+                <D2eIconButton
+                  category="no-stroke"
+                  :aria-label="getText('MRI_PA_EXPLORATIONS_FILTER_SUMMARY')"
+                  :data-testid="`explorations-filter-summary-btn-${card.id}`"
+                  @click="openFilterSummary(card)"
+                >
+                  <ExplorationFilterSummaryIcon />
+                </D2eIconButton>
+              </span>
+            </template>
+          </v-tooltip>
+
+          <!-- Placeholders, on purpose: data quality is #3119 (not ours) and
+               analyze is #3121. They render so the bar matches the frame,
+               and do nothing yet. -->
           <v-tooltip
             v-for="placeholder in ACTION_PLACEHOLDERS"
             :key="placeholder.testid"
@@ -223,6 +242,21 @@
          handler is wired here; adding one doubles the request. -->
     <RenameExplorationDialog v-model="renameOpen" :bookmark-display="actionTarget" />
     <DeleteExplorationDialog v-model="deleteOpen" :bookmark-display="actionTarget" />
+
+    <Transition name="slide-in-right">
+      <div
+        v-if="filterSummaryOpen"
+        class="explorations-page__summary-panel"
+        data-testid="explorations-filter-summary-panel"
+      >
+        <FilterCardSummary
+          :chart-busy="summaryBusy"
+          :loading="summaryBusy"
+          :exploration-name="filterSummaryName"
+          @unloadFilterCardSummaryEv="closeFilterSummary"
+        />
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -231,9 +265,11 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
+import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
+import { chartQueryFor } from './helpers/explorationSqlQuery'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
 import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
 import ExplorationDataQualityIcon from './icons/ExplorationDataQualityIcon.vue'
@@ -246,6 +282,7 @@ import AddCohort from './AddCohort.vue'
 import RenameExplorationDialog from './RenameExplorationDialog.vue'
 import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
 import ExplorationFiltersPanel from './ExplorationFiltersPanel.vue'
+import FilterCardSummary from './FilterCardSummary.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -255,6 +292,7 @@ const emit = defineEmits<{
 const store = useStore()
 const portalContext = usePortalContext()
 const explorations = useExplorationsStore()
+const notifications = useNotificationStore()
 
 // The card's own checkbox and quick-action buttons sit inside the card root, so
 // their clicks bubble up to it. Opening the exploration from those would fight
@@ -268,18 +306,13 @@ const IGNORED_CLICK_TARGETS = [
   '.d2e-exploration-card__lead-row .v-btn',
 ].join(', ')
 
-// #3119 data quality, #3120 filter summary and #3121 analyze are not wired yet.
-// They render so the action bar matches the frame.
+// #3119 data quality and #3121 analyze are not wired yet. They render so the
+// action bar matches the frame. #3120 filter summary is wired below.
 const ACTION_PLACEHOLDERS = [
   {
     icon: ExplorationDataQualityIcon,
     labelKey: 'MRI_PA_EXPLORATIONS_DATA_QUALITY',
     testid: 'explorations-dq-btn',
-  },
-  {
-    icon: ExplorationFilterSummaryIcon,
-    labelKey: 'MRI_PA_EXPLORATIONS_FILTER_SUMMARY',
-    testid: 'explorations-filter-summary-btn',
   },
   { icon: ExplorationAnalyzeIcon, labelKey: 'MRI_PA_EXPLORATIONS_ANALYZE', testid: 'explorations-analyze-btn' },
 ]
@@ -289,6 +322,19 @@ const searchQuery = ref('')
 const sortKey = ref<ExplorationSortKey>('lastUpdated')
 const filters = ref<ExplorationFilters>(emptyFilters())
 const filtersOpen = ref(false)
+const filterSummaryOpen = ref(false)
+/** True while the panel's SQL query is in flight; feeds its `chartBusy` prop. */
+const summaryBusy = ref(false)
+/** The exploration whose filters the panel is showing, for its header. */
+const filterSummaryName = ref('')
+/** Its bookmark id, so reopening the same one is a no-op. */
+const filterSummaryBmkId = ref<string | null>(null)
+/**
+ * A snapshot of the live filter state the panel is about to overwrite, so
+ * closing can put it back exactly — including edits that were never saved.
+ * `null` means there was nothing loaded.
+ */
+const restoreTarget = ref<Record<string, unknown> | null>(null)
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
@@ -397,6 +443,42 @@ const cards = computed(() => {
   })
 })
 
+/**
+ * Close the panel and put the cohort builder's state back.
+ *
+ * `_loadParsedBookmarkToState` is not a read-only probe: it rewrites the IFR,
+ * the axes and the chart type, and the query that follows overwrites the chart
+ * response. None of that is paired with the bookkeeping `loadbookmarkToState`
+ * does, so without this the builder would show this exploration's filters under
+ * whatever name it still had active — and saving there would overwrite that
+ * bookmark with these filters.
+ */
+const closeFilterSummary = async (): Promise<void> => {
+  filterSummaryOpen.value = false
+  filterSummaryBmkId.value = null
+  const snapshot = restoreTarget.value
+  restoreTarget.value = null
+  try {
+    // The response belongs to the exploration we just showed, never to the one
+    // we are restoring; the builder refetches when its chart mounts.
+    await store.dispatch('clearResponse')
+    if (snapshot) {
+      await store.dispatch('_loadParsedBookmarkToState', {
+        parsedBookmark: snapshot,
+        chartType: snapshot.chartType,
+        skipFireRequest: true,
+      })
+    } else {
+      // Nothing was loaded before, so leave the store as the builder expects to
+      // find it. This is what FiltersFooter's own reset does.
+      await store.dispatch('queryReset')
+      await store.dispatch('resetChart')
+    }
+  } catch (error) {
+    console.error('[ExplorationsPage] could not restore the previous filter state', error)
+  }
+}
+
 const onCardClick = (card: { bmkId: string | null; chartType: string | null }, event: MouseEvent): void => {
   if (!card.bmkId) return
   const target = event.target as HTMLElement | null
@@ -417,6 +499,110 @@ const materializeOpen = ref(false)
 const openMaterialize = (source: BookmarkDisplay): void => {
   materializeTarget.value = source
   materializeOpen.value = true
+}
+
+// The card in the grid is a flat view model (see `cards` above), not a
+// BookmarkDisplay — the raw record lives on `card.source`. loadbookmarkToState
+// sets the active bookmark and converts the saved IFR, so FilterCardSummary
+// reads the store exactly as it does in the cohort builder.
+/**
+ * Open the Filter summary panel for a card, and fetch the SQL it needs.
+ *
+ * `loadbookmarkToState` restores the bookmark but deliberately skips the chart
+ * request here: it passes `skipFireRequest: chartIsChanging ||
+ * !isRightPaneMounted`, and the exploration page mounts no right pane. Only a
+ * chart query fills `getResponse().data.sql`, which is what the panel's
+ * Download SQL and Copy SQL actions read, so without firing it ourselves those
+ * two actions would write a 0-byte file and copy an empty string while still
+ * reporting success.
+ *
+ * So we run the same query the chart for this bookmark's type would have run.
+ * `summaryBusy` feeds the panel's existing `chartBusy` prop, which is what
+ * disables its actions while the request is in flight.
+ */
+/**
+ * Showing a summary rewrites store state the cohort builder owns, so the close
+ * puts back a snapshot taken here. See `closeFilterSummary`.
+ *
+ * No unsaved-changes prompt: the snapshot is of the live state, so nothing the
+ * user has done in the builder is lost, and a confirmation dialog for switching
+ * between read-only summaries on this page reads as a bug rather than a
+ * safeguard.
+ */
+const openFilterSummary = async (card: {
+  source: BookmarkDisplay
+  name: string
+}): Promise<void> => {
+  const source = card.source
+  // Only a bookmark id addresses `getBookmarkById`. A cohort-definition or
+  // Atlas id comes from a different table, and the two can collide — the id
+  // the grid builds is namespaced for exactly that reason. Passing one here
+  // either throws, because `getBookmarkById` dereferences the result of a
+  // `.find()` with no guard, or silently renders a different exploration.
+  const bmkId = source.bookmark?.id
+  if (!bmkId) {
+    notifications.setToastMessage({ text: getText('MRI_PA_FILTER_SUMMARY_UNAVAILABLE') })
+    return
+  }
+
+  // Already showing this exploration: do nothing. Reloading would refire the
+  // query and flash the panel through its loading state to reach the same
+  // result. `PatientAnalytics.loadExploration` guards reopening the active
+  // exploration the same way.
+  if (filterSummaryOpen.value && filterSummaryBmkId.value === bmkId) return
+
+  // Snapshot the live state before overwriting it. `getBookmarksData` is built
+  // from the current IFR, so this captures unsaved edits too, and it is the
+  // same shape `_loadParsedBookmarkToState` consumes. Only take it on the
+  // first open, or switching between two summaries would snapshot the previous
+  // summary instead of the builder's own state.
+  if (restoreTarget.value === null && !filterSummaryOpen.value) {
+    const live = store.getters.getBookmarksData
+    restoreTarget.value = live && Object.keys(live).length > 0 ? structuredClone(live) : null
+  }
+
+  filterSummaryName.value = card.name
+  filterSummaryBmkId.value = bmkId
+  filterSummaryOpen.value = true
+  summaryBusy.value = true
+  try {
+    const parsedBookmark = store.getters.getBookmarkById(bmkId)
+    if (!parsedBookmark) throw new Error(`no bookmark for ${bmkId}`)
+    const chartType = source.bookmark?.chartType
+    // NOT `loadbookmarkToState`. That commits SET_ACTIVE_BOOKMARK, and
+    // `PatientAnalytics.vue` watches `getActiveBookmark` to "auto-switch to
+    // cohort view when a bookmark is loaded". Setting it here unmounts this
+    // page mid-click and drops the user in the cohort builder.
+    //
+    // The private action underneath it fills `getBookmarksData`, which is what
+    // the panel and the query both read, and leaves the active bookmark alone.
+    await store.dispatch('_loadParsedBookmarkToState', {
+      parsedBookmark,
+      chartType,
+      // The chart lives on the other page; we fire our own query below.
+      skipFireRequest: true,
+    })
+    // The card's own chart type, never `getActiveChart`. The restore only
+    // calls `setActiveChart` when `chartType` is truthy, so in exactly the
+    // case where the bookmark has none, the getter still holds whatever was
+    // opened before — and a stale `'list'` makes `fireQuery` synthesise
+    // `sql` by joining rows that have none, producing "undefined;\nundefined"
+    // which is non-empty and slips past the emptiness guard.
+    const query = chartQueryFor(chartType, {
+      bookmarksData: store.getters.getBookmarksData,
+      patientListRequest: store.getters.getPLRequest?.({ useLimit: true }),
+      datasetId: store.getters.getSelectedDataset?.id,
+    })
+    if (query) await store.dispatch('fireQuery', query)
+  } catch (error) {
+    // The panel still opens and still shows the filter tree, which reads the
+    // bookmark and not the response. Only the SQL actions are affected, so say
+    // so rather than leaving them to emit nothing.
+    notifications.setToastMessage({ text: getText('MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE') })
+    console.error('[ExplorationsPage] Filter summary query failed', error)
+  } finally {
+    summaryBusy.value = false
+  }
 }
 
 // Mirrors Bookmarks.addCohort: a D2E record materialises its bookmark, an Atlas
@@ -704,6 +890,34 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     row-gap: 40px;
     padding: 24px;
   }
+
+  &__summary-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    background: var(--d2e-color-white);
+    box-shadow: var(--d2e-elevation-card);
+    z-index: 60;
+  }
+}
+
+.slide-in-right-enter-active,
+.slide-in-right-leave-active {
+  transition: transform 0.2s ease;
+}
+
+.slide-in-right-enter-from,
+.slide-in-right-leave-to {
+  transform: translateX(100%);
+}
+
+.slide-in-right-enter-to,
+.slide-in-right-leave-from {
+  transform: translateX(0);
 }
 </style>
 

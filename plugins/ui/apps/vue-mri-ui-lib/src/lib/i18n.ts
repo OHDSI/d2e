@@ -371,8 +371,8 @@ export const i18n = {
     MRI_PA_CHART_NO_AXIS_SELECTED:
       'No axis is selected, so there is nothing to aggregate. Choose at least one attribute for an axis.',
     MRI_PA_MENUITEM_INTERACTIONS_GENERAL: 'Basic Data',
-    MRI_PA_TITLE_FILTER_SUMMARY: 'Filter Summary',
-    MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: 'View Filter Summary',
+    MRI_PA_TITLE_FILTER_SUMMARY: 'Filter summary',
+    MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: 'Filter summary',
     MRI_PA_TITLE_SAVED_BOOKMARKS: 'Saved Filters',
     MRI_PA_TITLE_SAVE_BOOKMARK: 'Save Current Filters',
     MRI_PA_TITLE_SAVE_AND_MATERIALIZE: 'Save and materialize cohort',
@@ -1029,6 +1029,9 @@ export const i18n = {
     MRI_PA_AND: 'AND',
     MRI_PA_OR: 'OR',
     MRI_PA_FILTER_SUMMARY_DESC_LABEL: 'Showing patients with:',
+    MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME: 'Exploration cohort name: ',
+    MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE: 'SQL is not available for this exploration yet.',
+    MRI_PA_FILTER_SUMMARY_UNAVAILABLE: 'A filter summary is only available for a saved exploration.',
     MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL: 'Download SQL',
     MRI_PA_FILTER_SUMMARY_COPY_SQL: 'Copy SQL',
     MRI_PA_FILTER_SUMMARY_SQL_COPIED: 'SQL copied to clipboard',
@@ -1460,7 +1463,8 @@ export const i18n = {
       'Wegen eines internen Fehlers können keine Daten angezeigt werden. Kontaktieren Sie Ihren Systemadministrator.',
     MRI_PA_MENUITEM_INTERACTIONS_GENERAL: 'Grunddaten',
     MRI_PA_TITLE_FILTER_SUMMARY: 'Filterübersicht',
-    MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: 'Filterübersicht anzeigen',
+    // TODO(i18n): de string below needs native review.
+    MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: 'Filterübersicht',
     MRI_PA_TITLE_SAVED_BOOKMARKS: 'Gesicherte Filter',
     MRI_PA_TITLE_SAVE_BOOKMARK: 'Aktuelle Filter sichern',
     MRI_PA_TITLE_SAVE_AND_MATERIALIZE: 'Sichern und Materialisieren',
@@ -2131,6 +2135,12 @@ export const i18n = {
     MRI_PA_AND: 'UND',
     MRI_PA_OR: 'ODER',
     MRI_PA_FILTER_SUMMARY_DESC_LABEL: 'Anzeigen von Patienten mit:',
+    // TODO(i18n): de string below needs native review.
+    MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME: 'Name der Explorationskohorte: ',
+    // TODO(i18n): needs native review.
+    MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE: 'SQL ist für diese Exploration noch nicht verfügbar.',
+    // TODO(i18n): needs native review.
+    MRI_PA_FILTER_SUMMARY_UNAVAILABLE: 'Eine Filterübersicht ist nur für eine gespeicherte Exploration verfügbar.',
     MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL: 'SQL herunterladen',
     MRI_PA_FILTER_SUMMARY_COPY_SQL: 'SQL kopieren',
     MRI_PA_FILTER_SUMMARY_SQL_COPIED: 'SQL wurde in die Zwischenablage kopiert',
@@ -2526,7 +2536,8 @@ export const i18n = {
     MRI_PA_CHART_NO_DATA_DEFAULT_MESSAGE: '由于内部错误，无法显示数据。请联系系统管理员。',
     MRI_PA_MENUITEM_INTERACTIONS_GENERAL: '基本数据',
     MRI_PA_TITLE_FILTER_SUMMARY: '过滤器摘要',
-    MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: '查看过滤器摘要',
+    // TODO(i18n): zh string below needs native review.
+    MRI_PA_TITLE_FILTER_SUMMARY_TOOLTIP: '筛选摘要',
     MRI_PA_TITLE_SAVED_BOOKMARKS: '保存的过滤器',
     MRI_PA_TITLE_SAVE_BOOKMARK: '保存当前过滤器',
     MRI_PA_TITLE_SAVE_AND_MATERIALIZE: '保存并实现',
@@ -3139,6 +3150,12 @@ export const i18n = {
     MRI_PA_AND: '并且',
     MRI_PA_OR: '或',
     MRI_PA_FILTER_SUMMARY_DESC_LABEL: '使用下列方式显示病患：',
+    // TODO(i18n): zh string below needs native review.
+    MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME: '探索队列名称：',
+    // TODO(i18n): needs native review.
+    MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE: '此探索的 SQL 尚不可用。',
+    // TODO(i18n): needs native review.
+    MRI_PA_FILTER_SUMMARY_UNAVAILABLE: '仅已保存的探索才提供筛选摘要。',
     MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL: '下载 SQL',
     MRI_PA_FILTER_SUMMARY_COPY_SQL: '复制 SQL',
     MRI_PA_FILTER_SUMMARY_SQL_COPIED: 'SQL 已复制到剪贴板',
