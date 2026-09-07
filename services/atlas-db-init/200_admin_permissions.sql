@@ -187,9 +187,15 @@ BEGIN
     SELECT id INTO perm_id FROM webapi.sec_permission WHERE value = 'user:*:permissions:get';
     INSERT INTO webapi.sec_role_permission (role_id, permission_id) VALUES (admin_role_id, perm_id) ON CONFLICT DO NOTHING;
 
-    -- Assign admin user to admin role
+    -- Assign admin user to admin role.
+    -- login is the IdP subject for OIDC-provisioned users (WebAPI stores the
+    -- Logto `sub` there and the username in name), so matching login alone
+    -- silently assigns nothing on any OIDC deployment -- the SELECT returns no
+    -- rows and ON CONFLICT DO NOTHING hides it. The login match still covers
+    -- the broadsea-atlasdb users noted above, which are seeded with login 'admin'.
     INSERT INTO webapi.sec_user_role (user_id, role_id)
-    SELECT u.id, admin_role_id FROM webapi.sec_user u WHERE u.login = 'admin'
+    SELECT u.id, admin_role_id FROM webapi.sec_user u
+     WHERE u.login = 'admin' OR u.name = 'admin'
     ON CONFLICT DO NOTHING;
 
     RAISE NOTICE 'Admin permissions setup complete for role_id: %', admin_role_id;

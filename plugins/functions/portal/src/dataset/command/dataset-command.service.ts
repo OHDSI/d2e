@@ -435,6 +435,11 @@ export class DatasetCommandService {
     // Cache/snapshot datasets do NOT create WebAPI sources - they use the source dataset's WebAPI source
     // The TrexSQL cache is created for the source dataset, not for snapshots
 
+    // Captured inside the transaction so the attach after it uses exactly the
+    // value persisted to cache_id, and the source connection the cache reads from.
+    let attachTarget: { cacheId: string | null; databaseCode: string | null } | null =
+      null;
+
     const createSnapshotFn = async (
       entityMgr: EntityManager,
       snapshotDto: IDatasetSnapshotDto,
@@ -524,6 +529,10 @@ export class DatasetCommandService {
         entityMgr,
         this.addOwner(datasetEntity, true),
       );
+      attachTarget = {
+        cacheId: datasetSnapshot.cacheId ?? null,
+        databaseCode: databaseCode ?? null,
+      };
 
       // Copy dataset detail with new dataset name
       const sourceDatasetDetail =
@@ -614,6 +623,21 @@ export class DatasetCommandService {
       createSnapshotFn,
       snapshotDto,
     );
+
+    // A cache dataset owns a catalog named after its OWN id (see resolveCacheId),
+    // and createDataset only ever attaches the *source* row's cache_id — which is
+    // the databaseCode. Nothing else attaches this one, so without this call the
+    // first cache build fails with `Catalog "_<id>" does not exist!` on every
+    // non-HANA source dataset. Best-effort for the same reason as createDataset:
+    // trex re-attaches on restart, so a failure here delays the cache, it does
+    // not corrupt the row that was just committed.
+    if (attachTarget) {
+      const { cacheId, databaseCode } = attachTarget;
+      await this.trexApiService.attach({
+        cacheIds: cacheId ? [cacheId] : [],
+        connectionIds: databaseCode ? [databaseCode] : [],
+      });
+    }
     return result;
   }
 

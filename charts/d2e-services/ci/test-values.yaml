@@ -38,8 +38,8 @@ resources:
 
 config:
   OMOP_RELATIONSHIPS_FOR_DESCENDANTS: "'Maps to','Subsumes'"
-  PLUGINS_API_VERSION: "~0.18.2"
-  PLUGINS_IMAGE_TAG: "0.18.2-beta"
+  PLUGINS_API_VERSION: "~0.18.4"
+  PLUGINS_IMAGE_TAG: "0.18.4-beta"
   PLUGINS_REGISTRY: ""
   PLUGINS_INFORMATION_URL: ""
   PLUGINS_FLOW_CUSTOM_REPO_IMAGE_CONFIG: '{"current": "ghcr.io/ohdsi/d2e", "new": "ghcr.io/ohdsi/d2e"}'
@@ -145,7 +145,7 @@ global:
   storageClassName: standard
   dockerRegistryUrl: "ghcr.io/ohdsi"
   image:
-    tag: "0.18.2-beta"
+    tag: "0.18.4-beta"
   images:
     materializeCohorts: "ghcr.io/ohdsi/d2e-materialize-cohorts"
   config:

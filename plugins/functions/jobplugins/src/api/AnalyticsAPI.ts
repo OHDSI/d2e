@@ -116,8 +116,22 @@ export class AnalyticsSvcAPI {
       const result = await this.channel.get(url, options);
       return result.data;
     } catch (error) {
+      // The endpoint runs `SELECT CDM_VERSION FROM <catalog>.<schema>.CDM_SOURCE`.
+      // cdm_source is optional in the OMOP DDL, so a CDM loaded without it -- or one
+      // whose cache has not finished building -- fails here with a bare 500. Both
+      // callers (DQD and data characterisation) already guard against an empty
+      // version but never reach that check, because this rejects first: the user
+      // was shown "Error creating DQD flow run: Request failed with status 500"
+      // with nothing pointing at the missing table. Keep the original error as the
+      // cause and say what to look at.
       console.error(`Error while getting cdm version: ${error}`);
-      throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Could not determine the CDM version for dataset ${datasetId}. ` +
+          `It is read from the CDM_SOURCE table in the dataset's CDM schema — check that ` +
+          `the table exists and holds a row with cdm_version set, and that the dataset's ` +
+          `cache has finished building. Underlying error: ${detail}`,
+      );
     }
   }
 

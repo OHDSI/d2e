@@ -88,7 +88,19 @@ export default async (req: IMRIRequest, res, next) => {
             ...analyticsCredentials[Object.keys(analyticsCredentials)[0]],
         };
 
-        if (studyAnalyticsCredential.dialect === ANALYTICS_DB_DIALECTS.HANA) {
+        // The first credential is an arbitrary pick, so it may well be one
+        // registered without a schema -- a bare database connection. Uppercasing
+        // it unconditionally threw "Cannot read properties of undefined (reading
+        // 'toUpperCase')", which surfaced as a 500 on
+        // /alpdb/schema/exists and blocked adding any dataset on a HANA
+        // database: that route has no dataset to look up yet, so it always lands
+        // on this default path. The schema is not needed here -- main.ts
+        // re-resolves the credential from the request's databaseCode for that
+        // route, and callers pass schemaName explicitly.
+        if (
+            studyAnalyticsCredential.dialect === ANALYTICS_DB_DIALECTS.HANA &&
+            studyAnalyticsCredential.schema
+        ) {
             studyAnalyticsCredential.schema =
                 studyAnalyticsCredential.schema.toUpperCase();
         }
