@@ -1,5 +1,6 @@
 <template>
-  <v-select
+  <component
+    :is="searchable ? VAutocomplete : VSelect"
     class="d2e-select"
     :class="`d2e-select--${size}`"
     :style="{ '--d2e-select-height': `${sizeSpec.height}px` }"
@@ -16,18 +17,18 @@
     :error-messages="errorMessages"
     :hint="hint"
     :density="size === 'sm' ? 'compact' : 'default'"
-    :menu-props="{ contentClass: 'd2e-select__menu' }"
+    :menu-props="{ contentClass: menuContentClass }"
     v-bind="forwardAttrs"
     @update:model-value="$emit('update:modelValue', $event)"
   >
     <template v-if="prependIcon" #prepend-inner>
       <v-icon :icon="prependIcon" size="24" class="d2e-select__adornment" />
     </template>
-  </v-select>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { VIcon, VSelect } from "vuetify/components";
+import { VAutocomplete, VIcon, VSelect } from "vuetify/components";
 import { computed, useAttrs } from "vue";
 import { SELECT_SIZE_MAP } from "./selectSizes";
 import type { D2eSelectItem, D2eSelectSize } from "./selectSizes";
@@ -44,6 +45,13 @@ interface Props {
   hint?: string;
   /** The leading adornment, e.g. "mdi-account". */
   prependIcon?: string;
+  /**
+   * Let the user type to narrow the options, as a `VAutocomplete`.
+   *
+   * Worth turning on wherever the option list is data-driven and can grow —
+   * a fixed two-item list is faster to click than to type.
+   */
+  searchable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -57,6 +65,7 @@ const props = withDefaults(defineProps<Props>(), {
   errorMessages: undefined,
   hint: undefined,
   prependIcon: undefined,
+  searchable: false,
 });
 
 defineEmits<{
@@ -64,6 +73,16 @@ defineEmits<{
 }>();
 
 const sizeSpec = computed(() => SELECT_SIZE_MAP[props.size]);
+
+// `mergeProps` special-cases `class`, `style` and `on*` only, so a
+// `contentClass` in `menuProps` REPLACES the one the component sets rather
+// than merging with it. Carry Vuetify's own class through by hand, or the
+// menu loses the layout rules that hang off it.
+const menuContentClass = computed(() =>
+  props.searchable
+    ? "v-autocomplete__content d2e-select__menu"
+    : "v-select__content d2e-select__menu",
+);
 
 // `disabled` on an item is a property of the rendered list row, not of the
 // item record, so Vuetify needs it mapped across.
@@ -84,6 +103,7 @@ const forwardAttrs = computed(() => {
     errorMessages: _errorMessages,
     hint: _hint,
     prependIcon: _prependIcon,
+    searchable: _searchable,
     ...rest
   } = attrs as Record<string, unknown>;
   void _modelValue;
@@ -96,6 +116,7 @@ const forwardAttrs = computed(() => {
   void _errorMessages;
   void _hint;
   void _prependIcon;
+  void _searchable;
   return rest;
 });
 </script>
@@ -115,13 +136,37 @@ const forwardAttrs = computed(() => {
     color: var(--d2e-color-neutral-black);
   }
 
+  // Fill the box and let flex centring do the work. With vertical padding the
+  // content sits its own height plus 16px from the top, which reads as text
+  // riding high in the field rather than centred in it.
   :deep(.v-field__input) {
-    min-height: 24px;
-    padding-top: var(--d2e-spacing-s);
-    padding-bottom: var(--d2e-spacing-s);
+    align-items: center;
+    min-height: var(--d2e-select-height);
+    padding-block: 0;
     padding-inline: 0;
     font-size: var(--d2e-font-body1-size);
     font-weight: var(--d2e-font-body1-weight);
+    color: var(--d2e-color-neutral-black);
+  }
+
+  // VSelect takes its <input> out of flex flow — `position: absolute` with
+  // `align-self: flex-start` (VSelect.css:12-20) — so `align-items: center` on
+  // the row cannot reach it and it hangs from the top of the content box. An
+  // absolutely positioned flex child takes its static position from
+  // `align-self`, so centring it there is what actually moves it. VAutocomplete
+  // and VTextField keep their inputs in flow and are unaffected.
+  :deep(.v-field__input > input) {
+    align-self: center;
+  }
+
+  // An <input> does not inherit font, so the UA's 13.33px Arial applied and
+  // the element was 17px tall while its placeholder painted at 16px. The two
+  // then disagreed about where the text baseline sits.
+  :deep(.v-field__input input) {
+    font-family: inherit;
+    font-size: var(--d2e-font-body1-size);
+    font-weight: var(--d2e-font-body1-weight);
+    line-height: normal;
     color: var(--d2e-color-neutral-black);
   }
 
@@ -141,10 +186,11 @@ const forwardAttrs = computed(() => {
     color: var(--d2e-color-neutral-light);
   }
 
-  :deep(.v-field__outline .v-field__outline__notch::before),
-  :deep(.v-field__outline .v-field__outline__notch::after) {
-    border-width: var(--v-field-border-width) 0 0;
-  }
+  // Vuetify already draws the notch's top rule on `::before` and its bottom
+  // rule on `::after`, both from `--v-field-border-width`, so neither needs
+  // restating. An earlier version set BOTH to a top border. Only `::before`
+  // gets Vuetify's `opacity: 0` once the label floats, so the reworked
+  // `::after` survived and drew a line straight through the floating label.
 
   :deep(.v-field--focused .v-field__outline) {
     --v-field-border-width: var(--d2e-border-width-md);
