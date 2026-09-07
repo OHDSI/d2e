@@ -379,13 +379,16 @@ export default {
 .bookmark-content {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 0 16px 16px;
-  font-size: 12px;
+  padding: 0 var(--d2e-spacing-s) var(--d2e-spacing-s);
+  font-size: var(--d2e-font-caption1-size);
 
+  // Figma 1801:213488 — white, 1px Neutral/Lighter, radius 4 (spacing/xxs,
+  // not the 8 used elsewhere in this panel) and 12px padding.
   &__card {
-    border: 1px solid var(--d2e-color-neutral-lighter);
-    border-radius: var(--d2e-radius-md);
-    padding: 16px;
+    background: var(--d2e-color-white);
+    border: var(--d2e-border-width-sm) solid var(--d2e-color-neutral-lighter);
+    border-radius: var(--d2e-radius-sm);
+    padding: var(--d2e-spacing-xs-s);
   }
 
   // The list is structural, not a bulleted list; the frame shows no marker.
@@ -407,29 +410,35 @@ export default {
     color: var(--d2e-color-neutral);
   }
 
+  // Subtitle 2 on Neutral/Black (Figma 1801:213491).
   .bookmark-headelement {
-    font-size: 14px;
-    line-height: 19px;
-    font-weight: 600;
+    font-size: var(--d2e-font-subtitle2-size);
+    font-weight: var(--d2e-font-subtitle2-weight);
+    line-height: var(--d2e-font-subtitle2-line-height);
     color: var(--d2e-color-neutral-black);
   }
 
   .bookmark-filtercard {
+    // 8px between attributes, label stacked above its value
+    // (Figma 1801:213671).
     .bookmark-attribute {
       display: flex;
       flex-direction: column;
-      padding-top: 4px;
+      margin-top: var(--d2e-spacing-xs);
     }
 
+    // Caption 1 on Neutral/Default.
     .bookmark-element {
-      font-size: 12px;
-      font-weight: 400;
+      font-size: var(--d2e-font-caption1-size);
+      font-weight: var(--d2e-font-caption1-weight);
+      line-height: var(--d2e-font-caption1-line-height);
       color: var(--d2e-color-neutral);
     }
 
+    // The value is Bold, not SemiBold, on Primary/Default (Figma 1801:213674).
     .bookmark-constraint {
       color: var(--d2e-color-primary);
-      font-weight: 600;
+      font-weight: 700;
     }
   }
 
