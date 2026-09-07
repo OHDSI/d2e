@@ -5,6 +5,7 @@ import { IAppRequest } from '../types'
 import { createLogger } from '../Logger'
 import { permittedUserCheck } from '../middlewares/permitted-user-check'
 import { LogtoAPI } from '../api'
+import { validatePasswordPolicy } from './password-policy'
 
 @Service()
 export class UserRouter {
@@ -112,6 +113,19 @@ export class UserRouter {
       if (!id) {
         this.logger.warn(`Param 'id' is required`)
         return res.status(400).send({ message: `Param 'id' is required` })
+      }
+
+      if (!password) {
+        this.logger.warn(`Param 'password' is required`)
+        return res.status(400).send({ message: `Param 'password' is required` })
+      }
+
+      const policyResult = await validatePasswordPolicy(this.logtoApi, this.logger, password)
+      if (policyResult.status === 'rejected') {
+        return res.status(400).send({ message: policyResult.message })
+      }
+      if (policyResult.status === 'error') {
+        return next(policyResult.error)
       }
 
       const user = await this.userService.getUser(id)

@@ -1,10 +1,11 @@
 import express, { NextFunction, Request, Response } from 'express'
 import { Service } from 'typedi'
 import { createLogger } from '../Logger'
-import { PortalAPI } from '../api'
+import { LogtoAPI, PortalAPI } from '../api'
 import { ROLES } from '../const'
 import { B2cGroupService, MemberService, UserService } from '../services'
 import { UserActivateRequest, UserAddRequest, UserDeleteRequest } from '../types'
+import { validatePasswordPolicy } from './password-policy'
 
 @Service()
 export class MemberRouter {
@@ -15,26 +16,53 @@ export class MemberRouter {
     private readonly memberService: MemberService,
     private readonly groupService: B2cGroupService,
     private readonly userService: UserService,
-    private readonly portalAPI: PortalAPI
+    private readonly portalAPI: PortalAPI,
+    private readonly logtoAPI: LogtoAPI
   ) {
     this.registerRoutes()
   }
 
   private registerRoutes() {
     this.router.post('/tenant/add', async (req: Request, res: Response, next: NextFunction) => {
-      const { username, password } = req.body || {}
+      const { password } = req.body || {}
       let { tenantId } = req.body || {}
+      const username = typeof req.body?.username === 'string' ? req.body.username.trim() : ''
 
       if (!username) {
         this.logger.warn(`Param 'username' is required`)
         return res.status(400).send({ message: `Param 'username' is required` })
       }
 
-      const usernameRegex = /^\w+$/;
+      if (username.length < 3 || username.length > 32) {
+        this.logger.warn(`Username must be between 3 and 32 characters`)
+        return res.status(400).send({ message: `Username must be between 3 and 32 characters.` })
+      }
 
-      if (!usernameRegex.test(username)) {
-        this.logger.warn(`username should only contain letters, numbers, or underscore.`)
-        return res.status(400).send({ message: `username should only contain letters, numbers, or underscore.` })
+      if (!/^\w+$/.test(username) || /^[0-9]/.test(username)) {
+        this.logger.warn(
+          `username should only contain letters, numbers, or underscore, and must not start with a number`
+        )
+        return res.status(400).send({
+          message: `Username should only contain letters, numbers, or underscore, and must not start with a number.`
+        })
+      }
+
+      if (!/[A-Za-z0-9]/.test(username)) {
+        this.logger.warn(`username cannot consist of underscores only`)
+        return res.status(400).send({ message: `Username cannot consist of underscores only.` })
+      }
+
+      if (typeof password !== 'string' || !password.trim()) {
+        this.logger.warn(`Param 'password' is required`)
+        return res.status(400).send({ message: `Param 'password' is required` })
+      }
+
+      const policyResult = await validatePasswordPolicy(this.logtoAPI, this.logger, password)
+      if (policyResult.status === 'rejected') {
+        return res.status(400).send({ message: policyResult.message })
+      }
+      if (policyResult.status === 'error') {
+        return next(policyResult.error)
       }
 
       const tenants = await this.portalAPI.getTenants()

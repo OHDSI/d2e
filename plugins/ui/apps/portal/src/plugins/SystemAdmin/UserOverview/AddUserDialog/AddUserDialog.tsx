@@ -1,22 +1,16 @@
-import React, { FC, useCallback, useState } from "react";
+import React, { FC, useCallback, useMemo, useState } from "react";
 import FormControl from "@mui/material/FormControl";
 import Divider from "@mui/material/Divider";
 import TextField from "@mui/material/TextField";
 import FormHelperText from "@mui/material/FormHelperText";
-import {
-  Button,
-  Dialog,
-  Feedback,
-  IconButton,
-  Tooltip,
-  VisibilityOffIcon,
-  VisibilityOnIcon,
-} from "@portal/components";
+import { Button, Dialog, Feedback, IconButton, Tooltip, VisibilityOffIcon, VisibilityOnIcon } from "@portal/components";
+import { PasswordRulesChecklist } from "../../../../components";
 import { CloseDialogType } from "../../../../types";
 import { api } from "../../../../axios/api";
 import { generateRandom } from "../../../../utils";
+import { isPasswordValid, validateUsername, PASSWORD_MAX_LENGTH } from "../../../../utils/credential-validation";
 import "./AddUserDialog.scss";
-import { useTranslation } from "../../../../contexts";
+import { useTranslation, useFeedback } from "../../../../contexts";
 
 interface AddUserDialogProps {
   open: boolean;
@@ -28,64 +22,47 @@ interface FormData {
   password: string;
 }
 
-interface FormError {
-  username: {
-    required: boolean;
-    valid: boolean;
-  };
-  password: {
-    required: boolean;
-  };
-}
-
 const EMPTY_FORM_DATA: FormData = { username: "", password: "" };
-
-const EMPTY_FORM_ERROR: FormError = {
-  username: {
-    required: false,
-    valid: false,
-  },
-  password: {
-    required: false,
-  },
-};
 
 const AddUserDialog: FC<AddUserDialogProps> = ({ open, onClose }) => {
   const { getText, i18nKeys } = useTranslation();
+  const { setFeedback: setPageFeedback } = useFeedback();
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM_DATA);
-  const [formError, setFormError] = useState<FormError>(EMPTY_FORM_ERROR);
+  const [showErrors, setShowErrors] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>({});
   const [passwordShown, setPasswordShown] = useState(false);
 
-  const isFormError = useCallback(() => {
-    const { username, password } = formData;
-    let formError: FormError | {} = {};
-    const usernameRegex = /^\w+$/;
+  const usernameError = useMemo(() => validateUsername(formData.username), [formData.username]);
+  const passwordTooLong = formData.password.length > PASSWORD_MAX_LENGTH;
+  const passwordValid = isPasswordValid(formData.password) && !passwordTooLong;
 
-    if (!username) {
-      formError = { ...formError, username: { required: true } };
-    }
+  // Real-time feedback: show username errors as soon as the user types;
+  // "required" errors only after a blocked submit.
+  const usernameErrorVisible =
+    usernameError != null && (showErrors || (formData.username !== "" && usernameError !== "required"));
 
-    if (!usernameRegex.test(username)) {
-      formError = { ...formError, username: { valid: true } };
+  const usernameErrorText = useMemo(() => {
+    switch (usernameError) {
+      case "required":
+        return getText(i18nKeys.ADD_USER_DIALOG__REQUIRED);
+      case "tooShort":
+        return getText(i18nKeys.ADD_USER_DIALOG__USERNAME_MIN_LENGTH);
+      case "tooLong":
+        return getText(i18nKeys.ADD_USER_DIALOG__USERNAME_MAX_LENGTH);
+      case "invalidChars":
+        return getText(i18nKeys.ADD_USER_DIALOG__USERNAME_HELPER);
+      case "noLetterOrNumber":
+        return getText(i18nKeys.ADD_USER_DIALOG__USERNAME_NO_LETTER);
+      default:
+        return "";
     }
-
-    if (!password) {
-      formError = { ...formError, password: { required: true } };
-    }
-
-    if (Object.keys(formError).length > 0) {
-      setFormError({ ...EMPTY_FORM_ERROR, ...(formError as FormError) });
-      return true;
-    }
-    return false;
-  }, [formData]);
+  }, [usernameError, getText, i18nKeys]);
 
   const handleClose = useCallback(
     (type: CloseDialogType) => {
       setFormData(EMPTY_FORM_DATA);
-      setFormError(EMPTY_FORM_ERROR);
+      setShowErrors(false);
       setFeedback({});
       typeof onClose === "function" && onClose(type);
     },
@@ -93,38 +70,42 @@ const AddUserDialog: FC<AddUserDialogProps> = ({ open, onClose }) => {
   );
 
   const handleAdd = useCallback(async () => {
-    if (isFormError()) {
+    if (usernameError != null || !passwordValid) {
+      // Dialog stays open; red inline indicators persist (design requirement).
+      setShowErrors(true);
       return;
     }
 
-    setFormError(EMPTY_FORM_ERROR);
+    const username = formData.username.trim();
 
     try {
       setLoading(true);
-      await api.userMgmt.addUser(formData.username, formData.password);
+      await api.userMgmt.addUser(username, formData.password);
+      setPageFeedback({
+        type: "success",
+        message: getText(i18nKeys.ADD_USER_DIALOG__ADD_SUCCESS, [username]),
+        autoClose: 6000,
+      });
       handleClose("success");
     } catch (err: any) {
-      if (err.data?.message) {
-        setFeedback({ type: "error", message: err.data?.message });
+      const message: string | undefined = err?.data?.message;
+      if (message && message.includes("already exist")) {
+        // D3: user-fixable error — keep the dialog open with an inline banner.
+        setFeedback({ type: "error", message });
       } else {
-        setFeedback({
+        // System/backend error: close the dialog, toast on the Users page (design requirement).
+        setPageFeedback({
           type: "error",
-          message: getText(i18nKeys.ADD_USER_DIALOG__ERROR),
-          description: getText(i18nKeys.ADD_USER_DIALOG__ERROR_DESCRIPTION),
+          message: getText(i18nKeys.ADD_USER_DIALOG__ERROR_TOAST),
+          description: getText(i18nKeys.ADD_USER_DIALOG__ERROR_TOAST_DESCRIPTION),
         });
+        handleClose("cancelled");
       }
       console.error("err", err);
     } finally {
       setLoading(false);
     }
-  }, [
-    formData,
-    isFormError,
-    handleClose,
-    getText,
-    i18nKeys.ADD_USER_DIALOG__ERROR,
-    i18nKeys.ADD_USER_DIALOG__ERROR_DESCRIPTION,
-  ]);
+  }, [formData, usernameError, passwordValid, handleClose, setPageFeedback, getText, i18nKeys]);
 
   const handleTogglePassword = useCallback(() => {
     setPasswordShown((passwordShown) => !passwordShown);
@@ -155,54 +136,57 @@ const AddUserDialog: FC<AddUserDialogProps> = ({ open, onClose }) => {
       <form onSubmit={handleSubmit}>
         <Divider />
         <div className="add-user-dialog__content">
-        <div className="u-padding-vertical--normal">
-          <FormControl fullWidth>
-            <TextField
-              variant="standard"
-              label={getText(i18nKeys.ADD_USER_DIALOG__USERNAME)}
-              value={formData.username}
-              onChange={(event) => setFormData((formData) => ({ ...formData, username: event.target.value }))}
-              helperText={getText(i18nKeys.ADD_USER_DIALOG__USERNAME_HELPER)}
-              error={formError.username.required || formError.username.valid}
-              autoFocus
-            />
-          </FormControl>
-        </div>
-        <div className="u-padding-vertical--normal">
-          <FormControl fullWidth>
-            <div style={{ display: "flex", alignItems: "flex-end" }}>
+          <div className="u-padding-vertical--normal">
+            <FormControl fullWidth>
               <TextField
-                fullWidth
-                type={passwordShown ? "text" : "password"}
                 variant="standard"
-                label={getText(i18nKeys.ADD_USER_DIALOG__PASSWORD)}
-                value={formData.password}
-                onChange={(event) => setFormData((formData) => ({ ...formData, password: event.target.value }))}
-                error={formError.password.required}
-              />
-              <Tooltip
-                title={
-                  passwordShown
-                    ? getText(i18nKeys.ADD_USER_DIALOG__HIDE_PASSWORD)
-                    : getText(i18nKeys.ADD_USER_DIALOG__SHOW_PASSWORD)
+                label={getText(i18nKeys.ADD_USER_DIALOG__USERNAME)}
+                value={formData.username}
+                onChange={(event) => setFormData((formData) => ({ ...formData, username: event.target.value }))}
+                helperText={
+                  usernameErrorVisible ? usernameErrorText : getText(i18nKeys.ADD_USER_DIALOG__USERNAME_HELPER)
                 }
-              >
-                <IconButton
-                  startIcon={passwordShown ? <VisibilityOffIcon /> : <VisibilityOnIcon />}
-                  onClick={handleTogglePassword}
-                />
-              </Tooltip>
-              <Button
-                text={getText(i18nKeys.ADD_USER_DIALOG__GENERATE)}
-                variant="text"
-                onClick={handleGeneratePassword}
+                error={usernameErrorVisible}
+                autoFocus
               />
-            </div>
-          </FormControl>
-          {formError.password.required && (
-            <FormHelperText error={true}>{getText(i18nKeys.ADD_USER_DIALOG__REQUIRED)}</FormHelperText>
-          )}
-        </div>
+            </FormControl>
+          </div>
+          <div className="u-padding-vertical--normal">
+            <FormControl fullWidth>
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <TextField
+                  fullWidth
+                  type={passwordShown ? "text" : "password"}
+                  variant="standard"
+                  label={getText(i18nKeys.ADD_USER_DIALOG__PASSWORD)}
+                  value={formData.password}
+                  onChange={(event) => setFormData((formData) => ({ ...formData, password: event.target.value }))}
+                  error={showErrors && !passwordValid}
+                />
+                <Tooltip
+                  title={
+                    passwordShown
+                      ? getText(i18nKeys.ADD_USER_DIALOG__HIDE_PASSWORD)
+                      : getText(i18nKeys.ADD_USER_DIALOG__SHOW_PASSWORD)
+                  }
+                >
+                  <IconButton
+                    startIcon={passwordShown ? <VisibilityOffIcon /> : <VisibilityOnIcon />}
+                    onClick={handleTogglePassword}
+                  />
+                </Tooltip>
+                <Button
+                  text={getText(i18nKeys.ADD_USER_DIALOG__GENERATE)}
+                  variant="text"
+                  onClick={handleGeneratePassword}
+                />
+              </div>
+            </FormControl>
+            {passwordTooLong && (
+              <FormHelperText error={true}>{getText(i18nKeys.PASSWORD_RULES__MAX_LENGTH)}</FormHelperText>
+            )}
+            <PasswordRulesChecklist password={formData.password} showErrors={showErrors} />
+          </div>
         </div>
         <Divider />
         <div className="button-group-actions">
@@ -213,7 +197,13 @@ const AddUserDialog: FC<AddUserDialogProps> = ({ open, onClose }) => {
             block
             disabled={loading}
           />
-          <Button text={getText(i18nKeys.ADD_USER_DIALOG__ADD)} onClick={handleAdd} block loading={loading} type="submit" />
+          <Button
+            text={getText(i18nKeys.ADD_USER_DIALOG__ADD)}
+            onClick={handleAdd}
+            block
+            loading={loading}
+            type="submit"
+          />
         </div>
       </form>
     </Dialog>

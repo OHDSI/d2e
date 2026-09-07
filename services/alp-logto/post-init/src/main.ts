@@ -16,12 +16,11 @@ async function create(
     if (resp.ok) {
       if (hasResponseBody) {
         let json = await resp.json();
-        console.log(JSON.stringify(json));
         return json;
       }
     } else {
       console.error("Request failed");
-      console.error(resp.statusText, " ", path, " ", JSON.stringify(data));
+      console.error(resp.statusText, " ", path);
       return -1;
     }
   } catch (error) {
@@ -37,19 +36,17 @@ async function update(
 ) {
   try {
     console.log(`Request update ${path}`);
-    console.log(JSON.stringify(data));
     const resp = await logto.patch(path, headers, data);
     console.log(`Responded with ${resp.status}`);
 
     if (resp.ok) {
       if (hasResponseBody) {
         let json = await resp.json();
-        console.log(JSON.stringify(json));
         return json;
       }
     } else {
       console.error("Request failed");
-      console.error(resp.statusText, " ", path, " ", JSON.stringify(data));
+      console.error(resp.statusText, " ", path);
       return -1;
     }
   } catch (error) {
@@ -65,19 +62,17 @@ async function upsert(
 ) {
   try {
     console.log(`Request create/update ${path}`);
-    console.log(JSON.stringify(data));
     const resp = await logto.put(path, headers, data);
     console.log(`Responded with ${resp.status}`);
 
     if (resp.ok) {
       if (hasResponseBody) {
         let json = await resp.json();
-        console.log(JSON.stringify(json));
         return json;
       }
     } else {
       console.error("Request failed");
-      console.error(resp.statusText, " ", path, " ", JSON.stringify(data));
+      console.error(resp.statusText, " ", path);
       return -1;
     }
   } catch (error) {
@@ -498,6 +493,24 @@ button[name="submit"]{ background: #000080 !important; }`,
     unknownSessionRedirectUrl: `https://${process.env.CADDY__D2E__PUBLIC_FQDN}/d2e/portal`,
     termsOfUseUrl: process.env.LOGTO__TERM_OF_USE_URL || "",
     privacyPolicyUrl: process.env.LOGTO__PRIVACY_POLICY_URL || "",
+    // Issue #2713 / Option B: Logto is the single server-side enforcement
+    // point for password rules across all flows (add user, admin change,
+    // self-service change).
+    // D2: characterTypes.min counts categories (lower/upper/digit/symbol);
+    // min 3 is the closest server-side approximation of the UI checklist's
+    // "letter + number + special char" rule.
+    // D6: rejects are all off so the backend never rejects a password the
+    // UI checklist has approved.
+    passwordPolicy: {
+      length: { min: 8, max: 256 }, // D1
+      characterTypes: { min: 3 },
+      rejects: {
+        pwned: false,
+        repetitionAndSequence: false,
+        userInfo: false,
+        words: [] as string[],
+      },
+    },
   };
 
   await update("sign-in-exp", headers, signinExperience);

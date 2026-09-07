@@ -1,4 +1,5 @@
 import React, { FC, useCallback, useEffect, useState } from "react";
+import FormHelperText from "@mui/material/FormHelperText";
 import {
   Button,
   Dialog,
@@ -10,7 +11,9 @@ import {
   VisibilityOffIcon,
   VisibilityOnIcon,
 } from "@portal/components";
+import { PasswordRulesChecklist } from "../../../../components";
 import { generateRandom } from "../../../../utils";
+import { isPasswordValid, PASSWORD_MAX_LENGTH } from "../../../../utils/credential-validation";
 import { api } from "../../../../axios/api";
 import { useFeedback, useTranslation } from "../../../../contexts";
 
@@ -34,12 +37,17 @@ export const ChangeUserPasswordDialog: FC<ChangeUserPasswordDialogProps> = ({ us
   const [loading, setLoading] = useState(false);
   const [passwordShown, setPasswordShown] = useState(false);
   const [dialogFeedback, setDialogFeedback] = useState<Feedback>({});
+  const [showErrors, setShowErrors] = useState(false);
+
+  const passwordTooLong = formData.password.length > PASSWORD_MAX_LENGTH;
+  const passwordValid = isPasswordValid(formData.password) && !passwordTooLong;
 
   useEffect(() => {
     setFormData(EMPTY_FORM_DATA);
     setDialogFeedback({});
     setPasswordShown(false);
     setLoading(false);
+    setShowErrors(false);
   }, [open]);
 
   const handleClose = useCallback(() => {
@@ -59,6 +67,11 @@ export const ChangeUserPasswordDialog: FC<ChangeUserPasswordDialogProps> = ({ us
   const handleUpdate = useCallback(async () => {
     if (!userId) return;
 
+    if (!passwordValid) {
+      setShowErrors(true);
+      return;
+    }
+
     try {
       setLoading(true);
       await api.userMgmt.changeUserPassword(userId, formData.password);
@@ -70,16 +83,21 @@ export const ChangeUserPasswordDialog: FC<ChangeUserPasswordDialogProps> = ({ us
       });
       typeof onClose === "function" && onClose();
     } catch (err: any) {
-      console.log("There is an error in updating user's password", err);
-      setDialogFeedback({
-        type: "error",
-        title: getText(i18nKeys.CHANGE_USER_PASSWORD_DIALOG__ERROR),
-        message: getText(i18nKeys.CHANGE_USER_PASSWORD_DIALOG__ERROR_DESCRIPTION),
-      });
+      if (err?.data?.message) {
+        // Surface the server-side policy rejection returned by UserRouter PUT /:id/password.
+        setDialogFeedback({ type: "error", message: err?.data?.message });
+      } else {
+        console.log("There is an error in updating user's password", err);
+        setDialogFeedback({
+          type: "error",
+          title: getText(i18nKeys.CHANGE_USER_PASSWORD_DIALOG__ERROR),
+          message: getText(i18nKeys.CHANGE_USER_PASSWORD_DIALOG__ERROR_DESCRIPTION),
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, [userId, userName, formData.password, getText, setFeedback, onClose, i18nKeys]);
+  }, [userId, userName, formData.password, passwordValid, getText, setFeedback, onClose, i18nKeys]);
 
   return (
     <Dialog
@@ -118,6 +136,7 @@ export const ChangeUserPasswordDialog: FC<ChangeUserPasswordDialogProps> = ({ us
               label={getText(i18nKeys.CHANGE_USER_PASSWORD_DIALOG__PASSWORD)}
               value={formData.password}
               onChange={(event) => setFormData((formData) => ({ ...formData, password: event.target.value }))}
+              error={showErrors && !passwordValid}
               autoFocus
             />
             <Tooltip
@@ -139,6 +158,10 @@ export const ChangeUserPasswordDialog: FC<ChangeUserPasswordDialogProps> = ({ us
             />
           </div>
         </FormControl>
+        {passwordTooLong && (
+          <FormHelperText error={true}>{getText(i18nKeys.PASSWORD_RULES__MAX_LENGTH)}</FormHelperText>
+        )}
+        <PasswordRulesChecklist password={formData.password} showErrors={showErrors} />
       </div>
     </Dialog>
   );

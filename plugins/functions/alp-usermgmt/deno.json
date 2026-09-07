@@ -88,6 +88,7 @@
     "./src/routes/StudyAccessRequestRouter": "./src/routes/StudyAccessRequestRouter.ts",
     "./src/routes/MemberRouter": "./src/routes/MemberRouter.ts",
     "./src/routes/MeRouter": "./src/routes/MeRouter.ts",
+    "./src/routes/password-policy": "./src/routes/password-policy.ts",
     "./src/routes/DatasetRoleRouter": "./src/routes/DatasetRoleRouter.ts",
     "./src/routes/AlpDataAdminRouter": "./src/routes/AlpDataAdminRouter.ts",
     "./src/routes": "./src/routes/index.ts",

@@ -115,6 +115,30 @@ export class LogtoAPI extends BaseIDPAPI {
     return ((user as unknown as { identities?: Record<string, { userId?: string; details?: object }> }).identities) || {}
   }
 
+  /**
+   * Check a password against the sign-in-experience password policy. The
+   * Management API's user creation endpoint bypasses the policy, so callers
+   * creating users with a password should validate it here first. Returns
+   * `{ accepted: false, rejection }` when the policy rejects the password;
+   * any other failure (Logto unreachable, token error, etc.) is thrown.
+   */
+  async checkPasswordPolicy(password: string): Promise<{ accepted: boolean; rejection?: object }> {
+    this.logger.info('Check password against sign-in experience policy')
+
+    const options = await this.getRequestConfig('all', { resource: env.IDP_ALP_ADMIN_RESOURCE })
+    const url = `${this.baseUrl}/api/sign-in-exp/default/check-password`
+
+    try {
+      await post(url, { password }, options)
+      return { accepted: true }
+    } catch (err: any) {
+      if (err?.response?.status === 400) {
+        return { accepted: false, rejection: err.response.data }
+      }
+      throw err
+    }
+  }
+
   async createUser(username: string, password: string): Promise<ILogtoUserCreated> {
     this.logger.info(`Create user ${username}`)
 

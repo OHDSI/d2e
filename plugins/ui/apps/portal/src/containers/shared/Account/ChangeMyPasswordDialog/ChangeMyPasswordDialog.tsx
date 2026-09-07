@@ -1,4 +1,5 @@
 import React, { FC, useCallback, useEffect, useState } from "react";
+import FormHelperText from "@mui/material/FormHelperText";
 import {
   Button,
   Dialog,
@@ -10,7 +11,9 @@ import {
   VisibilityOffIcon,
   VisibilityOnIcon,
 } from "@portal/components";
+import { PasswordRulesChecklist } from "../../../../components";
 import { generateRandom } from "../../../../utils";
+import { isPasswordValid, PASSWORD_MAX_LENGTH } from "../../../../utils/credential-validation";
 import { useFeedback, useTranslation } from "../../../../contexts";
 import { api } from "../../../../axios/api";
 
@@ -33,12 +36,17 @@ export const ChangeMyPasswordDialog: FC<ChangeMyPasswordDialogProps> = ({ open, 
   const [loading, setLoading] = useState(false);
   const [passwordShown, setPasswordShown] = useState(false);
   const [dialogFeedback, setDialogFeedback] = useState<Feedback>({});
+  const [showErrors, setShowErrors] = useState(false);
+
+  const passwordTooLong = formData.password.length > PASSWORD_MAX_LENGTH;
+  const passwordValid = isPasswordValid(formData.password) && !passwordTooLong;
 
   useEffect(() => {
     setFormData(EMPTY_FORM_DATA);
     setDialogFeedback({});
     setPasswordShown(false);
     setLoading(false);
+    setShowErrors(false);
   }, [open]);
 
   const handleClose = useCallback(() => {
@@ -56,6 +64,11 @@ export const ChangeMyPasswordDialog: FC<ChangeMyPasswordDialogProps> = ({ open, 
   }, []);
 
   const handleUpdate = useCallback(async () => {
+    if (!passwordValid) {
+      setShowErrors(true);
+      return;
+    }
+
     try {
       setLoading(true);
       await api.userMgmt.changeMyPassword(formData.oldPassword, formData.password);
@@ -67,16 +80,22 @@ export const ChangeMyPasswordDialog: FC<ChangeMyPasswordDialogProps> = ({ open, 
       });
       typeof onClose === "function" && onClose();
     } catch (err: any) {
-      console.log("There is an error in updating password", err);
-      setDialogFeedback({
-        type: "error",
-        title: getText(i18nKeys.CHANGE_MY_PASSWORD_DIALOG__PASSWORD_UPDATED_ERROR_MESSAGE),
-        message: getText(i18nKeys.CHANGE_MY_PASSWORD_DIALOG__PASSWORD_UPDATED_ERROR_DESCRIPTION),
-      });
+      const message = err?.data?.message || err?.data?.error_description;
+      if (message) {
+        // Surface the server-side policy rejection returned by MeRouter PUT /password.
+        setDialogFeedback({ type: "error", message });
+      } else {
+        console.log("There is an error in updating password", err);
+        setDialogFeedback({
+          type: "error",
+          title: getText(i18nKeys.CHANGE_MY_PASSWORD_DIALOG__PASSWORD_UPDATED_ERROR_MESSAGE),
+          message: getText(i18nKeys.CHANGE_MY_PASSWORD_DIALOG__PASSWORD_UPDATED_ERROR_DESCRIPTION),
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, [formData.oldPassword, formData.password, getText, setFeedback, onClose, i18nKeys]);
+  }, [formData.oldPassword, formData.password, passwordValid, getText, setFeedback, onClose, i18nKeys]);
 
   return (
     <Dialog
@@ -130,6 +149,7 @@ export const ChangeMyPasswordDialog: FC<ChangeMyPasswordDialogProps> = ({ open, 
               label={getText(i18nKeys.CHANGE_MY_PASSWORD_DIALOG__DIALOG_TEXT_FIELD_LABEL_2)}
               value={formData.password}
               onChange={(event) => setFormData((formData) => ({ ...formData, password: event.target.value }))}
+              error={showErrors && !passwordValid}
             />
             <Tooltip
               title={
@@ -150,6 +170,10 @@ export const ChangeMyPasswordDialog: FC<ChangeMyPasswordDialogProps> = ({ open, 
             />
           </div>
         </FormControl>
+        {passwordTooLong && (
+          <FormHelperText error={true}>{getText(i18nKeys.PASSWORD_RULES__MAX_LENGTH)}</FormHelperText>
+        )}
+        <PasswordRulesChecklist password={formData.password} showErrors={showErrors} />
       </div>
     </Dialog>
   );

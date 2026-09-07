@@ -1,3 +1,5 @@
+import { isPasswordValid, PASSWORD_MIN_LENGTH } from "./credential-validation";
+
 export const isDev = process.env["NODE_ENV"] === "development";
 
 export const formatNumber = (value: number | string | null | undefined): string => {
@@ -76,16 +78,29 @@ const getRandomByte = () => {
 };
 
 export const generateRandom = (length: number) => {
+  // Clamp up to the min-length rule: below it, isPasswordValid can never pass
+  // and the retry loop below would spin forever.
+  const effectiveLength = Math.max(length, PASSWORD_MIN_LENGTH);
   const pattern = /[a-zA-Z0-9_\-\+\.]/;
-  return Array.from({ length }, () => {
-    let result;
-    while (true) {
-      result = String.fromCharCode(getRandomByte());
-      if (pattern.test(result)) {
-        return result;
+  const generate = () =>
+    Array.from({ length: effectiveLength }, () => {
+      let result;
+      while (true) {
+        result = String.fromCharCode(getRandomByte());
+        if (pattern.test(result)) {
+          return result;
+        }
       }
-    }
-  }).join("");
+    }).join("");
+
+  // Retry until the password satisfies the checklist rules (letter, number,
+  // special char, min length) so the Generate button never produces a value
+  // the Add/Update buttons would reject. Expected retries: ~2.
+  let candidate = generate();
+  while (!isPasswordValid(candidate)) {
+    candidate = generate();
+  }
+  return candidate;
 };
 
 export const isValidJson = (json: string) => {
