@@ -340,6 +340,13 @@ const anchorField = (anchor: TimeAnchor): 'startdate' | 'enddate' => (anchor ===
  *   ">=n"   -> diff >= n           "<=n" -> diff <= n
  * `within` is a RANGE from zero, which is why it cannot be expressed as the
  * bare number a caller would naturally reach for.
+ *
+ * `at_most` deliberately emits the same `[0-n]` as `within` rather than the
+ * `<=n` it reads like. A single `<=n` is ONE inequality, and getRequest flips it
+ * to `>=-n` for an "after" relation — a bound on one side of the anchor only, so
+ * "at most 7 days after" also matched every patient whose card came BEFORE the
+ * target, by any amount. Both modes name a direction and a ceiling, so both need
+ * the window closed at zero. Only `at_least` is genuinely one-sided.
  */
 function buildDaysExpression(op: SetTimeRelationOp, mode: TimeRelationMode): string {
   const whole = (label: string, n: unknown): number => {
@@ -352,13 +359,12 @@ function buildDaysExpression(op: SetTimeRelationOp, mode: TimeRelationMode): str
   }
   switch (mode) {
     case 'within':
+    case 'at_most':
       return `[0-${whole('days', op.days)}]`
     case 'exactly':
       return `${whole('days', op.days)}`
     case 'at_least':
       return `>=${whole('days', op.days)}`
-    case 'at_most':
-      return `<=${whole('days', op.days)}`
     case 'between': {
       const min = whole('minDays', op.minDays)
       const max = whole('maxDays', op.maxDays)
@@ -1250,10 +1256,9 @@ async function applyOne(
           `set_time_relation: the relation between "${filterCardId}" and "${targetId}" did not land on the card.`
         )
       }
-      if (mode === 'within') {
-        warnings.push(
-          describeBoundedWindowWarning(store, filterCardId, targetId, op.days as number, modeWasDefaulted)
-        )
+      // Both modes build the same closed 0–N window, so both get it disclosed.
+      if (mode === 'within' || mode === 'at_most') {
+        warnings.push(describeBoundedWindowWarning(store, filterCardId, targetId, op.days as number, modeWasDefaulted))
       }
       return
     }

@@ -548,7 +548,8 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
                     '[0-N], the CLOSED window 0..N, i.e. at most N days apart ("within 90 days" / "in the 90 ' +
                     'days following" / "no later than 90 days"); "at_least" = >=N, a FLOOR with no ceiling ' +
                     '("at least 90 days", "≥90 days", "90 days or more", "no sooner than 90 days", "90 days ' +
-                    'apart", "after 90 days"); "at_most" = <=N; "between" = [minDays-maxDays], a floor AND a ' +
+                    'apart", "after 90 days"); "at_most" = the same closed [0-N] window as "within", spelled the ' +
+                    'way a ceiling is usually said; "between" = [minDays-maxDays], a floor AND a ' +
                     'ceiling; "exactly" = the Nth day ONLY, almost never what a clinical question asks for; ' +
                     '"overlaps" = the two interactions overlap in time (days and direction are ignored). ' +
                     '[0-N] and >=N PARTITION the timeline at N days — no patient satisfies both — so choosing ' +
@@ -938,7 +939,13 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
                   'only runs while the builder is on screen: check it is open (pa_new_cohort / pa_open_cohort), ' +
                   'then call pa_get_cohort_result again.',
               }),
-          ...(chartData?.error
+          // Only once the recompute has SETTLED. The response keeps the previous
+          // query's error until the next one resolves, so on a timeout both this and
+          // the pending branch above are true — and they contradict each other: this
+          // one describes a finished result, `pending` says there is none yet. The
+          // pending guidance is the true one and the one that says what to do next;
+          // the cause is still on `chart.error` either way.
+          ...(settled && chartData?.error
             ? {
                 error: `The last chart query failed, so the count is not a real result: ${chartData.error}`,
               }

@@ -1241,6 +1241,29 @@ describe('createPaTools', () => {
         expect(parsed.currentPatientCount).toBe(4102)
         expect(parsed.error).toContain("PREVIOUS cohort's")
       })
+
+      // A failed query leaves its `error` in the store response, and it survives there
+      // until the NEXT query resolves. So a failure followed by an edit that times out
+      // has both conditions true at once, and the two messages say opposite things:
+      // "the last query failed" points at a settled result, "still computing" says
+      // there is no result yet. Only the second one is true here, and it carries the
+      // retry guidance. The cause stays visible on `chart.error`.
+      it('keeps the pending guidance when the previous response also carried an error', async () => {
+        const store = pendingStore()
+        store.getters.getResponse = () => ({
+          data: { totalPatientCount: 4102, error: 'Request failed with status code 500' },
+        })
+
+        const result = byName(createPaTools(store), 'pa_get_cohort_result').execute()
+
+        await vi.advanceTimersByTimeAsync(61_000)
+
+        const parsed = parse(await result)
+        expect(parsed.pending).toBe(true)
+        expect(parsed.error).toContain('still computing')
+        expect(parsed.error).not.toContain('The last chart query failed')
+        expect(parsed.chart.error).toBe('Request failed with status code 500')
+      })
     })
   })
 })
