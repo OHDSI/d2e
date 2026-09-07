@@ -29,7 +29,14 @@ import { convertIFRToExtCohort } from '../utils/IfrToExtCohort'
 
 export default {
   name: 'download-cohort-definition-dialog',
-  props: ['closeEv'],
+  /**
+   * `cohortName` is the exploration the caller is showing. The exploration
+   * page opens this dialog without setting the active bookmark — doing so
+   * switches PatientAnalytics to the cohort builder — so the active bookmark
+   * there is a stale leftover, or absent. Falling back to it named the new
+   * Atlas cohort after whatever was last opened.
+   */
+  props: ['closeEv', 'cohortName'],
   data() {
     const portalContext = usePortalContext()
     return {
@@ -78,7 +85,7 @@ export default {
         const now = +new Date()
         const content = {
           id: 0, // 0 is used by webapi for new cohort definitions
-          name: this.getActiveBookmark?.bookmarkname || 'Atlas Cohort Definition',
+          name: this.cohortName || this.getActiveBookmark?.bookmarkname || 'Atlas Cohort Definition',
           tags: [],
           createdBy: this.portalContext.username,
           expression,

@@ -480,14 +480,23 @@ const openFilterSummary = async (card: {
   name: string
 }): Promise<void> => {
   const source = card.source
-  const bmkId = source.bookmark?.id ?? source.cohortDefinition?.id ?? source.atlasCohortDefinition?.id
-  if (!bmkId) return
+  // Only a bookmark id addresses `getBookmarkById`. A cohort-definition or
+  // Atlas id comes from a different table, and the two can collide — the id
+  // the grid builds is namespaced for exactly that reason. Passing one here
+  // either throws, because `getBookmarkById` dereferences the result of a
+  // `.find()` with no guard, or silently renders a different exploration.
+  const bmkId = source.bookmark?.id
+  if (!bmkId) {
+    notifications.setToastMessage({ text: getText('MRI_PA_FILTER_SUMMARY_UNAVAILABLE') })
+    return
+  }
 
   filterSummaryName.value = card.name
   filterSummaryOpen.value = true
   summaryBusy.value = true
   try {
     const parsedBookmark = store.getters.getBookmarkById(bmkId)
+    if (!parsedBookmark) throw new Error(`no bookmark for ${bmkId}`)
     const chartType = source.bookmark?.chartType
     // NOT `loadbookmarkToState`. That commits SET_ACTIVE_BOOKMARK, and
     // `PatientAnalytics.vue` watches `getActiveBookmark` to "auto-switch to
@@ -502,9 +511,13 @@ const openFilterSummary = async (card: {
       // The chart lives on the other page; we fire our own query below.
       skipFireRequest: true,
     })
-    // Read the chart type back from the store rather than from the card: the
-    // restore normalises it, and a bookmark saved without one defaults there.
-    const query = chartQueryFor(store.getters.getActiveChart || chartType, {
+    // The card's own chart type, never `getActiveChart`. The restore only
+    // calls `setActiveChart` when `chartType` is truthy, so in exactly the
+    // case where the bookmark has none, the getter still holds whatever was
+    // opened before — and a stale `'list'` makes `fireQuery` synthesise
+    // `sql` by joining rows that have none, producing "undefined;\nundefined"
+    // which is non-empty and slips past the emptiness guard.
+    const query = chartQueryFor(chartType, {
       bookmarksData: store.getters.getBookmarksData,
       patientListRequest: store.getters.getPLRequest?.({ useLimit: true }),
       datasetId: store.getters.getSelectedDataset?.id,

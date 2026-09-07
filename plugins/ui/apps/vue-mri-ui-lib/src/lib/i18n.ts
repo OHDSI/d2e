@@ -1031,6 +1031,7 @@ export const i18n = {
     MRI_PA_FILTER_SUMMARY_DESC_LABEL: 'Showing patients with:',
     MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME: 'Exploration cohort name: ',
     MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE: 'SQL is not available for this exploration yet.',
+    MRI_PA_FILTER_SUMMARY_UNAVAILABLE: 'A filter summary is only available for a saved exploration.',
     MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL: 'Download SQL',
     MRI_PA_FILTER_SUMMARY_COPY_SQL: 'Copy SQL',
     MRI_PA_FILTER_SUMMARY_SQL_COPIED: 'SQL copied to clipboard',
@@ -2138,6 +2139,8 @@ export const i18n = {
     MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME: 'Name der Explorationskohorte: ',
     // TODO(i18n): needs native review.
     MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE: 'SQL ist für diese Exploration noch nicht verfügbar.',
+    // TODO(i18n): needs native review.
+    MRI_PA_FILTER_SUMMARY_UNAVAILABLE: 'Eine Filterübersicht ist nur für eine gespeicherte Exploration verfügbar.',
     MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL: 'SQL herunterladen',
     MRI_PA_FILTER_SUMMARY_COPY_SQL: 'SQL kopieren',
     MRI_PA_FILTER_SUMMARY_SQL_COPIED: 'SQL wurde in die Zwischenablage kopiert',
@@ -3151,6 +3154,8 @@ export const i18n = {
     MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME: '探索队列名称：',
     // TODO(i18n): needs native review.
     MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE: '此探索的 SQL 尚不可用。',
+    // TODO(i18n): needs native review.
+    MRI_PA_FILTER_SUMMARY_UNAVAILABLE: '仅已保存的探索才提供筛选摘要。',
     MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL: '下载 SQL',
     MRI_PA_FILTER_SUMMARY_COPY_SQL: '复制 SQL',
     MRI_PA_FILTER_SUMMARY_SQL_COPIED: 'SQL 已复制到剪贴板',

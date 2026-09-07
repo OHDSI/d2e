@@ -104,6 +104,7 @@
     </div>
     <create-cohort-definition-dialog
       v-if="showCohortDefinitionDownloadDialog"
+      :cohort-name="displayName"
       @closeEv="showCohortDefinitionDownloadDialog = false"
     ></create-cohort-definition-dialog>
   </div>
