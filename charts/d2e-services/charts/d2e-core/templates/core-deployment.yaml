@@ -47,6 +47,9 @@ spec:
               - key: TLS__INTERNAL__KEY
                 path: key.pem
                 mode: 0400
+        - name: logto-seed-scripts
+          configMap:
+            name: "{{ .Release.Name }}-{{ .Chart.Name }}-logto-seed-scripts"
       initContainers:
         - name: supabase-storage-pre-init
           env:
@@ -454,7 +457,3 @@ spec:
               protocol: TCP
             - containerPort: 3002
               protocol: TCP
-      volumes:
-        - name: logto-seed-scripts
-          configMap:
-            name: "{{ .Release.Name }}-{{ .Chart.Name }}-logto-seed-scripts"
