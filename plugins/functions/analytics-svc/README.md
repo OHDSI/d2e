@@ -1,3 +1,61 @@
+# Audit logs
+
+Patient-access and CDM SQL audit events use the same top-level JSON envelope.
+Each event is serialized as one JSON line, including SQL containing newlines.
+The existing event details (`eventType`, `actor`, `occurredAt`, patient attributes,
+SQL, request/database metadata, success status, and errors) are retained.
+
+| Field | Patient access | CDM SQL |
+| --- | --- | --- |
+| `timestamp` | UTC ISO timestamp, equal to `occurredAt` | Same |
+| `log-type` | `audit` | `audit` |
+| `audit-log-type` | `access` | `access`, including failed executions |
+| `trace-id` | `x-req-correlation-id`, or a generated UUID shared by events for the request | Same |
+| `service-name` | `analytics-svc` | Same |
+| `service-version` | Version from the deployed functions `package.json` | Same |
+| `req-url` | Original request path, excluding query and fragment | Same |
+| `client-id` | JWT `client_id`, falling back to `azp`, then `appid` | Same |
+| `subject-id` | Existing audit actor ID | Same |
+| `event-type` | `read` | `execute` (the DB method remains in `operation`) |
+| `resource-type` | `patient` | `dataset` |
+| `resource-id` | Patient ID | Dataset ID |
+
+Unavailable request URLs, client IDs, and resource IDs are emitted as JSON `null`.
+`subject-id` preserves the existing actor resolution, which may use an OIDC `oid`
+or a third-party identity instead of the outer JWT `sub`.
+
+The enablement flags and output destinations are unchanged:
+
+- `IS_AUDIT_LOG_ENABLED=true` enables patient-access events.
+- `IS_CDM_SQL_AUDIT_LOG_ENABLED=true` enables CDM SQL events independently.
+- `AUDIT_LOG_TO_CONSOLE=true` selects JSON lines on stdout for log collection.
+- Otherwise, events are appended to `/var/log/d2e/audit/patient-access.ndjson`
+  and `/var/log/d2e/audit/cdm-sql-access.ndjson` respectively.
+
+Run the focused regression tests from `plugins/functions/analytics-svc`:
+
+```sh
+deno test --no-check --allow-env --allow-read --allow-write \
+  src/utils/AuditEventWriter_test.ts src/utils/AuditLogger_test.ts \
+  src/utils/CdmSqlAuditLogger_test.ts src/utils/AuditLogFormat_test.ts
+```
+
+Or run from the repository root in an isolated container. A temporary copy of the
+lockfile allows Deno to prune stale entries without modifying the checkout:
+
+```sh
+docker run --rm --entrypoint sh \
+  -v "$PWD:/workspace" -v d2e-audit-deno-cache:/deno-dir \
+  -w /workspace/plugins/functions/analytics-svc \
+  ghcr.io/ohdsi/d2e-trex:develop-devx -c '
+    cp deno.lock /tmp/audit-deno.lock &&
+    deno test --lock=/tmp/audit-deno.lock --frozen=false --no-check \
+      --allow-env --allow-read --allow-write \
+      src/utils/AuditEventWriter_test.ts src/utils/AuditLogger_test.ts \
+      src/utils/CdmSqlAuditLogger_test.ts src/utils/AuditLogFormat_test.ts
+  '
+```
+
 # Prepare the test schema
 
 For easiness use the Az HANA instance, which doesn't have the SSL enabled.

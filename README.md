@@ -150,6 +150,9 @@ functions/  → Analytical utilities and notebook helpers
 - Extensible plugin system for custom modules  
 - Supports on-premise, hybrid, and cloud deployments  
 
+Patient-access and SQL audit log configuration and JSON fields are documented in
+the [analytics service README](plugins/functions/analytics-svc/README.md#audit-logs).
+
 #### Build / Tests
 | d2e services  | d2e  functions | d2e ui  |
 |:-:|:-:|:-:|

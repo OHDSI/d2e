@@ -1,6 +1,11 @@
 import type { ConnectionInterface } from "../../../_shared/alp-base-utils/src/Connection.ts";
 import { env } from "../env.ts";
 import {
+    createAuditLogEnvelope,
+    getAuditRequestContext,
+    type AuditRequestContext,
+} from "./AuditLogFormat.ts";
+import {
     CDM_SQL_AUDIT_FILE,
     type AuditEventWriter,
     createAuditEventWriter,
@@ -18,6 +23,7 @@ const SQL_METHODS = new Set([
 
 export type CdmSqlAuditContext = {
     actorId: string;
+    auditRequest?: AuditRequestContext;
     datasetId?: string;
     configs?: {
         cohortBuilder?: CdmSqlAuditConfigMetadata;
@@ -234,6 +240,7 @@ export function createCdmSqlAuditContext({
 
     return {
         actorId,
+        auditRequest: getAuditRequestContext(request),
         datasetId,
         configs,
         requestMethod:
@@ -462,10 +469,18 @@ export function renderSqlWithParameters(
 }
 
 export class CdmSqlAuditLogger implements CdmSqlAuditRecorder {
+    private readonly auditRequest: AuditRequestContext;
+
     public constructor(
         private readonly context: CdmSqlAuditContext,
         private readonly writer: AuditEventWriter = createAuditEventWriter()
-    ) {}
+    ) {
+        this.auditRequest = context.auditRequest ?? {
+            traceId: context.correlationId || crypto.randomUUID(),
+            requestUrl: context.requestPath?.split(/[?#]/, 1)[0] || null,
+            clientId: null,
+        };
+    }
 
     public static isEnabled(): boolean {
         return (
@@ -479,10 +494,19 @@ export class CdmSqlAuditLogger implements CdmSqlAuditRecorder {
                 execution.sql,
                 execution.parameters
             );
+            const timestamp = new Date().toISOString();
             const event: Record<string, unknown> = {
+                ...createAuditLogEnvelope({
+                    timestamp,
+                    subjectId: this.context.actorId,
+                    eventType: "execute",
+                    resourceType: "dataset",
+                    resourceId: this.context.datasetId,
+                    context: this.auditRequest,
+                }),
                 schemaVersion: 1,
                 eventType: "cdm.sql",
-                occurredAt: new Date().toISOString(),
+                occurredAt: timestamp,
                 actor: {
                     type: "user",
                     id: this.context.actorId,
