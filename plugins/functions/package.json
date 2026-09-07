@@ -1093,6 +1093,16 @@
           ]
         },
         {
+          "_comment": "Intended for Service-to-service only, this scope exists solely to deny every browser caller, so it must NEVER be added to trex.functions.roles. This is required because of the catch-all PA.svc scope",
+          "path": "^/analytics-svc/api/services/cohort-cache/?$",
+          "scopes": [
+            "PA.cohortCache.write.serviceOnly.neverGrant"
+          ],
+          "httpMethods": [
+            "PUT"
+          ]
+        },
+        {
           "path": "^/analytics-svc/api/services/((?!fhir)|data|datastream|userStudies|values)(.*)",
           "scopes": [
             "PA.svc"
