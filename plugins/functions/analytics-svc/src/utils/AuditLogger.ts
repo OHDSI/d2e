@@ -1,6 +1,7 @@
 import { getUser } from "@alp/alp-base-utils";
 import type { CDMConfigMetaDataType } from "../types";
 import { env } from "../env";
+import { getAuditRequestContext } from "./AuditLogFormat.ts";
 import {
     createPatientAccessAuditTransport,
     type AuditTransport,
@@ -314,7 +315,10 @@ export class AuditLogger {
         return new AuditLogger({
             ...options,
             auditTransport:
-                options.auditTransport ?? createPatientAccessAuditTransport(),
+                options.auditTransport ?? createPatientAccessAuditTransport(
+                    undefined,
+                    getAuditRequestContext(options.request)
+                ),
         });
     }
 
