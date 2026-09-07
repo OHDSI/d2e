@@ -43,8 +43,22 @@ export async function getCDMVersion(req, res, next) {
             cdmVersionValue = cdmVersionValue.toUpperCase().startsWith("V")
                 ? cdmVersionValue.slice(1)
                 : cdmVersionValue;
+        } else if (cdmVersion.length === 0) {
+            // DQD and DC both read the CDM version before they can create a flow
+            // run, so an empty CDM_SOURCE stopped them with an error that named
+            // neither the table nor the schema it had looked in.
+            throw new Error(
+                `No rows in ${schemaName}.CDM_SOURCE for dataset ${datasetId} ` +
+                    `(database '${trexAlias}', dialect '${dialect}'). DQD and data ` +
+                    `characterization read the CDM version from this table; populate ` +
+                    `it in the source schema so every cache build inherits it.`
+            );
         } else {
-            throw new Error("Invalid cdm version value");
+            throw new Error(
+                `${schemaName}.CDM_SOURCE for dataset ${datasetId} has no usable ` +
+                    `'${cdmVersionKey}' value (columns returned: ` +
+                    `${Object.keys(cdmRow).join(", ") || "none"}).`
+            );
         }
         logger.info(
             `CDM version returned for dataset ${datasetId} with schema name ${schemaName} with dialect ${dialect} is ${cdmVersionValue}`

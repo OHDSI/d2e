@@ -522,13 +522,39 @@ class DaoBase(ABC):
         if not database_credentials_list:
             raise ValueError(f"'DATABASE_CREDENTIALS' secret is empty")
 
-        _db = next(filter(lambda x: x["databaseCode"] ==
-                   self.database_code, database_credentials_list), None)
+        _matches = [
+            cred
+            for cred in database_credentials_list
+            if cred["databaseCode"] == self.database_code
+        ]
 
-        if _db is None:
+        if not _matches:
             raise ValueError(
                 f"Database code '{self.database_code}' not found in 'DATABASE_CREDENTIALS' secret"
             )
+
+        if len(_matches) > 1:
+            # Taking the first match silently is how a stray credential row goes
+            # unnoticed: the connection and the authentication both succeed, and
+            # every subsequent query fails with 'insufficient privilege' because
+            # the wrong service user was picked. HANA reports a missing object
+            # and a missing right identically, so the cause is invisible from
+            # the error alone. Refuse to guess.
+            # Usernames only -- the password fields are never read here.
+            _users = sorted(
+                {
+                    str(cred.get("readUser") or cred.get("user") or "unknown")
+                    for cred in _matches
+                }
+            )
+            raise ValueError(
+                f"Database code '{self.database_code}' has {len(_matches)} entries "
+                f"in 'DATABASE_CREDENTIALS' (users: {', '.join(_users)}). Exactly "
+                "one is expected; remove the duplicate registration rather than "
+                "letting the first match win."
+            )
+
+        _db = _matches[0]
 
         database_credentials = DBCredentialsType(**_db)
         match database_credentials.dialect:

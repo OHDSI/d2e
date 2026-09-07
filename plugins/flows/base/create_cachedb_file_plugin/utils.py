@@ -79,6 +79,33 @@ def execute_statement(conn: any, statement: str):
     conn.execute(statement)
 
 
+def checkpoint_database(conn: any, database_name: str, logger=None) -> None:
+    """
+    Flush the DuckDB WAL for ``database_name`` to the database file.
+
+    DuckDB keeps committed writes in the WAL until a checkpoint. A session that
+    wrote them still sees them, but a *different* connection opening the file --
+    which is what DQD and DC do -- resolves against the on-disk state and reports
+    freshly created tables as missing. Checkpointing after the cache write makes
+    the schema visible to every later reader.
+    """
+    statement = f'CHECKPOINT "{database_name}";'
+    try:
+        conn.execute(statement)
+        if logger:
+            logger.info(f"Checkpointed database '{database_name}'.")
+    except Exception as e:
+        # A failed checkpoint costs durability of the just-written schema, not
+        # the data itself, so it must be visible rather than swallowed.
+        if logger:
+            logger.warning(
+                f"CHECKPOINT on '{database_name}' failed: {e}. Newly created "
+                "objects may not be visible to other connections until the next "
+                "checkpoint."
+            )
+        raise
+
+
 def get_document_identifier(table_name: str) -> str:
     """
     Returns the document identifier for a given table name based on the DUCKDB_FULLTEXT_SEARCH_CONFIG
