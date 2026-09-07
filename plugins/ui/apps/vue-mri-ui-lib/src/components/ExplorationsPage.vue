@@ -251,6 +251,7 @@
       >
         <FilterCardSummary
           :chart-busy="summaryBusy"
+          :loading="summaryBusy"
           :exploration-name="filterSummaryName"
           @unloadFilterCardSummaryEv="closeFilterSummary"
         />
@@ -265,7 +266,6 @@ import { useStore } from 'vuex'
 import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
-import { useUnsavedChanges } from '../composables/useUnsavedChanges'
 import { usePortalContext } from '../composables/usePortalContext'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
@@ -293,7 +293,6 @@ const store = useStore()
 const portalContext = usePortalContext()
 const explorations = useExplorationsStore()
 const notifications = useNotificationStore()
-const unsavedChanges = useUnsavedChanges()
 
 // The card's own checkbox and quick-action buttons sit inside the card root, so
 // their clicks bubble up to it. Opening the exploration from those would fight
@@ -329,10 +328,11 @@ const summaryBusy = ref(false)
 /** The exploration whose filters the panel is showing, for its header. */
 const filterSummaryName = ref('')
 /**
- * What the cohort builder had loaded before the panel borrowed the store, so
- * closing can put it back. `null` means it had nothing loaded.
+ * A snapshot of the live filter state the panel is about to overwrite, so
+ * closing can put it back exactly — including edits that were never saved.
+ * `null` means there was nothing loaded.
  */
-const restoreTarget = ref<{ bmkId: string; chartType?: string } | null>(null)
+const restoreTarget = ref<Record<string, unknown> | null>(null)
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
@@ -453,21 +453,18 @@ const cards = computed(() => {
  */
 const closeFilterSummary = async (): Promise<void> => {
   filterSummaryOpen.value = false
-  const target = restoreTarget.value
+  const snapshot = restoreTarget.value
   restoreTarget.value = null
   try {
     // The response belongs to the exploration we just showed, never to the one
     // we are restoring; the builder refetches when its chart mounts.
     await store.dispatch('clearResponse')
-    if (target) {
-      const parsedBookmark = store.getters.getBookmarkById(target.bmkId)
-      if (parsedBookmark) {
-        await store.dispatch('_loadParsedBookmarkToState', {
-          parsedBookmark,
-          chartType: target.chartType,
-          skipFireRequest: true,
-        })
-      }
+    if (snapshot) {
+      await store.dispatch('_loadParsedBookmarkToState', {
+        parsedBookmark: snapshot,
+        chartType: snapshot.chartType,
+        skipFireRequest: true,
+      })
     } else {
       // Nothing was loaded before, so leave the store as the builder expects to
       // find it. This is what FiltersFooter's own reset does.
@@ -521,20 +518,15 @@ const openMaterialize = (source: BookmarkDisplay): void => {
  * disables its actions while the request is in flight.
  */
 /**
- * Showing a summary rewrites store state the cohort builder owns, so the open
- * is guarded and the close puts the previous exploration back. See
- * `closeFilterSummary`.
+ * Showing a summary rewrites store state the cohort builder owns, so the close
+ * puts back a snapshot taken here. See `closeFilterSummary`.
+ *
+ * No unsaved-changes prompt: the snapshot is of the live state, so nothing the
+ * user has done in the builder is lost, and a confirmation dialog for switching
+ * between read-only summaries on this page reads as a bug rather than a
+ * safeguard.
  */
-const openFilterSummary = (card: { source: BookmarkDisplay; name: string }): void => {
-  // The builder and this page share every Vuex module, so loading another
-  // exploration discards whatever is being edited there. `loadExploration` in
-  // PatientAnalytics guards the same hazard the same way.
-  unsavedChanges.guard(() => {
-    void loadFilterSummary(card)
-  })
-}
-
-const loadFilterSummary = async (card: {
+const openFilterSummary = async (card: {
   source: BookmarkDisplay
   name: string
 }): Promise<void> => {
@@ -550,9 +542,15 @@ const loadFilterSummary = async (card: {
     return
   }
 
-  // Remember what the builder had, before we overwrite it.
-  const active = store.getters.getActiveBookmark
-  restoreTarget.value = active?.bmkId ? { bmkId: active.bmkId, chartType: active.chartType } : null
+  // Snapshot the live state before overwriting it. `getBookmarksData` is built
+  // from the current IFR, so this captures unsaved edits too, and it is the
+  // same shape `_loadParsedBookmarkToState` consumes. Only take it on the
+  // first open, or switching between two summaries would snapshot the previous
+  // summary instead of the builder's own state.
+  if (restoreTarget.value === null && !filterSummaryOpen.value) {
+    const live = store.getters.getBookmarksData
+    restoreTarget.value = live && Object.keys(live).length > 0 ? structuredClone(live) : null
+  }
 
   filterSummaryName.value = card.name
   filterSummaryOpen.value = true

@@ -16,7 +16,10 @@
         ><span class="filtercard-summary__subtitle-name">{{ displayName }}</span>
       </p>
     </div>
-    <div class="bookmark-content">
+    <div v-if="loading" class="bookmark-content bookmark-content--loading" data-testid="pa-filter-summary-loading">
+      <v-progress-circular indeterminate color="primary" size="28" />
+    </div>
+    <div v-else class="bookmark-content">
       <div v-if="bookmark && getCardsFormatted.length" class="summary-desc">
         {{ getText('MRI_PA_FILTER_SUMMARY_DESC_LABEL') }}
       </div>
@@ -130,7 +133,7 @@ export default {
    * cohort builder — so the name has to come in from the caller. In the cohort
    * builder the prop is absent and the active bookmark supplies it, unchanged.
    */
-  props: ['unloadBookmarkEv', 'chartBusy', 'explorationName'],
+  props: ['unloadBookmarkEv', 'chartBusy', 'explorationName', 'loading'],
   setup() {
     return {
       notificationStore: useNotificationStore(),
@@ -391,6 +394,14 @@ export default {
   &__subtitle-name {
     font-weight: 600;
   }
+}
+
+// While the caller loads another exploration the store still holds the previous
+// one, so rendering the tree would show the old filters under the new name.
+.bookmark-content--loading {
+  align-items: center;
+  justify-content: center;
+  display: flex;
 }
 
 .bookmark-content {
