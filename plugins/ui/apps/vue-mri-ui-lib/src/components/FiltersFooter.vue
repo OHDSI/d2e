@@ -319,6 +319,9 @@ export default {
         if (this.hasExceededLength) return
 
         this.cohortName = this.cohortName.trim()
+        // getBookmarksData rebuilds its whole object graph on every read (the filter is
+        // deep-cloned, the axis list rebuilt), so this reference is a stable snapshot of
+        // what is being saved. It is both the request payload and the post-save baseline.
         const bookmark = this.getBookmarksData
         const activeBookmark = this.getActiveBookmark
         const isNewBookmark = activeBookmark?.isNew || false
@@ -381,8 +384,13 @@ export default {
 
           await this.fireBookmarkQuery({ method: 'get', params: { cmd: 'loadAll' } })
           const savedBookmark = this.getBookmarkByNameAndUsername(bookmarkName, username)
+          // SET_ACTIVE_BOOKMARK clears the baseline, so it has to be restored after.
           this[types.SET_ACTIVE_BOOKMARK](savedBookmark)
-          this[types.SET_ACTIVE_BOOKMARK_BASELINE](this.getBookmarksData)
+          // The baseline must describe what was persisted, not the live state read
+          // back here: the dialog closed and the toast fired before the reload above,
+          // so any edit the user made in that window would otherwise be folded into
+          // the baseline and the cohort would report itself as unchanged.
+          this[types.SET_ACTIVE_BOOKMARK_BASELINE](bookmark)
         } catch (error) {
           console.error('Error during bookmark save or reload:', error)
         } finally {

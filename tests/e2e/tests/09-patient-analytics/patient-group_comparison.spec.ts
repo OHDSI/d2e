@@ -1,13 +1,5 @@
 import { test, expect } from '../fixtures'
 
-// The cohort builder captures its clean-state baseline after an async reload
-// (FiltersFooter save -> loadAll -> SET_ACTIVE_BOOKMARK_BASELINE), so edits made
-// between the save toast and that snapshot are recorded as the baseline itself.
-// The footer then reports no changes: Save stays disabled, the update never
-// happens and the unsaved-changes prompt never appears. Unrelated to the identity
-// provider; re-enable once the baseline is captured from the saved payload.
-test.fixme(true, 'cohort builder baseline race')
-
 test('pa-compare-cohorts', async ({ page }) => {
   test.slow()
   // Generate unique cohort name to avoid conflicts with other tests

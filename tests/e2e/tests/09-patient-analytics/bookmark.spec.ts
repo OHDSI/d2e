@@ -1,13 +1,7 @@
 import { test, expect } from '../fixtures'
 
 const TEST_NAME = 'patient_analytics_bookmark'
-// The cohort builder captures its clean-state baseline after an async reload
-// (FiltersFooter save -> loadAll -> SET_ACTIVE_BOOKMARK_BASELINE), so edits made
-// between the save toast and that snapshot are recorded as the baseline itself.
-// The footer then reports no changes: Save stays disabled, the update never
-// happens and the unsaved-changes prompt never appears. Unrelated to the identity
-// provider; re-enable once the baseline is captured from the saved payload.
-const SHOULD_SKIP = true
+const SHOULD_SKIP = false
 test.fixme(SHOULD_SKIP, `${TEST_NAME} test is temporarily disabled.`)
 test.describe.configure({ retries: 3 }) // Re-try up to 3 times for flaky tests
 
