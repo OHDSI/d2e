@@ -251,6 +251,18 @@ export default {
         }
       },
     },
+    // The panel is opened from the More menu, but time filters can also arrive
+    // in the store without a click — the AI assistant's set_time_relation patch
+    // op, or a cohort loaded while this card was already mounted. mounted()
+    // above only reads the count once, so without this the relation would be in
+    // the query (getIFR reads the store) while the card still showed nothing.
+    storedTimeFilterCount: {
+      handler(count) {
+        if (count > 0) {
+          this.displayAdvanceTime = true
+        }
+      },
+    },
   },
   computed: {
     ...mapGetters([
@@ -434,6 +446,9 @@ export default {
         excludedOnly: false,
         matchType: 'matchall',
       })
+    },
+    storedTimeFilterCount() {
+      return this.filterCardModel.props.layout?.advancedTimeLayout?.props?.timeFilterModel?.timeFilters?.length ?? 0
     },
   },
   methods: {

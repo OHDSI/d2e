@@ -160,9 +160,13 @@ export default {
           key: tf.targetSelection,
           text: this.targetSelectionOptions.find(t => t.key === tf.targetSelection).text,
         }
+        // getList items are { key, text } (see getFilterCardsByBoolFilterContainerId's
+        // allowedSuccessors) — reading `ti.targetInteraction` here left the key
+        // undefined, so the getList watcher below then reset the dropdown to
+        // "None" on the next card add/remove while the store kept the relation.
         const ti = this.getList.find(t => t.key === tf.targetInteraction)
         const targetInteraction = {
-          key: ti ? ti.targetInteraction : '',
+          key: ti ? ti.key : '',
           text: ti ? ti.text : '',
         }
         return {
