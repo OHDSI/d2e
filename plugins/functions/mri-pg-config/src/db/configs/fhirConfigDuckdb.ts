@@ -818,7 +818,6 @@ export const cdwFHIRConfigDuckdb = {
     settings: {
       fuzziness: 0.7,
       maxResultSize: 5000,
-      sqlReturnOn: false,
       errorDetailsReturnOn: false,
       errorStackTraceReturnOn: false,
       enableFreeText: true,

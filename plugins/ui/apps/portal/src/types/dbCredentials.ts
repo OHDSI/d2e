@@ -26,7 +26,6 @@ export const DB_DIALECTS_KEY_VALUE = [
 
 export enum AUTHENTICATION_MODES {
   PASSWORD = "Password",
-  JWT = "JWT",
 }
 export type AuthenticationMode = `${AUTHENTICATION_MODES}`;
 
@@ -54,7 +53,6 @@ export interface IDatabaseResponse {
   name: string;
   dialect: DbDialect;
   db_extra: any;
-  authentication_mode: AuthenticationMode;
   credentials: IDbCredential[];
   vocab_schemas: string[];
   publications: IDbPublication[];

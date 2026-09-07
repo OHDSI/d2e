@@ -5,6 +5,7 @@ import {
   INewDatabase,
   IDatabaseDetailsUpdate,
   IDatabaseResponse,
+  AUTHENTICATION_MODES,
   SERVICE_SCOPE_TYPES,
   ITestConnection,
   ITestConnectionResult,
@@ -37,7 +38,7 @@ export class DbCredentialsMgr {
       return {
         ...omit(d, "db_extra", "authentication_mode", "vocab_schemas"),
         extra: [{ value: internalValue, serviceScope: SERVICE_SCOPE_TYPES.INTERNAL }],
-        authenticationMode: d.authentication_mode,
+        authenticationMode: AUTHENTICATION_MODES.PASSWORD,
         vocabSchemas: d.vocab_schemas,
         hasLegacyExtra,
       };

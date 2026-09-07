@@ -56,6 +56,7 @@ export const TerminologyWithEventListener = ({
         return;
       }}
       selectedConceptSetId={props?.selectedConceptSetId}
+      selectedConceptSetCanWrite={props?.selectedConceptSetCanWrite}
       mode={props?.mode}
       selectedDatasetId={props?.selectedDatasetId}
       defaultFilters={props?.defaultFilters}

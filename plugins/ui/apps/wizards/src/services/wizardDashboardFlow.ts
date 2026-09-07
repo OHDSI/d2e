@@ -4,6 +4,7 @@ import {
   type CreateWizardBookmarkResult,
   type CreateWizardBookmarkInput,
   type MaterializeWizardBookmarkInput,
+  type MaterializeWizardBookmarkResult,
 } from "../api/wizardCohortApi";
 import type { MriBookmark } from "../utils/mriQuery";
 import { buildMriMaterializationQuery } from "../utils/mriMaterializationQuery";
@@ -31,7 +32,6 @@ export interface RunWizardDashboardFlowInput {
   bookmark: MriBookmark;
   wizardConfig: Record<string, unknown>;
   pendingBookmark?: PendingWizardBookmark | null;
-  materializationSubmittedForBookmarkId?: string | null;
   signal?: AbortSignal;
 }
 
@@ -39,11 +39,10 @@ export interface WizardDashboardFlowDependencies {
   ensureCache: () => Promise<unknown>;
   refreshCache: () => Promise<unknown>;
   createBookmark?: (input: CreateWizardBookmarkInput) => Promise<CreateWizardBookmarkResult>;
-  materializeBookmark?: (input: MaterializeWizardBookmarkInput) => Promise<void>;
+  materializeBookmark?: (input: MaterializeWizardBookmarkInput) => Promise<MaterializeWizardBookmarkResult>;
   now?: () => number;
   onStage?: (stage: FlowStage) => void;
   onBookmarkCreated?: (bookmark: PendingWizardBookmark) => void;
-  onMaterializationSubmitted?: (bookmarkId: string) => void;
 }
 
 export function createWizardBookmarkName(now = Date.now()): string {
@@ -71,7 +70,7 @@ export async function runWizardDashboardFlow(
   const stage = dependencies.onStage ?? (() => undefined);
 
   throwIfAborted(input.signal);
-  stage("awaiting-cache");
+  stage("applying-filters");
   let items = await dependencies.ensureCache();
   throwIfAborted(input.signal);
 
@@ -100,7 +99,6 @@ export async function runWizardDashboardFlow(
   if (!candidate) {
     if (!bookmarkId || !bookmarkName) {
       bookmarkName = createWizardBookmarkName((dependencies.now ?? Date.now)());
-      stage("saving-bookmark");
       const created = await createBookmark({
         datasetId: input.datasetId,
         bookmarkname: bookmarkName,
@@ -120,25 +118,16 @@ export async function runWizardDashboardFlow(
 
   const mriQuery = buildMriMaterializationQuery(input.bookmark, input.datasetId);
   if (cohortDefinitionId === undefined) {
-    if (input.materializationSubmittedForBookmarkId !== bookmarkId) {
-      stage("materializing");
-      await materializeBookmark({
-        datasetId: input.datasetId,
-        bookmarkId,
-        bookmarkName,
-        mriQuery,
-      });
-      dependencies.onMaterializationSubmitted?.(bookmarkId);
-      throwIfAborted(input.signal);
-    }
-    stage("resolving-cohort");
-    const refreshedItems = await dependencies.refreshCache();
+    stage("materializing");
+    const materialized = await materializeBookmark({
+      datasetId: input.datasetId,
+      bookmarkId,
+      bookmarkName,
+      mriQuery,
+    });
     throwIfAborted(input.signal);
-    const refreshedBookmark = findWizardBookmarkById(refreshedItems, scope, bookmarkId);
-    if (refreshedBookmark?.cohortDefinitionId === undefined) {
-      throw new Error("The materialized Wizard cohort was not returned by the bookmark list");
-    }
-    cohortDefinitionId = refreshedBookmark.cohortDefinitionId;
+    cohortDefinitionId = materialized.cohortDefinitionId;
+    void dependencies.refreshCache().catch(() => undefined);
   }
 
   stage("opening-dashboard");

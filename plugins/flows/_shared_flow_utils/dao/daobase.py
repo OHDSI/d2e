@@ -33,7 +33,8 @@ def build_bigquery_r_connection_string(
         "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;"
         f"ProjectId={project};OAuthType=0;"
         f"OAuthServiceAcctEmail={client_email};"
-        f"OAuthPvtKeyPath={key_path}"
+        f"OAuthPvtKeyPath={key_path};"
+        "EnableSession=1"
     )
     return (
         "connectionDetails <- DatabaseConnector::createConnectionDetails("

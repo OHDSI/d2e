@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { initialWizardDashboardState, wizardDashboardReducer } from "../wizardDashboardState";
 
 describe("wizard dashboard state", () => {
-  it("opens immediately in the cache-waiting stage", () => {
+  it("opens immediately in the filter-application stage", () => {
     const state = wizardDashboardReducer(initialWizardDashboardState, {
       type: "start",
       operationId: 1,
       datasetId: "dataset-1",
     });
 
-    expect(state).toMatchObject({ isOpen: true, status: "awaiting-cache", operationId: 1 });
+    expect(state).toMatchObject({ isOpen: true, status: "applying-filters", operationId: 1 });
   });
 
   it("ignores late events from a superseded operation", () => {
@@ -19,10 +19,10 @@ describe("wizard dashboard state", () => {
         operationId: 2,
         datasetId: "dataset-1",
       }),
-      { type: "fail", operationId: 1, message: "late failure", stage: "saving-bookmark" }
+      { type: "fail", operationId: 1, message: "late failure", stage: "applying-filters" },
     );
 
-    expect(state.status).toBe("awaiting-cache");
+    expect(state.status).toBe("applying-filters");
     expect(state.error).toBeNull();
   });
 
@@ -41,14 +41,14 @@ describe("wizard dashboard state", () => {
       type: "fail",
       operationId: 1,
       message: "request failed",
-      stage: "saving-bookmark",
+      stage: "applying-filters",
     });
 
     expect(state).toMatchObject({
       status: "error",
       pendingBookmarkName: "wizards-1783670400000",
       error: "request failed",
-      errorStage: "saving-bookmark",
+      errorStage: "applying-filters",
     });
   });
 

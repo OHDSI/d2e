@@ -320,7 +320,7 @@
           "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}:33001/oauth/token",
           "ALP__SYSTEM_ID": "${ALP__SYSTEM_ID:-alp-research}",
           "ANALYTICS_SVC__PORT": 41102,
-          "SQL_RETURN_ON": "${SQL_RETURN_ON:-false}",
+          "SQL_RETURN_ON": "true",
           "LOCAL_DEBUG": "false",
           "USE_EXTENSION_FOR_COHORT_CREATION": "false",
           "isTestEnv": "${isTestEnv}",
@@ -341,7 +341,7 @@
           "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}"
         },
         "query-gen-svc": {
-          "SQL_RETURN_ON": "${SQL_RETURN_ON:-false}",
+          "SQL_RETURN_ON": "true",
           "isTestEnv": "${isTestEnv}",
           "TESTSCHEMA": "${TESTSCHEMA}",
           "NOT_EQ_CHECK_FILTERCARDS": "${NOT_EQ_CHECK_FILTERCARDS:-true}",

@@ -9,11 +9,15 @@ import {
   ConceptSetItemsResponseDto,
   ConceptSetCreateDto,
   ConceptSetInUseErrorDto,
+  ConceptSetNameConflictErrorDto,
   IConceptSetCheckResponseDto,
   IncludedConceptsRequestDto,
   IncludedConceptsResponseDto,
 } from "../dto/conceptset.ts";
-import { ConceptSetInUseError } from "../errors/ConceptSetErrors.ts";
+import {
+  ConceptSetInUseError,
+  ConceptSetNameConflictError,
+} from "../errors/ConceptSetErrors.ts";
 
 import {
   getConceptSet,
@@ -55,10 +59,14 @@ export const conceptset: FastifyPluginAsyncZod = async function (app) {
     "/",
     {
       schema: {
-        description: "Save a new concept set to the database",
+        description:
+          "Save a new concept set to the database. Returns 409 if the name is already taken.",
         body: ConceptSetCreateDto,
         tags: ["conceptset"],
-        response: { 200: ConceptSetResponseDto },
+        response: {
+          200: ConceptSetResponseDto,
+          409: ConceptSetNameConflictErrorDto,
+        },
         security: [
           {
             bearerAuth: [],
@@ -68,12 +76,25 @@ export const conceptset: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, res) => {
-      const results = await createConceptSet(
-        req.token,
-        req.datasetId,
-        req.body
-      );
-      res.send(results);
+      try {
+        const results = await createConceptSet(
+          req.token,
+          req.datasetId,
+          req.body
+        );
+        res.send(results);
+      } catch (error) {
+        if (error instanceof ConceptSetNameConflictError) {
+          res.status(409).send({
+            error: "CONCEPT_SET_NAME_EXISTS",
+            message:
+              `A concept set named "${error.conceptSetName}" already exists. Choose another name.`,
+            conceptSetName: error.conceptSetName,
+          });
+          return;
+        }
+        throw error;
+      }
     }
   );
 
@@ -155,11 +176,15 @@ export const conceptset: FastifyPluginAsyncZod = async function (app) {
     "/:id",
     {
       schema: {
-        description: "Updates the concept set for the selected concept set.",
+        description:
+          "Updates the concept set for the selected concept set. Returns 409 if the name is already taken.",
         tags: ["conceptset"],
         params: z.object({ id: ConceptSetIdParamSchema }),
         body: ConceptSetCreateDto,
-        response: { 200: z.boolean() },
+        response: {
+          200: z.boolean(),
+          409: ConceptSetNameConflictErrorDto,
+        },
         security: [
           {
             bearerAuth: [],
@@ -170,13 +195,26 @@ export const conceptset: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, res) => {
       const { id } = req.params;
-      const results = await updateConceptSet(
-        req.token,
-        req.datasetId,
-        id,
-        req.body
-      );
-      res.send(results);
+      try {
+        const results = await updateConceptSet(
+          req.token,
+          req.datasetId,
+          id,
+          req.body
+        );
+        res.send(results);
+      } catch (error) {
+        if (error instanceof ConceptSetNameConflictError) {
+          res.status(409).send({
+            error: "CONCEPT_SET_NAME_EXISTS",
+            message:
+              `A concept set named "${error.conceptSetName}" already exists. Choose another name.`,
+            conceptSetName: error.conceptSetName,
+          });
+          return;
+        }
+        throw error;
+      }
     }
   );
 
@@ -185,7 +223,7 @@ export const conceptset: FastifyPluginAsyncZod = async function (app) {
     {
       schema: {
         description:
-          "Check if a concept set with the same name exists in the WebAPIdatabase. The name is checked against the selected concept set IDto ensure that only the selected concept set ID has the name specified.",
+          "Check whether a concept set with the same name exists in the legacy (terminology) store. This is the only store probed here; the WebAPI store enforces name uniqueness with the uq_cs_name constraint and reports a duplicate as HTTP 409. The selected concept set ID is excluded so that only that set may hold the name.",
         tags: ["conceptset"],
         params: z.object({ id: ConceptSetIdParamSchema }),
         querystring: z.object({ name: z.string() }),

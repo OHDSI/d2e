@@ -1,5 +1,6 @@
 from prefect import task
 from prefect.logging import get_run_logger
+from prefect.cache_policies import NONE
 
 from sqlalchemy import text
 import duckdb
@@ -11,13 +12,13 @@ from .load_data import *
 from _shared_flow_utils.types import SupportedDatabaseDialects
 
 
-@task(log_prints=True)
+@task(log_prints=True, cache_policy=NONE)
 def staging_mimic_data(conn):
     create_schema(conn, 'mimic_etl')
     execute_raw_sql_from_file(conn, StagDir, StagSql, StagLogs)
 
 
-@task(log_prints=True)
+@task(log_prints=True, cache_policy=NONE)
 def ETL_transformation(conn):
     logger = get_run_logger()
     try:
@@ -27,7 +28,7 @@ def ETL_transformation(conn):
         raise Exception()
 
 
-@task(log_prints=True)
+@task(log_prints=True, cache_policy=NONE)
 def final_cdm_tables(conn):
     logger = get_run_logger()
     try:
@@ -38,7 +39,7 @@ def final_cdm_tables(conn):
         raise Exception()
 
 
-@task(log_prints=True) 
+@task(log_prints=True, cache_policy=NONE) 
 def export_data(duckdb_file_name, schema_name, to_dbdao, overwrite_schema, chunk_size):
     logger = get_run_logger()
     db_credentials = to_dbdao.tenant_configs

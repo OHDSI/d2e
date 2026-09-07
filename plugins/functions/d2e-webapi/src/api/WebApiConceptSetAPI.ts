@@ -1,3 +1,5 @@
+import { ConceptSetNameConflictError } from "../errors/ConceptSetErrors.ts";
+
 const DEFAULT_WEBAPI_URL = "http://localhost:33001/WebAPI";
 
 export interface IWebApiConceptSetHeader {
@@ -51,16 +53,6 @@ export interface IWebApiConcept {
 }
 
 const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/;
-
-const assertNonNegativeInteger = (value: unknown, field: string): number => {
-  if (
-    typeof value !== "number" || !Number.isInteger(value) || value < 0 ||
-    value > Number.MAX_SAFE_INTEGER
-  ) {
-    throw new Error(`Invalid ${field}: expected non-negative integer`);
-  }
-  return value;
-};
 
 const assertPositiveInteger = (value: unknown, field: string): number => {
   if (
@@ -224,6 +216,11 @@ export class WebApiConceptSetAPI {
     });
 
     if (!response.ok) {
+      // WebAPI has no duplicate-name check. The `uq_cs_name` constraint on
+      // `webapi.concept_set` rejects the insert and surfaces as a 409.
+      if (response.status === 409) {
+        throw new ConceptSetNameConflictError(payload.name);
+      }
       throw new Error(
         `Failed to create WebAPI concept set: ${response.status}`,
       );
@@ -259,6 +256,11 @@ export class WebApiConceptSetAPI {
     );
 
     if (!response.ok) {
+      // A rename onto a name another concept set already holds trips the same
+      // `uq_cs_name` constraint as a create.
+      if (response.status === 409) {
+        throw new ConceptSetNameConflictError(payload.name);
+      }
       throw new Error(
         `Failed to update WebAPI concept set ${validatedId}: ${response.status}`,
       );
@@ -317,26 +319,5 @@ export class WebApiConceptSetAPI {
         `Failed to delete WebAPI concept set ${validatedId}: ${response.status}`,
       );
     }
-  }
-
-  async checkIfConceptSetExists(id: number, name: string): Promise<number> {
-    const validatedId = assertNonNegativeInteger(id, "id");
-    const validatedName = assertName(name);
-
-    const url = buildUrl(this.baseUrl, "conceptset", validatedId, "exists");
-    url.searchParams.set("name", validatedName);
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: buildHeaders(this.token),
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to check WebAPI concept set existence for ${validatedId}: ${response.status}`,
-      );
-    }
-
-    return response.json();
   }
 }

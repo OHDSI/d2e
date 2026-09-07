@@ -90,7 +90,6 @@ export type CdmAdvancedSettings = {
     settings: {
         fuzziness: number;
         maxResultSize: number;
-        sqlReturnOn: boolean;
         errorDetailsReturnOn: boolean;
         errorStackTraceReturnOn: boolean;
         enableFreeText: boolean;

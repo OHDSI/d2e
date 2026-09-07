@@ -77,7 +77,7 @@ export const ConceptSets: FC<ConceptSetsProps> = ({ isAtlas }) => {
   }, [fetchData]);
 
   const handleAddAndEditConceptSet = useCallback(
-    (conceptSetId?: string) => {
+    (conceptSetId?: string, canWrite?: boolean) => {
       if (!datasetId) return;
       const event = new CustomEvent<{ props: TerminologyProps }>(
         "alp-terminology-open",
@@ -85,6 +85,7 @@ export const ConceptSets: FC<ConceptSetsProps> = ({ isAtlas }) => {
           detail: {
             props: {
               selectedConceptSetId: conceptSetId,
+              selectedConceptSetCanWrite: canWrite ?? true,
               onClose: () => fetchData(),
               mode: "CONCEPT_SET",
               selectedDatasetId: datasetId,

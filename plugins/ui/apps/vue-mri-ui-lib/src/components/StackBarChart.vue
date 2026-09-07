@@ -188,17 +188,19 @@ export default {
 
             this.renderChart()
 
-            // Emit x-axis category counts for default color axis selection
-            const xAxes = this.chartData.categories?.filter(c => c.axis === Constants.AxisId.X) || []
-            const allAxesForEmit = this.getAllAxes
-            const xAxisCategoryCounts = xAxes.map((cat, idx) => {
-              // Find the raw allAxes slot index for this filtered x-axis category
-              const rawSlot = allAxesForEmit ? allAxesForEmit.findIndex(a => a?.props?.attributeId === cat.id) : -1
-              return {
-                axisIndex: rawSlot >= 0 ? rawSlot : idx,
+            // Emit x-axis category counts for default color axis selection.
+            // Only categories that resolve to a real allAxes slot are eligible: the backend puts a
+            // synthetic 'dummy_category' on the x axis whenever the query has no group-by (i.e. no
+            // x axis is selected), and its single value would otherwise satisfy the low-cardinality
+            // default rule and nominate a slot that holds no attribute at all.
+            const allAxesForEmit = this.getAllAxes || []
+            const xAxisCategoryCounts = (this.chartData.categories || [])
+              .filter(c => c.axis === Constants.AxisId.X && c.id !== 'dummy_category')
+              .map(cat => ({
+                axisIndex: allAxesForEmit.findIndex(a => a?.props?.attributeId && a.props.attributeId === cat.id),
                 count: new Set(this.chartData.data.map(d => d[cat.id])).size,
-              }
-            })
+              }))
+              .filter(entry => entry.axisIndex >= 0)
             this.$emit('chartDataReady', xAxisCategoryCounts)
           },
           error => {

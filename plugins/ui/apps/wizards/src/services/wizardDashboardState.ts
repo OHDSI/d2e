@@ -1,9 +1,7 @@
 export type WizardDashboardStatus =
   | "idle"
-  | "awaiting-cache"
-  | "saving-bookmark"
+  | "applying-filters"
   | "materializing"
-  | "resolving-cohort"
   | "opening-dashboard"
   | "ready"
   | "error";
@@ -62,7 +60,7 @@ export function wizardDashboardReducer(state: WizardDashboardState, event: Wizar
     case "start":
       return {
         isOpen: true,
-        status: "awaiting-cache",
+        status: "applying-filters",
         operationId: event.operationId,
         datasetId: event.datasetId,
         pendingBookmarkName: event.pendingBookmarkName ?? null,

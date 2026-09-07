@@ -79,7 +79,7 @@
       <div class="d-flex align-items-center">
         <d4l-button
           ref="saveBookmarkButton"
-          :disabled="!hasChanges"
+          :disabled="!hasChanges || this.isSavingBookmark"
           :text="getText('MRI_PA_BUTTON_SAVE')"
           :title="getText('MRI_PA_BUTTON_SAVE')"
           @click="openSaveBookmark"
@@ -148,7 +148,7 @@
           :click="saveBookmark"
           :text="getText('MRI_PA_BUTTON_SAVE')"
           :tooltip="getText('MRI_PA_BUTTON_SAVE')"
-          :disabled="this.hasExceededLength || getBookmarksLoading"
+          :disabled="this.hasExceededLength || getBookmarksLoading || this.isSavingBookmark"
           testId="pa-save-dialog-save-btn"
         ></appButton>
         <appButton
@@ -194,6 +194,7 @@ import * as types from '../store/mutation-types'
 import DialogBox from './DialogBox.vue'
 import messageBox from './MessageBox.vue'
 import { usePortalContext } from '../composables/usePortalContext'
+import { useNotificationStore } from '../stores/notifications'
 import { useUserRole } from '../composables/useUserRole'
 
 export default {
@@ -219,6 +220,7 @@ export default {
       saveDialogWidth: 260,
       cohortNameValidationState: 'valid' as 'invalid' | 'valid' | 'empty',
       cohortName: '',
+      isSavingBookmark: false,
       maxLength: 255,
       maxFiltercardCount: 10,
     }
@@ -312,6 +314,7 @@ export default {
       this.showResetDialog = true
     },
     async saveBookmark() {
+      if (this.isSavingBookmark) return
       if (this.hasChanges) {
         if (this.hasExceededLength) return
 
@@ -341,6 +344,8 @@ export default {
           }
         }
 
+        this.isSavingBookmark = true
+
         try {
           if (isNewBookmark || this.isNotUserSharedBookmark) {
             const params = {
@@ -349,7 +354,7 @@ export default {
               shareBookmark: this.shareBookmark,
               bookmark: JSON.stringify(bookmark),
             }
-            await this.fireBookmarkQuery({ params, method: 'post' })
+            await this.fireBookmarkQuery({ params, method: 'post', suppressToast: true })
           } else {
             const request = {
               cmd: 'update',
@@ -360,8 +365,20 @@ export default {
               method: 'put',
               params: request,
               bookmarkId: activeBookmark.bmkId,
+              suppressToast: true,
             })
           }
+
+          const successMessage =
+            isNewBookmark || this.isNotUserSharedBookmark
+              ? this.getText('MRI_PA_SAVE_BMK_SUCCESS')
+              : this.getText('MRI_PA_UPDATE_BMK_SUCCESS')
+
+          // Close the dialog right after the save succeeds so the success toast is shown
+          // after the modal closes, not while the subsequent list refresh is still running.
+          this.closeSaveBookmark()
+          useNotificationStore().setToastMessage({ text: successMessage })
+
           await this.fireBookmarkQuery({ method: 'get', params: { cmd: 'loadAll' } })
           const savedBookmark = this.getBookmarkByNameAndUsername(bookmarkName, username)
           this[types.SET_ACTIVE_BOOKMARK](savedBookmark)
@@ -369,6 +386,7 @@ export default {
         } catch (error) {
           console.error('Error during bookmark save or reload:', error)
         } finally {
+          this.isSavingBookmark = false
           this.cohortName = ''
           this.closeSaveBookmark()
         }

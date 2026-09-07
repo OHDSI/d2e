@@ -35,7 +35,7 @@ const {
   mapWebApiConceptSetToFacadeConceptSet,
 } = await import("./conceptset.service.ts");
 
-const { ConceptSetExpressionError } = await import(
+const { ConceptSetExpressionError, ConceptSetNameConflictError } = await import(
   "../errors/ConceptSetErrors.ts"
 );
 const { WebApiConceptSetAPI } = await import("../api/WebApiConceptSetAPI.ts");
@@ -71,6 +71,54 @@ Deno.test("legacy concept sets remain writable in facade responses", () => {
   assertEquals(conceptSet.createdBy.name, "legacy-owner");
   assertEquals(conceptSet.shared, true);
   assertEquals(conceptSet.source, "legacy");
+});
+
+Deno.test("legacy concept sets are writable only for their owner", () => {
+  const owned = mapLegacyConceptSetToWebApiConceptSet(
+    {
+      id: 21,
+      name: "Owned legacy set",
+      shared: false,
+      concepts: [],
+      userName: "owner-1",
+      createdBy: "owner-1",
+      modifiedBy: "owner-1",
+      createdDate: "2026-05-01T00:00:00.000Z",
+      modifiedDate: "2026-05-02T00:00:00.000Z",
+    },
+    "owner-1",
+  );
+  assertEquals(owned.hasWriteAccess, true);
+
+  const sharedFromSomeoneElse = mapLegacyConceptSetToWebApiConceptSet(
+    {
+      id: 22,
+      name: "Shared legacy set",
+      shared: true,
+      concepts: [],
+      userName: "owner-1",
+      createdBy: "owner-1",
+      modifiedBy: "owner-1",
+      createdDate: "2026-05-01T00:00:00.000Z",
+      modifiedDate: "2026-05-02T00:00:00.000Z",
+    },
+    "current-user",
+  );
+  assertEquals(sharedFromSomeoneElse.hasWriteAccess, false);
+
+  // Without a caller-provided user the historical writable default applies.
+  const noUser = mapLegacyConceptSetToWebApiConceptSet({
+    id: 23,
+    name: "No user legacy set",
+    shared: true,
+    concepts: [],
+    userName: "owner-1",
+    createdBy: "owner-1",
+    modifiedBy: "owner-1",
+    createdDate: "2026-05-01T00:00:00.000Z",
+    modifiedDate: "2026-05-02T00:00:00.000Z",
+  });
+  assertEquals(noUser.hasWriteAccess, true);
 });
 
 Deno.test("native WebAPI concept sets are exposed with compound facade ids", () => {
@@ -846,56 +894,121 @@ Deno.test("getConceptSets propagates WebAPI errors instead of returning silent e
   }
 });
 
-Deno.test("checkIfConceptSetExists allows webapi exclude id 0 for new concept sets", async () => {
+Deno.test("checkIfConceptSetExists checks the legacy store only", async () => {
+  // WebAPI is deliberately not asked. Its `uq_cs_name` constraint rejects a
+  // duplicate at write time, and asking it here needs a permission that the
+  // `concept set creator` role does not hold.
   const originalGetConceptSetsTerm = TerminologySvcAPI.prototype.getConceptSets;
-  const originalCheckIfConceptSetExists =
-    WebApiConceptSetAPI.prototype.checkIfConceptSetExists;
 
   try {
-    TerminologySvcAPI.prototype.getConceptSets = () =>
-      Promise.resolve([] as unknown as ITerminologyConceptSet[]);
-    WebApiConceptSetAPI.prototype.checkIfConceptSetExists = (
-      id: number,
-      name: string,
-    ) => {
-      assertEquals(id, 0);
-      assertEquals(name, "Name");
-      return Promise.resolve(0);
+    let legacyCalls = 0;
+    TerminologySvcAPI.prototype.getConceptSets = () => {
+      legacyCalls += 1;
+      return Promise.resolve([] as unknown as ITerminologyConceptSet[]);
     };
 
     const result = await checkIfConceptSetExists(
       "token",
       "dataset-1",
-      0,
+      "webapi:7",
       "Name",
     );
+
     assertEquals(result, 0);
+    assertEquals(legacyCalls, 1);
   } finally {
     TerminologySvcAPI.prototype.getConceptSets = originalGetConceptSetsTerm;
-    WebApiConceptSetAPI.prototype.checkIfConceptSetExists =
-      originalCheckIfConceptSetExists;
   }
 });
 
-Deno.test("checkIfConceptSetExists propagates WebAPI errors instead of returning silent zero", async () => {
+Deno.test("checkIfConceptSetExists reports a legacy concept set with the same name", async () => {
   const originalGetConceptSetsTerm = TerminologySvcAPI.prototype.getConceptSets;
-  const originalCheckIfConceptSetExists =
-    WebApiConceptSetAPI.prototype.checkIfConceptSetExists;
 
   try {
     TerminologySvcAPI.prototype.getConceptSets = () =>
-      Promise.resolve([] as unknown as ITerminologyConceptSet[]);
-    WebApiConceptSetAPI.prototype.checkIfConceptSetExists = () =>
-      Promise.reject(new Error("WebAPI unavailable"));
+      Promise.resolve(
+        [{ id: 3, name: "Name" }] as unknown as ITerminologyConceptSet[],
+      );
 
-    await assertRejects(
-      () => checkIfConceptSetExists("token", "dataset-1", "webapi:7", "Name"),
-      Error,
-      "WebAPI unavailable",
+    assertEquals(
+      await checkIfConceptSetExists("token", "dataset-1", "webapi:7", "Name"),
+      1,
     );
   } finally {
     TerminologySvcAPI.prototype.getConceptSets = originalGetConceptSetsTerm;
-    WebApiConceptSetAPI.prototype.checkIfConceptSetExists =
-      originalCheckIfConceptSetExists;
+  }
+});
+
+Deno.test("checkIfConceptSetExists excludes the legacy row being renamed", async () => {
+  const originalGetConceptSetsTerm = TerminologySvcAPI.prototype.getConceptSets;
+
+  try {
+    TerminologySvcAPI.prototype.getConceptSets = () =>
+      Promise.resolve(
+        [{ id: 3, name: "Name" }] as unknown as ITerminologyConceptSet[],
+      );
+
+    // Renaming legacy:3 to the name it already holds is not a duplicate.
+    assertEquals(
+      await checkIfConceptSetExists("token", "dataset-1", "legacy:3", "Name"),
+      0,
+    );
+  } finally {
+    TerminologySvcAPI.prototype.getConceptSets = originalGetConceptSetsTerm;
+  }
+});
+
+Deno.test("WebApiConceptSetAPI.createConceptSet maps a 409 to a name conflict", async () => {
+  const originalFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 409 }))) as typeof fetch;
+
+    const api = new WebApiConceptSetAPI("token");
+    const error = await assertRejects(
+      () => api.createConceptSet({ name: "Taken" }),
+      ConceptSetNameConflictError,
+    );
+    assertEquals(error.conceptSetName, "Taken");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("WebApiConceptSetAPI.updateConceptSet maps a 409 to a name conflict", async () => {
+  const originalFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 409 }))) as typeof fetch;
+
+    const api = new WebApiConceptSetAPI("token");
+    const error = await assertRejects(
+      () => api.updateConceptSet(7, { id: 7, name: "Taken" }),
+      ConceptSetNameConflictError,
+    );
+    assertEquals(error.conceptSetName, "Taken");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("WebApiConceptSetAPI.createConceptSet keeps other failures as plain errors", async () => {
+  const originalFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 500 }))) as typeof fetch;
+
+    const api = new WebApiConceptSetAPI("token");
+    const error = await assertRejects(
+      () => api.createConceptSet({ name: "Any" }),
+      Error,
+      "Failed to create WebAPI concept set: 500",
+    );
+    assertEquals(error instanceof ConceptSetNameConflictError, false);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

@@ -81,6 +81,9 @@ def resolve_chunk_count(row_count: int, config: ChunkConfig) -> int:
     if row_count <= 0:
         return 1
     n = -(-row_count // config.target_chunk_rows)  # ceil division
+    # Large tables require at least two chunks; one is still an unbounded copy.
+    if row_count >= config.small_table_threshold:
+        n = max(2, n)
     n = min(n, config.max_chunks)
     n = min(n, max(1, row_count // config.min_chunk_rows))
     return max(1, n)

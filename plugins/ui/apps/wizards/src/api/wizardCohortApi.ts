@@ -45,6 +45,10 @@ export interface MaterializeWizardBookmarkInput {
   mriQuery: MriMaterializationQuery;
 }
 
+export interface MaterializeWizardBookmarkResult {
+  cohortDefinitionId: number;
+}
+
 const operationMessages: Record<WizardCohortApiOperation, string> = {
   "list-cohorts": "Unable to check previous Wizard analyses",
   "create-bookmark": "Unable to save the Wizard analysis",
@@ -126,13 +130,15 @@ export async function createWizardBookmark(input: CreateWizardBookmarkInput): Pr
   }
 }
 
-export async function materializeWizardBookmark(input: MaterializeWizardBookmarkInput): Promise<void> {
+export async function materializeWizardBookmark(
+  input: MaterializeWizardBookmarkInput,
+): Promise<MaterializeWizardBookmarkResult> {
   const operation: WizardCohortApiOperation = "materialize-cohort";
   requireValue(input.datasetId, "datasetId", operation);
   requireValue(input.bookmarkId, "bookmarkId", operation);
   requireValue(input.bookmarkName, "bookmarkName", operation);
   try {
-    await client.post(
+    const response = await client.post(
       "/d2e/analytics-svc/api/services/cohort",
       {
         datasetId: input.datasetId,
@@ -143,6 +149,12 @@ export async function materializeWizardBookmark(input: MaterializeWizardBookmark
       },
       { headers: { datasetid: input.datasetId } },
     );
+    const result = response.data as Partial<MaterializeWizardBookmarkResult> | null;
+    const cohortDefinitionId = Number(result?.cohortDefinitionId);
+    if (!Number.isInteger(cohortDefinitionId) || cohortDefinitionId <= 0) {
+      throw new WizardCohortApiError(operationMessages[operation], operation, "invalid-response");
+    }
+    return { cohortDefinitionId };
   } catch (error) {
     throw wrapApiError(error, operation);
   }

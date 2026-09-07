@@ -157,6 +157,15 @@ export const ConceptSetInUseErrorDto = z.object({
 });
 export type IConceptSetInUseErrorDto = z.infer<typeof ConceptSetInUseErrorDto>;
 
+export const ConceptSetNameConflictErrorDto = z.object({
+  error: z.literal("CONCEPT_SET_NAME_EXISTS"),
+  message: z.string(),
+  conceptSetName: z.string(),
+});
+export type IConceptSetNameConflictErrorDto = z.infer<
+  typeof ConceptSetNameConflictErrorDto
+>;
+
 export const IncludedConceptDto = z.object({
   CONCEPT_ID: z.number(),
   CONCEPT_NAME: z.string(),

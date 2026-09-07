@@ -1,6 +1,5 @@
 import os, logging
 from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
-from rpy2.robjects import pandas2ri, numpy2ri
 from rpy2 import robjects
 
 from prefect import flow, task
@@ -10,6 +9,7 @@ from .types import PhenotypeOptionsType
 from _shared_flow_utils.types import UserType
 from _shared_flow_utils.dao.DBDao import DBDao
 from _shared_flow_utils.api.PhenotypeAPI import PhenotypeAPI
+from _shared_flow_utils.api.PhenotypeTagAPI import PhenotypeTagAPI
 
 os.environ["plugin_name"] = "phenotype_plugin"
 
@@ -31,7 +31,6 @@ def validate_integer_string(input_string: str) -> bool:
         logger.info(
             "Cohorts ID is set to 'default', retrieving all cohorts from the Phenotype."
         )
-        logger.warning("Cohort 921 is not supported currently, it will be skipped.")
         return True
     else:
         input_string = input_string.strip()
@@ -43,10 +42,6 @@ def validate_integer_string(input_string: str) -> bool:
                 error_message = f"""Input CohortsId: {input_string} is not supported, use ',' as seperator, e.g.: '3,4,25' """
                 logger.error(error_message)
                 raise ValueError(error_message)
-            if num.strip() == "921":
-                logger.warning(
-                    "Cohort 921 is not supported currently, it will be skipped."
-                )
         return True
 
 
@@ -60,11 +55,9 @@ def get_cohort_definitions(cohorts_id: str, vocabschema_name: str, materialize: 
     Returns:
         list: List of cohort definitions with cohortId, cohortName, json, and sql.
     """
-    pandas2ri.activate()
-    numpy2ri.activate()
     r_script_path = os.path.join(os.path.dirname(__file__), 'get_cohort_definitions.R')
 
-    with robjects.conversion.localconverter(robjects.default_converter):
+    with robjects.default_converter.context():
         
         # Source the R script to load the function
         robjects.r(f'source("{r_script_path}")')
@@ -86,6 +79,7 @@ def get_cohort_definitions(cohorts_id: str, vocabschema_name: str, materialize: 
                     "cohortName": str(result[i].rx2("cohortName")[0]),
                     "json": str(result[i].rx2("json")[0]),
                     "sql": str(result[i].rx2("sql")[0]),
+                    "status": str(result[i].rx2("status")[0]),
                 }
                 cohort_definitions.append(cohort_def)
             return cohort_definitions
@@ -109,21 +103,66 @@ def atlas_cohort_definitions(
     """
     logger = get_run_logger()
     phenotype_api = PhenotypeAPI()
+    phenotype_tag_api = PhenotypeTagAPI()
     created_cohorts = []
+    name_index = phenotype_api.get_cohort_name_index(dataset_id)
+    logger.info(f"Indexed {len(name_index)} existing WebAPI cohort definitions")
+
+    # get_cohort_definitions.R already maps blank/NA to "Unspecified".
+    statuses = {cohort_def["status"] for cohort_def in cohort_definitions}
+    phenotype_library_tag, status_tags = phenotype_tag_api.resolve_import_tags(
+        dataset_id, statuses
+    )
+
+    # Collected while writing, applied in bulk afterwards -- see tag_cohort_definitions.
+    cohort_ids_by_status = {}
 
     for cohort_def in cohort_definitions:
         try:
+            status = cohort_def["status"]
             result = phenotype_api.create_single_cohort_definition(
-                cohort_def, dataset_id, user_name
+                cohort_def, dataset_id, user_name, name_index
             )
             created_cohorts.append(result)
+            cohort_ids_by_status.setdefault(status, []).append(result["id"])
         except Exception as e:
             error_message = (
-                f"Failed to create cohort {cohort_def['cohortId']}: {str(e)}"
+                f"Failed to save cohort {cohort_def['cohortId']}: {str(e)}. "
+                f"{len(created_cohorts)} cohorts were written before this and are "
+                f"still untagged; re-run the flow to finish them."
             )
             logger.error(error_message)
             raise Exception(error_message) from e
+
+    tag_cohort_definitions(
+        phenotype_tag_api, dataset_id, phenotype_library_tag, status_tags,
+        cohort_ids_by_status,
+    )
     return created_cohorts
+
+
+def tag_cohort_definitions(phenotype_tag_api, dataset_id: str, phenotype_library_tag: dict,
+                           status_tags: dict, cohort_ids_by_status: dict) -> None:
+    """Record where the cohorts came from, and what their review status is.
+    """
+    logger = get_run_logger()
+    all_cohort_ids = [i for ids in cohort_ids_by_status.values() for i in ids]
+    if not all_cohort_ids:
+        return
+
+    phenotype_tag_api.assign_tags_to_cohorts(
+        dataset_id, [phenotype_library_tag["id"]], all_cohort_ids
+    )
+    logger.info(
+        f"Tagged {len(all_cohort_ids)} cohort definitions as "
+        f"'{phenotype_library_tag['name']}'"
+    )
+
+    for status, cohort_ids in sorted(cohort_ids_by_status.items()):
+        phenotype_tag_api.assign_tags_to_cohorts(
+            dataset_id, [status_tags[status]["id"]], cohort_ids
+        )
+        logger.info(f"Tagged {len(cohort_ids)} cohort definitions as '{status}'")
 
 
 @task(log_prints=True)

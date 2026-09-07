@@ -70,6 +70,7 @@ CHUNK_COLUMN_INFO_MAP = {
     "concept": {"column_name": "concept_id"},
     "concept_ancestor": {"column_name": "ancestor_concept_id"},
     "concept_class": {"column_name": "concept_class_id"},
+    "concept_hierarchy": {"column_name": "concept_id"},
     "concept_recommended": {"column_name": "concept_id_1"},
     "concept_relationship": {"column_name": "concept_id_1"},
     "concept_synonym": {"column_name": "concept_id"},

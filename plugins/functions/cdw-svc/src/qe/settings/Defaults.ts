@@ -200,7 +200,6 @@ export const defaultInterfaceViewsSettings: GlobalSettingsType = {
   maxResultSize: 5000,
   // flags controlling the information which is returned from backend
   // Note: all flags should be set to false for productive systems
-  sqlReturnOn: false,
   errorDetailsReturnOn: false,
   errorStackTraceReturnOn: false,
   enableFreeText: true,
@@ -375,7 +374,6 @@ export const defaultSettings: GlobalSettingsType = {
   maxResultSize: 5000,
   // flags controlling the information which is returned from backend
   // Note: all flags should be set to false for productive systems
-  sqlReturnOn: false,
   errorDetailsReturnOn: false,
   errorStackTraceReturnOn: false,
   enableFreeText: true,
@@ -392,7 +390,6 @@ export const defaultGuardedPholderTable = `$$SCHEMA$$."VIEW::OMOP.GDM.PATIENT"`;
 export const otherSettings = {
     // flags controlling the information which is returned from backend
     // Note: all flags should be set to false for productive systems
-    sqlReturnOn: false,
     errorDetailsReturnOn: false,
     errorStackTraceReturnOn: false,
 };

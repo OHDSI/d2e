@@ -363,6 +363,7 @@ def copy_table_chunk(write_conn: Any, copy_params: CopyParameters, query_columns
     logger.info(
         f"Chunk {chunk_index + 1}/{total_chunks} for '{query_columns.table}': {predicate}"
     )
+    insert_sql = None
     try:
         # DELETE before INSERT, in that order. DuckDB over pgwire autocommits
         # every statement, so a crash between the INSERT and the progress
@@ -373,8 +374,17 @@ def copy_table_chunk(write_conn: Any, copy_params: CopyParameters, query_columns
         # never remove another chunk's rows.
         delete_seconds = execute_statement(write_conn, f"DELETE FROM {target} WHERE {predicate};")
         select_sql = create_select_query(copy_params, query_columns, source_schema, predicate)
-        insert_seconds = execute_statement(write_conn, f"INSERT INTO {target} {select_sql};")
+        target_columns = ", ".join(
+            f'"{column}"' for column in query_columns.columns_to_copy
+        )
+        insert_sql = f"INSERT INTO {target} ({target_columns}) {select_sql};"
+        insert_seconds = execute_statement(write_conn, insert_sql)
     except Exception as exc:
+        if insert_sql is not None:
+            logger.error(
+                f"Chunk {chunk_index + 1}/{total_chunks} INSERT failed for "
+                f"'{query_columns.table}'. SQL: {insert_sql}"
+            )
         raise ChunkCopyError(
             f"Chunk {chunk_index + 1}/{total_chunks} of '{query_columns.table}' "
             f"failed ({predicate}): {exc}"
@@ -751,4 +761,3 @@ def copy_indexes(write_conn: Any, read_conn: Any, copy_params: CopyParameters, q
             logger.info(
                 f"Primary Key Index '{pk_index_name}' copied for table '{table}' in schema '{target_database}'.'{target_schema}'."
             )
-
