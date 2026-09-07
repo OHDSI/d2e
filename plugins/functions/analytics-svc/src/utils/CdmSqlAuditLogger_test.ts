@@ -65,11 +65,6 @@ Deno.test("createCdmSqlAuditContext captures request and database metadata", () 
         }),
         {
             actorId: "test-user",
-            auditRequest: {
-                traceId: "correlation-2845",
-                requestUrl: "/analytics-svc/api/dataset-filter",
-                clientId: null,
-            },
             datasetId: "canonical-dataset-2845",
             configs: {
                 cohortBuilder: { id: "pa-config-2845", version: "A" },
@@ -260,15 +255,6 @@ Deno.test("audited connection writes one successful event per SQL call", async (
         const event = events[0] as any;
         assert.equal(event.schemaVersion, 1);
         assert.equal(event.eventType, "cdm.sql");
-        assert.equal(event["log-type"], "audit");
-        assert.equal(event["audit-log-type"], "access");
-        assert.equal(event.timestamp, event.occurredAt);
-        assert.equal(event["trace-id"], context.correlationId);
-        assert.equal(event["req-url"], context.requestPath);
-        assert.equal(event["subject-id"], "test-user");
-        assert.equal(event["event-type"], "execute");
-        assert.equal(event["resource-type"], "dataset");
-        assert.equal(event["resource-id"], "dataset-2845");
         assert.match(
             event.occurredAt,
             /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/

@@ -1,9 +1,4 @@
 import { env } from "../env.ts";
-import {
-    createAuditLogEnvelope,
-    getAuditRequestContext,
-    type AuditRequestContext,
-} from "./AuditLogFormat.ts";
 
 export const AUDIT_LOG_DIRECTORY = "/var/log/d2e/audit";
 export const PATIENT_ACCESS_AUDIT_FILE = "patient-access.ndjson";
@@ -88,8 +83,7 @@ export function createAuditEventWriter(): AuditEventWriter {
 }
 
 export function createPatientAccessAuditTransport(
-    writer: AuditEventWriter = createAuditEventWriter(),
-    context: AuditRequestContext = getAuditRequestContext()
+    writer: AuditEventWriter = createAuditEventWriter()
 ): AuditTransport {
     return {
         async audit(message: unknown, user: string): Promise<void> {
@@ -101,16 +95,9 @@ export function createPatientAccessAuditTransport(
             try {
                 await writer.append(PATIENT_ACCESS_AUDIT_FILE, {
                     ...eventData,
-                    ...createAuditLogEnvelope({
-                        timestamp: typeof eventData.occurredAt === "string"
-                            ? eventData.occurredAt
-                            : new Date().toISOString(),
-                        subjectId: user,
-                        eventType: "read",
-                        resourceType: "patient",
-                        resourceId: eventData.personId,
-                        context,
-                    }),
+                    "log-type": "audit",
+                    "audit-log-type": "access",
+                    "service-name": "analytics-svc",
                     schemaVersion: 1,
                     eventType: "patient.access",
                     actor: {
