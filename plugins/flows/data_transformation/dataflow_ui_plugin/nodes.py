@@ -1014,8 +1014,12 @@ class FhirMappingNode(Node):
         """)
 
         dao.execute_sql(f"""
-            CREATE UNIQUE INDEX IF NOT EXISTS fhir_omop_key_map_fhir_id_fhir_resource_type_idx
-            ON "{escaped_schema}".fhir_omop_key_map (fhir_id, fhir_resource_type)
+            DROP INDEX IF EXISTS "{escaped_schema}".fhir_omop_key_map_fhir_id_fhir_resource_type_idx
+        """)
+
+        dao.execute_sql(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS fhir_omop_key_map_fhir_id_type_table_omop_id_idx
+            ON "{escaped_schema}".fhir_omop_key_map (fhir_id, fhir_resource_type, omop_table_name, omop_id)
         """)
 
     def task(self, _input: dict[str, Result], task_run_context) -> Result:
@@ -1108,7 +1112,7 @@ class FhirMappingNode(Node):
                         )
                         for row in key_map_values
                     ],
-                    on_conflict="ON CONFLICT (fhir_id, fhir_resource_type) DO NOTHING",
+                    on_conflict="ON CONFLICT (fhir_id, fhir_resource_type, omop_table_name, omop_id) DO NOTHING",
                 )
 
             return Result(False, {"inserted": len(omop_rows), "updated": len(omop_rows)}, self, task_run_context)

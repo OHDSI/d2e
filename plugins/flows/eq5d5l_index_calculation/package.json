@@ -1,0 +1,125 @@
+{
+  "name": "@data2evidence/eq5d5l-index-calculation-flow",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "files": [
+    "flows",
+    "_shared_flow_utils",
+    "__init__.py",
+    "pyproject.toml",
+    "pixi.lock"
+  ],
+  "scripts": {
+    "build": "docker build ../../.. -f ../../../services/alp-dataflow-gen-worker/Dockerfile -t d2e-dataflow-gen-worker:local --build-arg GITHUB_PAT=${GITHUB_PAT}",
+    "prepack": "bash ../build/stage_package.sh",
+    "postpack": "bash ../build/stage_package.sh clean"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/data2evidence/d2e-flows.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/data2evidence/d2e-flows/issues"
+  },
+  "homepage": "https://github.com/data2evidence/d2e-flows#readme",
+  "trex": {
+    "flow": {
+      "image": "ghcr.io/ohdsi/d2e/flow-eq5d5l-index-calculation",
+      "flows": [
+        {
+          "name": "eq5d5l_index_calculation_plugin",
+          "entrypoint": "flows.eq5d5l_index_calculation_plugin.flow.eq5d5l_index_calculation_plugin",
+          "parameter_openapi_schema": {
+            "title": "Parameters",
+            "type": "object",
+            "properties": {
+              "options": {
+                "$ref": "#/definitions/Eq5d5lPluginType",
+                "position": 0,
+                "title": "options"
+              }
+            },
+            "required": [
+              "options"
+            ],
+            "definitions": {
+              "Eq5d5lCalculateConfig": {
+                "properties": {
+                  "schema_name": {
+                    "title": "Schema Name",
+                    "type": "string"
+                  },
+                  "database_code": {
+                    "title": "Database Code",
+                    "type": "string"
+                  },
+                  "cache_id": {
+                    "anyOf": [
+                      { "type": "string" },
+                      { "type": "null" }
+                    ],
+                    "title": "Cache Id"
+                  },
+                  "country_code": {
+                    "title": "Country Code",
+                    "type": "string",
+                    "enum": ["AU", "BE", "CA", "CN", "DE", "DK", "EG", "ET", "FR", "GH"]
+                  },
+                  "answer_code_level_map": {
+                    "anyOf": [
+                      { "type": "object", "additionalProperties": { "type": "integer" } },
+                      { "type": "null" }
+                    ],
+                    "title": "Answer Code Level Map"
+                  },
+                  "measurement_concept_id": {
+                    "anyOf": [
+                      { "type": "integer" },
+                      { "type": "null" }
+                    ],
+                    "title": "Measurement Concept Id"
+                  },
+                  "measurement_type_concept_id": {
+                    "default": 32862,
+                    "title": "Measurement Type Concept Id",
+                    "type": "integer"
+                  },
+                  "dry_run": {
+                    "default": false,
+                    "title": "Dry Run",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "schema_name",
+                  "database_code",
+                  "country_code"
+                ],
+                "title": "Eq5d5lCalculateConfig",
+                "type": "object"
+              },
+              "Eq5d5lPluginType": {
+                "properties": {
+                  "config": {
+                    "$ref": "#/definitions/Eq5d5lCalculateConfig",
+                    "title": "Config"
+                  }
+                },
+                "required": [
+                  "config"
+                ],
+                "title": "Eq5d5lPluginType",
+                "type": "object"
+              }
+            }
+          },
+          "type": "eq5d5l",
+          "command": "/app/run-flow.sh eq5d5l-index-calculation-flow"
+        }
+      ]
+    }
+  }
+}

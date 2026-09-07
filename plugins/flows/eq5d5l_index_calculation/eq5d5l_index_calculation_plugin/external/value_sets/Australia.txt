@@ -1,0 +1,51 @@
+******************************************************************
+*STATA syntax code for the computation of index*
+*values with the Australian value set (DCE with duration and dead)*
+*Reference: Norman R, Mulhern B, Lancsar E, Lorgelly P, Ratcliffe J, Street D, Viney R. The Use of a Discrete Choice Experiment Including Both Duration and Dead for the Development of an EQ-5D-5L Value Set for Australia. Pharmacoeconomics. 2023 Apr;41(4):427-438.
+*Source: https://euroqol.org/information-and-support/resources/value-sets/
+******************************************************************;
+
+
+gen disut_mo = .
+replace disut_mo = 0 if missing(disut_mo) & mobility == 1
+replace disut_mo = 0.039 if missing(disut_mo) & mobility == 2
+replace disut_mo = 0.067 if missing(disut_mo) & mobility == 3
+replace disut_mo = 0.237 if missing(disut_mo) & mobility == 4
+replace disut_mo = 0.242 if missing(disut_mo) & mobility == 5
+
+gen disut_sc = .
+replace disut_sc = 0 if missing(disut_sc) & selfcare == 1
+replace disut_sc = 0.030 if missing(disut_sc) & selfcare == 2
+replace disut_sc = 0.058 if missing(disut_sc) & selfcare == 3
+replace disut_sc = 0.213 if missing(disut_sc) & selfcare == 4
+replace disut_sc = 0.221 if missing(disut_sc) & selfcare == 5
+
+gen disut_ua = .
+replace disut_ua = 0 if missing(disut_ua) & activity == 1
+replace disut_ua = 0 if missing(disut_ua) & activity == 2
+replace disut_ua = 0.055 if missing(disut_ua) & activity == 3
+replace disut_ua = 0.162 if missing(disut_ua) & activity == 4
+replace disut_ua = 0.162 if missing(disut_ua) & activity == 5
+
+gen disut_pd = .
+replace disut_pd = 0 if missing(disut_pd) & pain == 1
+replace disut_pd = 0.044 if missing(disut_pd) & pain == 2
+replace disut_pd = 0.081 if missing(disut_pd) & pain == 3
+replace disut_pd = 0.276 if missing(disut_pd) & pain == 4
+replace disut_pd = 0.285 if missing(disut_pd) & pain == 5
+
+gen disut_ad = .
+replace disut_ad = 0 if missing(disut_ad) & anxiety == 1
+replace disut_ad = 0.032 if missing(disut_ad) & anxiety == 2
+replace disut_ad = 0.066 if missing(disut_ad) & anxiety == 3
+replace disut_ad = 0.238 if missing(disut_ad) & anxiety == 4
+replace disut_ad = 0.238 if missing(disut_ad) & anxiety == 5
+
+gen disut_l5 = 0
+replace disut_l5 = 0.153  if mobility == 5 | selfcare == 5 | activity == 5 | pain == 5 | anxiety == 5
+
+gen disut_total = disut_mo + disut_sc + disut_ua + disut_pd + disut_ad + disut_l5
+
+gen EQ_index = . 
+replace EQ_index = 1 - disut_total
+replace EQ_index = round(EQ_index, .001)

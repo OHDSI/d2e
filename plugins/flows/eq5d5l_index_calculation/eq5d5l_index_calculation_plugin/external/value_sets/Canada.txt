@@ -1,0 +1,70 @@
+******************************************************************
+*STATA syntax code for the computation of index*
+*values with the Canadian value set (TTO)*
+******************************************************************;
+
+gen disut_mo = .
+replace disut_mo = 0.0389 if missing(disut_mo) & mobility == 1
+replace disut_mo = 0.0778 if missing(disut_mo) & mobility == 2
+replace disut_mo = 0.1167 if missing(disut_mo) & mobility == 3
+replace disut_mo = 0.1556 if missing(disut_mo) & mobility == 4
+replace disut_mo = 0.1945 if missing(disut_mo) & mobility == 5
+
+gen disut_sc = .
+replace disut_sc = 0.0458 if missing(disut_sc) & selfcare == 1
+replace disut_sc = 0.0916 if missing(disut_sc) & selfcare == 2
+replace disut_sc = 0.1374 if missing(disut_sc) & selfcare == 3
+replace disut_sc = 0.1832 if missing(disut_sc) & selfcare == 4
+replace disut_sc = 0.229 if missing(disut_sc) & selfcare == 5
+
+gen disut_ua = .
+replace disut_ua = 0.0195 if missing(disut_ua) & activity == 1
+replace disut_ua = 0.039 if missing(disut_ua) & activity == 2
+replace disut_ua = 0.0585 if missing(disut_ua) & activity == 3
+replace disut_ua = 0.078 if missing(disut_ua) & activity == 4
+replace disut_ua = 0.0975 if missing(disut_ua) & activity == 5
+
+gen disut_pd = .
+replace disut_pd = 0.0444 if missing(disut_pd) & pain == 1
+replace disut_pd = 0.0888 if missing(disut_pd) & pain == 2
+replace disut_pd = 0.1332 if missing(disut_pd) & pain == 3
+replace disut_pd = 0.1776 if missing(disut_pd) & pain == 4
+replace disut_pd = 0.222 if missing(disut_pd) & pain == 5
+
+gen disut_ad = .
+replace disut_ad = 0.0376 if missing(disut_ad) & anxiety == 1
+replace disut_ad = 0.0752 if missing(disut_ad) & anxiety == 2
+replace disut_ad = 0.1128 if missing(disut_ad) & anxiety == 3
+replace disut_ad = 0.1504 if missing(disut_ad) & anxiety == 4
+replace disut_ad = 0.1880 if missing(disut_ad) & anxiety == 5
+
+gen disut_mo45 = 0
+replace disut_mo45 = 0.051  if mobility == 4 | mobility ==  5
+
+gen disut_sc45 = 0
+replace disut_sc45 = 0.0584  if selfcare == 4 | selfcare ==  5
+
+gen disut_ua45 = 0
+replace disut_ua45 = 0.1103  if activity == 4 | activity ==  5
+
+gen disut_pd45 = 0
+replace disut_pd45 = 0.1409  if pain == 4 | pain ==  5
+
+gen disut_ad45 = 0
+replace disut_ad45 = 0.1277  if anxiety == 4 | anxiety ==  5
+
+gen num45 = 0
+replace num45 = num45 + 1 if mobility == 4 | mobility == 5
+replace num45 = num45 + 1 if selfcare == 4 | selfcare == 5
+replace num45 = num45 + 1 if activity == 4 | activity == 5
+replace num45 = num45 + 1 if pain == 4 | pain == 5
+replace num45 = num45 + 1 if anxiety == 4 | anxiety == 5
+
+gen num45sq = 0
+replace num45sq = ((num45 - 1)^2) * 0.0085 if num45 >= 2
+
+gen disut_total = disut_mo + disut_sc + disut_ua + disut_pd + disut_ad + disut_mo45 + disut_sc45 + disut_ua45 + disut_pd45 + disut_ad45
+
+gen EQ_index = . 
+replace EQ_index = 1 + 0.1351 - disut_total + num45sq
+replace EQ_index = round(EQ_index, .001)

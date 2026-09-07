@@ -83,10 +83,12 @@ services:
       # services/trex/core) is bundled into the image's eszip by Dockerfile.v2.
       # - ./services/trex/deno.json:/usr/src/deno.json
       # - ./plugins/flows/base/package.json:/usr/src/plugins/d2e-flows/package.json # For local flows development only
+      - ./plugins/flows/eq5d5l_index_calculation/package.json:/usr/src/plugins/d2e-flows/package.json
     env_file:
       - path: .env.claw
         required: false
     environment:
+      PLUGINS_SEED_UPDATE: true
       TREX_DX_ENABLED: "true"
       # Enable trex's native email/password IDP for local dev (off by default in
       # the engine). Production d2e authenticates via Logto and leaves it unset.
