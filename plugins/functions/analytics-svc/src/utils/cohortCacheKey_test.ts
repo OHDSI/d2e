@@ -57,8 +57,8 @@ Deno.test("buildCohortCacheValue builds a negative entry from null or undefined"
     });
 });
 
-Deno.test("isCohortCacheValue accepts a negative entry and rejects junk", () => {
-    // A negative entry is a hit, so the guard must let it through.
+Deno.test("isCohortCacheValue accepts a negative entry and rejects other shapes", () => {
+    // A negative entry is a hit, so the guard has to let it through.
     assert.equal(isCohortCacheValue({ materializedCohort: null }), true);
     assert.equal(isCohortCacheValue({ materializedCohort: { name: "x" } }), true);
     assert.equal(isCohortCacheValue({}), false);

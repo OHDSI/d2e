@@ -18,7 +18,10 @@ export type CohortCacheUpsertEntry = {
     value: CohortCacheValue;
 };
 
-/** A stored row: the cached value plus the age the TTL is measured against. */
+/**
+ * A stored row: the cached value plus the write timestamp the TTL is measured
+ * from.
+ */
 export type CohortCacheRow = {
     value: CohortCacheValue;
     writtenAt: Date;
@@ -56,7 +59,7 @@ export class CohortCacheDAO {
     };
 
     /**
-     * Opens a connection, runs one query, and closes
+     * Opens a client, runs `run` against it, and always closes the client.
      */
     private withClient = async <T>(
         run: (client: pg.Client) => Promise<T>
@@ -86,10 +89,10 @@ export class CohortCacheDAO {
     };
 
     /**
-     * Returns the stored value for every key that has a row. A key absent from
-     * the returned map has no row at all; a key present with
-     * `{ materializedCohort: null }` is a stored negative entry, which is a
-     * hit.
+     * Returns one entry per key whose row holds a recognisable cache value. A
+     * key absent from the map has no usable row; a key present with
+     * `{ materializedCohort: null }` is a stored negative entry and counts as
+     * a hit.
      */
     public lookup = async (
         keys: string[]
@@ -114,8 +117,9 @@ export class CohortCacheDAO {
     };
 
     /**
-     * Upserts the whole batch in one statement. `written_at` is advanced on
-     * every write and is read by nothing.
+     * Upserts the whole batch in one statement, returning the affected row
+     * count. `written_at` is advanced on every write and is what `lookup`
+     * returns for the TTL staleness check.
      */
     public upsert = async (
         entries: CohortCacheUpsertEntry[]

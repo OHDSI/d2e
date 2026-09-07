@@ -122,9 +122,8 @@ interface StubConfig {
 }
 
 /**
- * Installs prototype doubles for every outbound call `getCohortDefinitionList`
- * makes and restores them in `finally`, matching the idiom in
- * `conceptset.service.test.ts`.
+ * Installs prototype doubles for every outbound call
+ * `getCohortDefinitionList` makes, and restores them in `finally`.
  */
 const withStubs = async <T>(
   config: StubConfig,
@@ -212,9 +211,8 @@ Deno.test("all bookmarks hit the cohort cache: getFilteredCohorts is never calle
   await withStubs(
     {
       bookmarks,
-      // If the implementation ever reaches the source database this stub would
-      // hand back a different answer, so the assertions below double as a
-      // check that it did not.
+      // Deliberately different from the cached values, so the assertions
+      // below also show the source database was not consulted.
       filteredCohorts: [makeCohort(99, "b1", 999)],
       lookup: () =>
         Promise.resolve({
@@ -258,17 +256,11 @@ Deno.test("all bookmarks hit the cohort cache: getFilteredCohorts is never calle
   );
 });
 
-Deno.test("negative cache entries are hits: an all-null dataset skips getFilteredCohorts on the second load", async () => {
-  // The single most likely silent failure is an implementation that reads
-  // `materializedCohort: null` as "not cached". Most bookmarks have no
-  // materialized cohort, so that inversion would produce a full miss on every
-  // load while still returning correct data.
-  //
-  // This test rides a real round trip through an in-memory store: the first
-  // load populates it with nothing but negative entries, and the second load
-  // must be served entirely from them. If `null` were treated as a miss the
-  // second load would call getFilteredCohorts again and the count assertion
-  // below would read 2 instead of 1.
+Deno.test("a dataset cached entirely as negative entries is served from the cache on the next load", async () => {
+  // Round trip through an in-memory store: the first load populates it with
+  // nothing but negative entries, and the second must be served from them. If
+  // `null` were read as "not cached" the second load would call
+  // getFilteredCohorts again.
   const bookmarks = ["b1", "b2", "b3"].map(makeBookmark);
   const store = new Map<string, ICohortCacheEntry>();
 
@@ -314,7 +306,7 @@ Deno.test("negative cache entries are hits: an all-null dataset skips getFiltere
 
       const warmResult = await getCohortDefinitionList(TOKEN, DATASET_ID);
 
-      // The load-bearing assertion: still 1, i.e. the warm load added none.
+      // Still 1: the warm load issued no source query.
       assertEquals(calls.getFilteredCohorts, 1);
       assertEquals(calls.lookup.length, 2);
       // Nothing to repopulate, so no second write either.
@@ -327,8 +319,8 @@ Deno.test("negative cache entries are hits: an all-null dataset skips getFiltere
 
 Deno.test("partial miss makes exactly one getFilteredCohorts call and answers from it", async () => {
   const bookmarks = ["b1", "b2", "b3"].map(makeBookmark);
-  // Deliberately stale: if the response were assembled from the partial cache
-  // read the patient count would come back as 1.
+  // Differs from the fresh value: a response assembled from the partial cache
+  // read would report a patient count of 1.
   const staleCohortForB1 = makeCohort(11, "b1", 1);
   const freshCohortForB1 = makeCohort(11, "b1", 111);
   const freshCohortForB2 = makeCohort(12, "b2", 222);
@@ -360,7 +352,7 @@ Deno.test("partial miss makes exactly one getFilteredCohorts call and answers fr
           ["b3", undefined],
         ],
       );
-      // Sorted by cohort id, and built from the authoritative result.
+      // Sorted by cohort id, and built from the source query result.
       assertEquals(
         cohortItems(result).map((cohort) => [cohort.id, cohort.patientCount]),
         [
@@ -386,7 +378,7 @@ Deno.test("partial miss makes exactly one getFilteredCohorts call and answers fr
   );
 });
 
-Deno.test("empty cache behaves as today and writes an entry for every bookmark", async () => {
+Deno.test("an empty cache queries the source and writes an entry for every bookmark", async () => {
   const bookmarks = ["b1", "b2"].map(makeBookmark);
   const cohortForB1 = makeCohort(11, "b1", 111);
 
@@ -498,8 +490,7 @@ Deno.test("a failing cohort cache lookup falls through to the uncached path", as
     {
       bookmarks,
       filteredCohorts: [cohortForB2],
-      // Mirrors the 500 analytics-svc returns when it cannot resolve
-      // paConfigId server-side.
+      // Transport failure, such as a 500 from the lookup endpoint.
       lookup: () =>
         Promise.reject(new Error("Request failed with status code 500")),
     },
@@ -521,9 +512,8 @@ Deno.test("a failing cohort cache lookup falls through to the uncached path", as
         cohortItems(result).map((cohort) => cohort.id),
         [12],
       );
-      // UNAVAILABLE, not MISS: the cache could not answer, so this request
-      // behaves exactly as it did before the cache existed, and writing back
-      // to an endpoint that just failed would only fail twice.
+      // UNAVAILABLE, not MISS: nothing is written back to a cache that could
+      // not answer.
       assertEquals(calls.write.length, 0);
     },
   );
@@ -553,9 +543,9 @@ Deno.test("a dataset that cannot materialize cohorts never touches the cohort ca
   );
 });
 
-Deno.test("nullable description, syntax and creationTimestamp survive the schema", () => {
-  // All three are NULLable in the COHORT_DEFINITION DDL. The cache must not be
-  // stricter than the uncached path, or it rejects rows the page renders fine.
+Deno.test("the lookup schema accepts a null description, syntax and creationTimestamp", () => {
+  // All three are nullable in the COHORT_DEFINITION DDL, so the cache schema
+  // must not be stricter than the uncached path.
   const parsed = CohortCacheLookupResponseSchema.safeParse({
     entries: {
       b1: {
@@ -574,7 +564,7 @@ Deno.test("nullable description, syntax and creationTimestamp survive the schema
   assertEquals(parsed.success, true);
 });
 
-Deno.test("a numeric creationTimestamp is accepted", () => {
+Deno.test("the cached cohort schema accepts a numeric creationTimestamp", () => {
   const parsed = CachedMaterializedCohortSchema.safeParse({
     id: 11,
     name: "cohort 11",
@@ -586,7 +576,7 @@ Deno.test("a numeric creationTimestamp is accepted", () => {
   assertEquals(parsed.success, true);
 });
 
-Deno.test("a genuinely wrong type is still rejected", () => {
+Deno.test("the cached cohort schema rejects a wrongly typed patientCount", () => {
   const parsed = CachedMaterializedCohortSchema.safeParse({
     id: 11,
     name: "cohort 11",
@@ -598,7 +588,7 @@ Deno.test("a genuinely wrong type is still rejected", () => {
   assertEquals(parsed.success, false);
 });
 
-Deno.test("an unusable cache body recomputes AND overwrites it", async () => {
+Deno.test("an unusable cache body recomputes from the source and overwrites the cache", async () => {
   await withStubs(
     {
       bookmarks: ["b1"].map(makeBookmark),
@@ -615,8 +605,8 @@ Deno.test("an unusable cache body recomputes AND overwrites it", async () => {
         (cohortItems(result)[0] as { patientCount: number }).patientCount,
         111,
       );
-      // MISS, not UNAVAILABLE: the bad row must be overwritten, because no TTL
-      // will ever clear it.
+      // MISS, not UNAVAILABLE: a body that fails to parse never reaches the
+      // revalidate path, so only the write-back repairs the stored row.
       assertEquals(calls.write.length, 1);
     },
   );
@@ -671,8 +661,8 @@ Deno.test("a stale hit is served from the cache without waiting for a refresh", 
       const result = await getCohortDefinitionList(TOKEN, "stale-serve");
       events.push("response-returned");
 
-      // Served from the stale entry: the source-database read did not stand
-      // between the request and the reply.
+      // Served from the stale entry: the source query did not stand between
+      // the request and the reply.
       assertEquals(
         (cohortItems(result)[0] as { patientCount: number }).patientCount,
         1,
@@ -692,8 +682,8 @@ Deno.test("a stale hit is served from the cache without waiting for a refresh", 
 });
 
 Deno.test("revalidation writes the freshly read values, not the stale ones", async () => {
-  // The failure this guards against: writing back what was just served stamps
-  // a new written_at onto stale data, so the entry never refreshes again.
+  // Writing back what was just served would stamp a new written_at onto stale
+  // data, so the entry would never refresh again.
   const staleCohort = makeCohort(11, "b1", 1);
   const freshCohort = makeCohort(11, "b1", 111);
   const written = writeSignal();

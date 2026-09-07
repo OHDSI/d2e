@@ -44,10 +44,9 @@ const mriConfigConnection = new MriConfigConnection(
 );
 const envVarUtils = new EnvVarUtils(Deno.env.toObject());
 
-// The cohort cache routes read and write only the portal Postgres `analytics`
-// schema; they never query the dataset's analytics database. They also sit on
-// the latency path the cache exists to shorten, so they must not pay for a
-// HANA/Trex connection (and its cleanup) on every call.
+// Cohort cache routes are served entirely from the portal Postgres
+// `analytics` schema and never query a dataset's analytics database, so the
+// per-request analytics connection and its cleanup are skipped for them.
 const COHORT_CACHE_PATH_PREFIX = "/analytics-svc/api/services/cohort-cache";
 const isCohortCacheReq = (req: IMRIRequest): boolean =>
     req.originalUrl.startsWith(COHORT_CACHE_PATH_PREFIX);
@@ -126,9 +125,8 @@ const initRoutes = async (app: express.Application) => {
 
     app.use(async (req: IMRIRequest, res, next) => {
         try {
-            // Skip opening an analytics database connection for
-            // "/analytics-svc/api/services/cohort-cache*" requests, as these are
-            // served entirely from the portal Postgres cohort cache
+            // No analytics database connection is opened for cohort cache
+            // requests.
             if (isCohortCacheReq(req)) {
                 log.info(
                     "Skipping analytics db connection for /cohort-cache* requests"
@@ -229,8 +227,8 @@ const initRoutes = async (app: express.Application) => {
             return next();
         }
 
-        // Skip getting cleanupMiddleware for "/analytics-svc/api/services/cohort-cache*"
-        // requests, as no analytics database connection was opened for them
+        // Nothing to clean up: no analytics database connection was opened
+        // for cohort cache requests.
         if (isCohortCacheReq(req)) {
             log.info("Skipping cleanupMiddleware for /cohort-cache* requests");
             return next();

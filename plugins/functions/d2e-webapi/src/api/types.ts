@@ -16,9 +16,9 @@ export interface ICohortDefinition {
 }
 
 /**
- * A `COHORT_DEFINITION` row from `GET /analytics-svc/api/services/cohort-definition`.
- * That query aliases every column, so the names are uppercase on both Postgres
- * and HANA.
+ * A `COHORT_DEFINITION` row from
+ * `GET /analytics-svc/api/services/cohort-definition`. That query aliases
+ * every column, so the field names come back uppercase.
  */
 export interface IAnalyticsCohortDefinition {
   COHORT_DEFINITION_ID: number;
@@ -230,8 +230,7 @@ export const BookmarksSchema = z.object({
   schemaName: z.string(),
 });
 
-// Atlas cohort definitions were removed from GET /cohortdefinition; the list now
-// carries only bookmarks and their materialized cohorts.
+// The list endpoint returns bookmarks and materialized cohorts only.
 export const CombinedCohortDefinitionListSchema = z.union([
   BookmarkSchema,
   MaterializedCohortSchema,
@@ -294,18 +293,13 @@ export interface IBaseMaterializedCohort {
 }
 
 /**
- * The cached form of a materialized cohort, as analytics-svc stores it in
- * `analytics.cohort_cache`: its `CohortType` minus `patientIds`, which is
- * never cached (the overview always asks for `excludePatientIds=true`, and the
- * cache must not hold subject identifiers).
- */
-/**
- * Runtime shape of a cached cohort, used to parse the lookup response.
+ * A materialized cohort in its cached form, as analytics-svc stores it in
+ * `analytics.cohort_cache`: the cohort shape minus `patientIds`, which is
+ * never cached because the cache must not hold subject identifiers.
  *
- * The matching TS interface below is hand-written rather than `z.infer`d:
- * this package compiles with `strict: false`, and without `strictNullChecks`
- * zod infers every field as optional, which loses the guarantee the schema is
- * there to provide.
+ * The matching interface below is hand-written rather than `z.infer`red: this
+ * package compiles with `strict: false`, and without `strictNullChecks` zod
+ * infers every field as optional.
  */
 export const CachedMaterializedCohortSchema = z.object({
   id: z.number(),
@@ -328,9 +322,8 @@ export interface ICachedMaterializedCohort {
 /**
  * One cohort cache entry as returned by the lookup endpoint.
  *
- * `materializedCohort: null` is a *negative* entry: analytics-svc knows this
- * bookmark has no materialized cohort on this dataset. It is a cache HIT, not
- * a miss.
+ * `materializedCohort: null` is a negative entry: the bookmark is known to
+ * have no materialized cohort on this dataset. It is a hit, not a miss.
  */
 export const CohortCacheEntrySchema = z.object({
   materializedCohort: CachedMaterializedCohortSchema.nullable(),
@@ -343,14 +336,13 @@ export interface ICohortCacheEntry {
 /**
  * Response of `POST /analytics-svc/api/services/cohort-cache/lookup`.
  *
- * Every bookmark id appears in exactly one of the two: under `entries` (a hit,
- * whatever `materializedCohort` holds) or in `missing` (no row at all).
+ * Every requested bookmark id appears in exactly one of the two: under
+ * `entries` (a hit, whatever `materializedCohort` holds) or in `missing`.
  *
  * `stale` reports that at least one returned entry is past its TTL. Such an
- * entry is still a hit and still worth rendering; it just means the caller
- * should refresh it in the background. It defaults to `false` so that an
- * analytics-svc predating the TTL is read as "everything is fresh" rather than
- * failing the schema and forcing a full recompute on every load mid-rollout.
+ * entry is still a hit; the caller serves it and refreshes it in the
+ * background. It defaults to `false`, so a response omitting the field reads
+ * as fresh instead of failing the schema.
  */
 export const CohortCacheLookupResponseSchema = z.object({
   entries: z.record(z.string(), CohortCacheEntrySchema),

@@ -526,7 +526,7 @@ export async function updateCohortDefinition(req: IMRIRequest, res: Response) {
 
         await cohortEndpoint.updateCohortDefinitionToDb(newCohortDefinition);
 
-        // non-blocking update to cohort cache
+        // Fire-and-forget: a cache metadata update must not fail the response.
         updateCohortCacheEntryMetadata({
             syntax: newCohortDefinition.syntax,
             datasetId: req.body.datasetId ?? req.selectedstudyDbMetadata?.id,

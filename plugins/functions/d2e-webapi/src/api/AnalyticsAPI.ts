@@ -190,21 +190,12 @@ export class AnalyticsSvcAPI {
   /**
    * `POST /analytics-svc/api/services/cohort-cache/lookup`
    *
-   * Returns, for every requested bookmark id, either a cache entry or a place
-   * in `missing`. A bookmark id under `entries` is a HIT **including when its
-   * `materializedCohort` is `null`** — that negative entry means "this
-   * bookmark has no materialized cohort", which is the common case and the
-   * whole point of the cache. Only ids in `missing` are misses.
+   * Returns, for every requested bookmark id, either an entry under `entries`
+   * or the id under `missing`. An entry whose `materializedCohort` is `null`
+   * is still a hit: it records that the bookmark has no materialized cohort.
    *
-   * `paConfigId` is resolved server-side; if analytics-svc cannot resolve it
-   * this call fails with a 500 rather than reporting a falsely cold cache.
-   * The caller is expected to log that and fall through to the uncached path.
-   *
-   * There is deliberately no per-call timeout override. `TrexHttpClient
-   * .request` ignores the `timeout` field of the request config entirely, and
-   * the effective ceiling is a hard, non-configurable 30s `tokio::time
-   * ::timeout` inside the Rust op, so a tighter budget for this fast-path call
-   * is not achievable from here.
+   * Throws `CohortCacheShapeError` when the body does not match the schema and
+   * rethrows transport failures; callers fall back to the uncached path.
    */
   async cohortCacheLookup(
     datasetId: string,
@@ -221,7 +212,6 @@ export class AnalyticsSvcAPI {
         { datasetId, bookmarkIds },
         options,
       );
-
 
       const parsed = CohortCacheLookupResponseSchema.safeParse(result?.data);
       if (!parsed.success) {
@@ -241,10 +231,7 @@ export class AnalyticsSvcAPI {
    *
    * Upserts one entry per bookmark. Pass `materializedCohort: null` to record
    * a negative entry; those are read back as hits. `patientIds` is stripped
-   * server-side and is never stored.
-   *
-   * Same 30s ceiling caveat as `cohortCacheLookup`, and the same 500 on an
-   * unresolvable `paConfigId`. Callers treat this as fire-and-forget.
+   * server-side and is never stored. Callers treat this as fire-and-forget.
    */
   async cohortCacheWrite(
     datasetId: string,

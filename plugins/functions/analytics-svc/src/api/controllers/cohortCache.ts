@@ -33,18 +33,16 @@ const toBookmarkIdList = (value: unknown): string[] => {
  * POST /analytics-svc/api/services/cohort-cache/lookup
  *
  * body:     { datasetId, bookmarkIds: [...] }
- * response: { entries: { <bookmarkId>: { materializedCohort } }, missing: [...], stale }
+ * response: { entries: { <bookmarkId>: { materializedCohort } },
+ *             missing: [...], stale }
  *
- * A bookmark id under `entries` is a HIT, including when its
- * `materializedCohort` is `null` — that negative entry is the whole point of
- * the cache. Only ids with no row at all go under `missing`.
+ * A bookmark id under `entries` is a hit, including when its
+ * `materializedCohort` is `null`: that is a stored negative entry. Only ids
+ * with no row at all go under `missing`.
  *
- * `stale` is true when at least one returned entry is past its TTL. Expired
- * rows are still returned as hits rather than being reported missing, so the
- * caller can render from them and revalidate in the background. One flag for
- * the whole response rather than one per entry: revalidation refetches the
- * dataset in a single query, so one expired entry and all of them cost the
- * same to refresh.
+ * Expired entries are still returned as hits and are reported through a
+ * single `stale` flag covering the whole response, so a caller can render
+ * immediately and revalidate the dataset in one refetch.
  */
 export async function lookupCohortCache(req: IMRIRequest, res: Response) {
     try {
@@ -57,11 +55,9 @@ export async function lookupCohortCache(req: IMRIRequest, res: Response) {
             return res.status(400).json({ message: "datasetId is required" });
         }
 
-        // paConfigId is always derived server-side, never taken from the body.
-        // Without it there is no key to look up, and silently reporting every
-        // bookmark as missing would hide a broken PA config behind what looks
-        // like a cold cache. Fail loudly instead; the caller falls back to the
-        // uncached path either way, but the failure is visible.
+        // paConfigId is always derived server-side and is never read from the
+        // request body. Without it no cache key can be built, so this throws
+        // instead of reporting every bookmark as missing.
         const paConfigId = req.paConfigId;
         if (!paConfigId) {
             throw new Error(
@@ -98,7 +94,6 @@ export async function lookupCohortCache(req: IMRIRequest, res: Response) {
                 continue;
             }
 
-            // If any row value is stale, set stale to true to trigger stale-while-revalidate
             entries[bookmarkId] = row.value;
             if (isCohortCacheEntryStale(row.writtenAt)) {
                 stale = true;
@@ -117,6 +112,9 @@ export async function lookupCohortCache(req: IMRIRequest, res: Response) {
  *
  * body:     { datasetId, entries: [ { bookmarkId, materializedCohort } ] }
  * response: 204
+ *
+ * An entry whose `materializedCohort` is null/undefined is stored as a
+ * negative entry. Entries without a non-empty string `bookmarkId` are skipped.
  */
 export async function upsertCohortCache(req: IMRIRequest, res: Response) {
     try {
@@ -129,9 +127,9 @@ export async function upsertCohortCache(req: IMRIRequest, res: Response) {
             return res.status(400).json({ message: "datasetId is required" });
         }
 
-        // Same as the lookup path: without a server-derived paConfigId there is
-        // no key to write under. Accepting and discarding would report success
-        // for a write that never happened.
+        // As on the lookup path, paConfigId is derived server-side and never
+        // read from the request body. Without it there is no key to write
+        // under, so this throws rather than reporting a write that never ran.
         const paConfigId = req.paConfigId;
         if (!paConfigId) {
             throw new Error(

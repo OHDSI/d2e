@@ -36,8 +36,8 @@ const fakeDao = (stored: Record<string, unknown> = {}) => {
             const found = new Map<string, unknown>();
             for (const k of keys) {
                 if (Object.prototype.hasOwnProperty.call(stored, k)) {
-                    // `stored` holds bare cache values; the DAO wraps each one
-                    // with the `written_at` the TTL is measured against.
+                    // `stored` holds bare cache values; the DAO wraps each
+                    // one with the `written_at` the TTL is measured against.
                     found.set(k, { value: stored[k], writtenAt: new Date() });
                 }
             }
@@ -70,7 +70,7 @@ const cohortRow = (overrides: Record<string, unknown> = {}) => ({
 
 // --- readBookmarkIdFromSyntax -------------------------------------------------
 
-Deno.test("readBookmarkIdFromSyntax pulls the bookmark id out of valid syntax", () => {
+Deno.test("readBookmarkIdFromSyntax returns the bookmark id from bookmark syntax", () => {
     assert.assertEquals(readBookmarkIdFromSyntax(bookmarkSyntax), BOOKMARK);
 });
 
@@ -91,7 +91,7 @@ Deno.test("readBookmarkIdFromSyntax returns null for unparseable or empty syntax
 
 // --- evictCohortCacheEntry ----------------------------------------------------
 
-Deno.test("evict deletes the exact key for a bookmark-backed cohort", async () => {
+Deno.test("evictCohortCacheEntry deletes the key for a bookmark-backed cohort", async () => {
     const dao = fakeDao();
     const evicted = await evictCohortCacheEntry(
         { syntax: bookmarkSyntax, datasetId: DATASET, paConfigId: PA_CONFIG },
@@ -101,18 +101,19 @@ Deno.test("evict deletes the exact key for a bookmark-backed cohort", async () =
     assert.assertEquals(dao.deleted, [KEY]);
 });
 
-Deno.test("evict does nothing when the bookmark id cannot be recovered", async () => {
+Deno.test("evictCohortCacheEntry does nothing when the bookmark id cannot be read", async () => {
     const dao = fakeDao();
     const evicted = await evictCohortCacheEntry(
         { syntax: "not json", datasetId: DATASET, paConfigId: PA_CONFIG },
         dao,
     );
-    // No dataset-wide fallback: an unaddressable entry is left to the TTL.
+    // There is no dataset-wide fallback: an unaddressable entry is left to
+    // the TTL.
     assert.assertEquals(evicted, false);
     assert.assertEquals(dao.calls, []);
 });
 
-Deno.test("evict does nothing without a resolved paConfigId", async () => {
+Deno.test("evictCohortCacheEntry does nothing without a paConfigId", async () => {
     const dao = fakeDao();
     const evicted = await evictCohortCacheEntry(
         { syntax: bookmarkSyntax, datasetId: DATASET, paConfigId: undefined },
@@ -122,7 +123,7 @@ Deno.test("evict does nothing without a resolved paConfigId", async () => {
     assert.assertEquals(dao.calls, []);
 });
 
-Deno.test("evict swallows a DAO failure so the cohort write is unaffected", async () => {
+Deno.test("evictCohortCacheEntry returns false when the delete throws", async () => {
     const dao = {
         lookup: () => Promise.resolve(new Map()),
         deleteKey: () => Promise.reject(new Error("postgres down")),
@@ -137,7 +138,7 @@ Deno.test("evict swallows a DAO failure so the cohort write is unaffected", asyn
 
 // --- refreshCohortCacheEntry --------------------------------------------------
 
-Deno.test("refresh re-reads the cohort and upserts the entry", async () => {
+Deno.test("refreshCohortCacheEntry re-reads the cohort and upserts the entry", async () => {
     const dao = fakeDao();
     let queried: unknown;
     const cohortEndpoint = {
@@ -160,8 +161,8 @@ Deno.test("refresh re-reads the cohort and upserts the entry", async () => {
     );
 
     assert.assertEquals(refreshed, true);
-    // Queried by definition id, so patientCount is COUNT(DISTINCT SUBJECT_ID)
-    // rather than an insert row count or a client-supplied number.
+    // Queried by definition id, so patientCount comes from the same
+    // COUNT(DISTINCT SUBJECT_ID) the read path caches.
     assert.assertEquals(queried, { ID: 42 });
     assert.assertEquals(dao.upserted.length, 1);
     assert.assertEquals(dao.upserted[0].key, KEY);
@@ -177,7 +178,7 @@ Deno.test("refresh re-reads the cohort and upserts the entry", async () => {
     });
 });
 
-Deno.test("refresh never writes patientIds into the cache", async () => {
+Deno.test("refreshCohortCacheEntry omits patientIds from the stored value", async () => {
     const dao = fakeDao();
     const cohortEndpoint = {
         getCohortDefinition: () => Promise.resolve({ data: [] }),
@@ -204,7 +205,7 @@ Deno.test("refresh never writes patientIds into the cache", async () => {
     assert.assertEquals("patientIds" in value.materializedCohort, false);
 });
 
-Deno.test("refresh drops a stale entry when the cohort cannot be re-read", async () => {
+Deno.test("refreshCohortCacheEntry deletes the entry when the cohort cannot be re-read", async () => {
     const dao = fakeDao();
     const cohortEndpoint = {
         getCohortDefinition: () => Promise.resolve({ data: [] }),
@@ -222,13 +223,12 @@ Deno.test("refresh drops a stale entry when the cohort cannot be re-read", async
         dao,
     );
 
-    // Caching a guess would be worse than a miss.
     assert.assertEquals(refreshed, false);
     assert.assertEquals(dao.deleted, [KEY]);
     assert.assertEquals(dao.upserted, []);
 });
 
-Deno.test("refresh swallows a query failure", async () => {
+Deno.test("refreshCohortCacheEntry returns false when the query throws", async () => {
     const dao = fakeDao();
     const cohortEndpoint = {
         getCohortDefinition: () => Promise.resolve({ data: [] }),
@@ -274,12 +274,12 @@ Deno.test("readCohortDefinitionSyntax returns null on a failed read", async () =
     assert.assertEquals(await readCohortDefinitionSyntax(endpoint, 42), null);
 });
 
-// --- ordering: evict must happen before the delete ---------------------------
+// --- eviction ordering -------------------------------------------------------
 
-Deno.test("evict only reaches the entry while the definition row still exists", async () => {
+Deno.test("evictCohortCacheEntry can only build a key while the definition row exists", async () => {
     // The definition row carries the only copy of the bookmark id, so the
-    // order deleteCohort uses -- read, evict, then delete -- is load-bearing.
-    // The reversed order produces no error, just a stale entry left behind.
+    // read-evict-delete order is load-bearing. Reversing it raises no error,
+    // it just leaves a stale entry behind.
     const definitionRows = [{ COHORT_DEFINITION_SYNTAX: bookmarkSyntax }];
     let definitionDeleted = false;
     const cohortEndpoint = {
@@ -312,7 +312,7 @@ Deno.test("evict only reaches the entry while the definition row still exists", 
 
 // --- updateCohortCacheEntryMetadata ------------------------------------------
 
-Deno.test("metadata update rewrites name and description, preserving the count", async () => {
+Deno.test("updateCohortCacheEntryMetadata rewrites name and description and keeps patientCount", async () => {
     const dao = fakeDao({
         [KEY]: {
             materializedCohort: {
@@ -345,14 +345,13 @@ Deno.test("metadata update rewrites name and description, preserving the count",
             description: "new description",
             creationTimestamp: "2026-08-01",
             syntax: bookmarkSyntax,
-            // A rename cannot change the count, so it is carried over rather
-            // than recomputed — this is why the analytics DB is not touched.
+            // Carried over rather than recomputed.
             patientCount: 137,
         },
     });
 });
 
-Deno.test("metadata update never touches the analytics database", async () => {
+Deno.test("updateCohortCacheEntryMetadata issues only a lookup and an upsert", async () => {
     const dao = fakeDao({
         [KEY]: { materializedCohort: { id: 42, name: "old", patientCount: 9 } },
     });
@@ -365,12 +364,12 @@ Deno.test("metadata update never touches the analytics database", async () => {
         },
         dao,
     );
-    // Only the cache's own connection is used: a lookup and an upsert, nothing
-    // that could race cleanupMiddleware closing analyticsConnection.
+    // Only the cache's own connection is used, so nothing here can race
+    // cleanupMiddleware closing analyticsConnection.
     assert.assertEquals(dao.calls, ["lookup", "upsert"]);
 });
 
-Deno.test("metadata update is a no-op when nothing is cached", async () => {
+Deno.test("updateCohortCacheEntryMetadata is a no-op when nothing is cached", async () => {
     const dao = fakeDao();
     const updated = await updateCohortCacheEntryMetadata(
         {
@@ -385,7 +384,7 @@ Deno.test("metadata update is a no-op when nothing is cached", async () => {
     assert.assertEquals(dao.upserted, []);
 });
 
-Deno.test("metadata update leaves a negative entry alone", async () => {
+Deno.test("updateCohortCacheEntryMetadata leaves a negative entry unchanged", async () => {
     const dao = fakeDao({ [KEY]: { materializedCohort: null } });
     const updated = await updateCohortCacheEntryMetadata(
         {
@@ -396,12 +395,12 @@ Deno.test("metadata update leaves a negative entry alone", async () => {
         },
         dao,
     );
-    // A rename cannot turn "no cohort" into "a cohort".
+    // A metadata update cannot turn a negative entry into a positive one.
     assert.assertEquals(updated, false);
     assert.assertEquals(dao.upserted, []);
 });
 
-Deno.test("metadata update swallows a DAO failure", async () => {
+Deno.test("updateCohortCacheEntryMetadata returns false when the lookup throws", async () => {
     const dao = {
         lookup: () => Promise.reject(new Error("postgres down")),
         deleteKey: () => Promise.resolve(0),

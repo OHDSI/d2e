@@ -276,7 +276,6 @@ export const getCohortDefinitionList = async (
     }));
   }
 
-  // If every bookmark is a cache hit there is nothing left that needs the source-database query.
   const bookmarkIds = parsedbookmarks.map((bookmark) => bookmark.bmkId);
 
   const cacheRead = await _readCohortCache(
@@ -287,19 +286,20 @@ export const getCohortDefinitionList = async (
 
   let baseMaterializedCohorts: IBaseMaterializedCohort[];
   let shouldWriteCohortCache = false;
-  let shouldRevalidateCohortCache = false; // Revalidate stale cache
+  let shouldRevalidateCohortCache = false;
 
   if (
     cacheRead.status === CohortCacheReadStatus.HIT ||
     cacheRead.status === CohortCacheReadStatus.STALE
   ) {
-    // Stale entries are served exactly like fresh ones. Blocking on a refresh
-    // would hand one user per TTL cycle the slow load this cache removes.
+    // Stale entries are served like fresh ones and refreshed in the
+    // background after the response has been sent.
     baseMaterializedCohorts = cacheRead.cohorts;
     shouldRevalidateCohortCache =
       cacheRead.status === CohortCacheReadStatus.STALE;
   } else {
-    // Miss (or an unusable cache): recompute from the authoritative source, ignore whatever partial cache read returned.
+    // Miss or unusable cache: recompute from the source of truth and ignore
+    // whatever a partial cache read returned.
     const result = await withRetry(
       () => analyticsSvcAPI.getFilteredCohorts(datasetId, { datasetId }),
       MATERIALIZED_COHORT_RETRY_DELAYS_MS,
@@ -327,8 +327,6 @@ export const getCohortDefinitionList = async (
   );
 
   if (shouldWriteCohortCache) {
-    // Fire and forget: never awaited before the response. A write lost to a
-    // restart or a failing endpoint just means a miss on the next load.
     _writeCohortCacheEntries(
       analyticsSvcAPI,
       datasetId,
@@ -457,17 +455,15 @@ export const checkV2 = async (
 /**
  * Outcome of a cohort-cache read.
  *
- * `MISS` and `UNAVAILABLE` both fall through to the source query, but they are
- * not interchangeable: only a `MISS` repopulates the cache afterwards. Writing
- * back after an `UNAVAILABLE` would add a second failing call per request to an
- * endpoint that just failed.
+ * `MISS` and `UNAVAILABLE` both fall through to the source query, but only
+ * `MISS` writes the result back; a cache that could not answer is left alone.
  */
 enum CohortCacheReadStatus {
-  /** Every requested bookmark had an entry — including negative entries. */
+  /** Every requested bookmark had an entry, negative entries included. */
   HIT = "hit",
   /**
-   * Every bookmark had an entry, but at least one is past its TTL. Served from
-   * the cache exactly like a hit, then refreshed in the background.
+   * Every bookmark had an entry, but at least one is past its TTL. Served like
+   * a hit, then refreshed in the background.
    */
   STALE = "stale",
   /** The cache answered, but at least one bookmark had no entry. */
@@ -485,13 +481,10 @@ type CohortCacheReadResult =
 /**
  * Looks up every bookmark's cohort cache entry in a single call.
  *
- * Returns `hit` only when analytics-svc reported nothing missing *and* every
- * requested id came back under `entries`; `miss` when anything has to be
- * recomputed; `unavailable` when the cache itself could not answer.
- *
- * An entry whose `materializedCohort` is `null` is a
- * cache **HIT**. This is the case where a bookmark has no materialized
- * cohort yet
+ * Reports `HIT` or `STALE` when nothing came back under `missing`, `MISS` when
+ * anything has to be recomputed, and `UNAVAILABLE` when the cache could not
+ * answer. An entry whose `materializedCohort` is `null` counts as a hit: the
+ * bookmark has no materialized cohort.
  */
 const _readCohortCache = async (
   analyticsSvcAPI: AnalyticsSvcAPI,
@@ -502,10 +495,9 @@ const _readCohortCache = async (
   try {
     lookup = await analyticsSvcAPI.cohortCacheLookup(datasetId, bookmarkIds);
   } catch (error) {
-    // A shape failure means the cache is reachable but holds something
-    // unusable, so recomputing will overwrite it: report MISS, which triggers
-    // the write-back. Anything else means the cache is unreachable, where a
-    // write would fail too: report UNAVAILABLE and leave it alone.
+    // A reachable cache holding an unusable body degrades to MISS so the
+    // write-back overwrites it; anything else degrades to UNAVAILABLE, so
+    // nothing is written to an endpoint that just failed.
     const isShapeError = error instanceof CohortCacheShapeError;
     console.error(
       isShapeError
@@ -543,9 +535,9 @@ const _readCohortCache = async (
 
 /**
  * Attaches each bookmark's materialized cohort id, matching on the
- * `bookmarkId` carried in the cohort's syntax. Sorts in place so the latest
- * materialized cohort wins for a bookmark that has several, and so the caller
- * sees the cohorts in id order.
+ * `bookmarkId` carried in the cohort's syntax. Sorts `baseMaterializedCohorts`
+ * in place by id, so the highest id wins for a bookmark with several matches
+ * and the caller sees the cohorts in id order.
  */
 const _mapBookmarksToCohorts = (
   bookmarks: IBookmark[],
@@ -578,8 +570,8 @@ const _mapBookmarksToCohorts = (
 
 /**
  * Builds one entry per bookmark: positive where a materialized cohort
- * resolved, negative (`null`) where none did. The negative entries are what
- * let the next load skip `getFilteredCohorts` entirely.
+ * resolved, negative (`null`) where none did. Negative entries let a later
+ * lookup count as a hit instead of falling back to the source query.
  */
 const _buildCohortCacheWriteEntries = (
   bookmarks: IBookmark[],
@@ -613,9 +605,9 @@ const _buildCohortCacheWriteEntries = (
 };
 
 /**
- * Fire and forget by design the returned promise is deliberately
- * not awaited, only `.catch`ed, so a slow or failing cache write can never
- * delay or fail the response.
+ * Writes the cache entries without blocking the caller: the promise is only
+ * `.catch`ed, never awaited, so a slow or failing write cannot delay or fail
+ * the response.
  */
 const _writeCohortCacheEntries = (
   analyticsSvcAPI: AnalyticsSvcAPI,
@@ -642,15 +634,15 @@ const _writeCohortCacheEntries = (
 };
 
 /**
- * Refreshes a stale dataset after the response has gone out.
+ * Refreshes a dataset's cache entries after the response has been sent.
  *
- * Recomputes the bookmark-to-cohort mapping from the freshly read cohorts
- * rather than reusing the one just served: writing back the stale mapping is
- * what would make an expired entry immortal, since the upsert stamps a new
- * `written_at` on whatever value it is handed.
+ * Recomputes the bookmark-to-cohort mapping from the freshly fetched cohorts
+ * rather than reusing the one just served: the upsert stamps a new
+ * `written_at` on whatever it is handed, so writing back stale values would
+ * keep them from ever expiring.
  *
- * Deliberately not retried. A failure leaves the entries stale and flagged, so
- * the next load simply tries again.
+ * Not retried, and failures are swallowed. A failure leaves the entries stale
+ * for the next load to retry.
  */
 const _revalidateCohortCacheInBackground = (
   analyticsSvcAPI: AnalyticsSvcAPI,

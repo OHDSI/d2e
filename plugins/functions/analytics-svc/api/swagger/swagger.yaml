@@ -646,7 +646,7 @@ paths:
   /cohort-cache/lookup:
     x-swagger-router-controller: cohortCache
     post:
-      description: Looks up cached per-bookmark materialized cohorts for a dataset. A bookmark id returned under entries is a cache hit, including when its materializedCohort is null; only ids with no cached row are returned under missing. Errors if the dataset's active PA config cannot be resolved, since there is then no key to look up.
+      description: Looks up cached per-bookmark materialized cohorts for a dataset. A bookmark id returned under entries is a cache hit, including when its materializedCohort is null; only ids with no cached row are returned under missing. Fails if the dataset's PA config cannot be resolved server side, since the cache key cannot then be built.
       operationId: lookupCohortCache
       produces:
         - application/json
@@ -678,6 +678,7 @@ paths:
             required:
               - entries
               - missing
+              - stale
             properties:
               entries:
                 type: object
@@ -689,6 +690,9 @@ paths:
                 description: Bookmark ids with no cached row at all
                 items:
                   type: string
+              stale:
+                type: boolean
+                description: True when at least one returned entry is past its TTL. Such entries are still hits; the caller can serve them and refresh in the background.
         default:
           description: Error
           schema:
@@ -696,7 +700,7 @@ paths:
   /cohort-cache:
     x-swagger-router-controller: cohortCache
     put:
-      description: Upserts cached per-bookmark materialized cohorts for a dataset. Intended for service-to-service use from d2e-webapi; this is NOT currently enforced, so any caller holding PA.svc can reach it (see PRD 7, phase-02 'Deferred'). Errors if the dataset's active PA config cannot be resolved, since there is then no key to write under.
+      description: Upserts cached per-bookmark materialized cohorts for a dataset. An entry with no materializedCohort is stored as a negative cache entry. Fails if the dataset's PA config cannot be resolved server side, since the cache key cannot then be built.
       operationId: upsertCohortCache
       consumes:
         - application/json
@@ -1346,7 +1350,7 @@ definitions:
       $ref: "#/definitions/CohortResponse"
   CohortCacheMaterializedCohort:
     type: object
-    description: Cached materialized cohort. Mirrors analytics-svc CohortType without patientIds, which is never cached.
+    description: Cached materialized cohort. Mirrors analytics-svc CohortType without patientIds, which is never stored in the cache.
     properties:
       id:
         type: number
@@ -1368,13 +1372,13 @@ definitions:
         description: Cohort Definition Subject Concept Id
       syntax:
         type: string
-        description: Cohort definition syntax, re-emitted to the frontend
+        description: Cohort definition syntax
       patientCount:
         type: number
         description: Number of patients in the cohort
   CohortCacheValue:
     type: object
-    description: A cached entry. materializedCohort is null when the bookmark has no materialized cohort on this dataset; that negative entry is a cache hit.
+    description: A cached entry. materializedCohort is null when the bookmark has no materialized cohort on this dataset; such a negative entry still counts as a cache hit.
     required: [materializedCohort]
     properties:
       materializedCohort:

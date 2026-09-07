@@ -1,29 +1,27 @@
 import { env } from "../env.ts";
 
 /**
- * How long a `analytics.cohort_cache` row is served before it is considered
+ * How long an `analytics.cohort_cache` row is served before it counts as
  * stale.
  *
- * Expiry is deliberately *not* a delete and not a miss. An expired row is
- * still returned to the caller, flagged `stale`, so the Cohorts overview can
- * render immediately and revalidate in the background — a hard expiry would
- * hand one unlucky user per cycle the exact slow page load this cache exists
- * to remove.
+ * Expiry is neither a delete nor a miss: an expired row is still returned to
+ * the caller, flagged stale, so the caller can serve it and revalidate in the
+ * background.
  *
  * `COHORT_CACHE_TTL_HOURS` is required and validated as a positive number by
- * the env schema, so nothing here has to cope with it being absent or unusable.
+ * the env schema, so this module does not handle a missing or unusable value.
  */
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 
-/** The configured TTL for this process. */
+/** The configured TTL in milliseconds. */
 export const getCohortCacheTtlMs = (): number =>
     env.COHORT_CACHE_TTL_HOURS * MS_PER_HOUR;
 
 /**
- * True when `writtenAt` is at least one TTL old. A row with no usable
- * timestamp is reported stale: revalidating costs one query, whereas serving
- * an entry whose age is unknown has no bound.
+ * True when `writtenAt` is at least one TTL old. Anything that is not a `Date`
+ * — a date string included — is reported stale, since an entry of unknown age
+ * has no bound on how far out of date it can be.
  */
 export const isCohortCacheEntryStale = (writtenAt: unknown): boolean => {
     const writtenAtMs =

@@ -41,7 +41,7 @@ export const cohortdefinition: FastifyPluginAsyncZod = async function (app) {
           },
         ],
         querystring: z.object({
-          // To be removed after moving to d2e atlas3 redesigned UI
+          // Accepted for backwards compatibility; the handler ignores it.
           source: z.string().optional(),
         }),
       },

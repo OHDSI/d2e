@@ -1,23 +1,18 @@
 import { CohortType } from "../types.ts";
 
 /**
- * Owns the `analytics.cohort_cache` key format and value shapes so that the
- * read, write and invalidation paths cannot disagree about either.
+ * Key format and value shapes for the `analytics.cohort_cache` table, shared
+ * by the read, write and invalidation paths.
  *
  *     <datasetId>|<paConfigId>|<bookmarkId>
  *
- * Segments are joined raw. None of the three can contain the delimiter:
- * `datasetId` and `paConfigId` are `uuid` columns (`portal.dataset.id` and
- * `portal.dataset.pa_config_id`), and `createBookmarkId` strips every
- * non-alphanumeric character out of the bookmark name before appending its
- * random suffix. `paConfigId` is always derived server-side from
- * `req.paConfigId`, never taken from the caller, and `StudyDbCredential`
- * derives it from the same `datasetId` the caller sent, so the two cannot be
- * mixed across datasets.
+ * Segments are joined raw because none of them can contain the delimiter:
+ * `datasetId` and `paConfigId` are uuids, and a bookmark id is
+ * `<alphanumeric>_<hex>`. `paConfigId` is resolved server-side from the
+ * request's dataset and is never taken from the caller.
  *
- * There is no version segment. If the stored value shape ever changes
- * incompatibly, clear the table rather than relying on a key prefix to retire
- * old rows.
+ * The key carries no version segment, so an incompatible change to the stored
+ * value shape means clearing the table.
  */
 
 export const COHORT_CACHE_KEY_DELIMITER = "|";
@@ -29,17 +24,15 @@ export type CohortCacheKeyParts = {
 };
 
 /**
- * The cached form of a materialized cohort. This is analytics-svc's
- * `CohortType` minus `patientIds`, which is never stored: the overview call
- * always sets `excludePatientIds=true`, and the cache must not hold subject
- * identifiers.
+ * The stored form of a materialized cohort: `CohortType` without
+ * `patientIds`, which is never written to the cache.
  */
 export type CachedMaterializedCohort = Omit<CohortType, "patientIds">;
 
 /**
- * The stored JSON value. `materializedCohort: null` is a negative entry: the
- * bookmark has no materialized cohort on this dataset. A negative entry is a
- * cache HIT, not a miss.
+ * The stored JSON value. `materializedCohort: null` is a stored negative
+ * entry — the bookmark has no materialized cohort on this dataset — and
+ * counts as a cache HIT, not a miss.
  */
 export type CohortCacheValue = {
     materializedCohort: CachedMaterializedCohort | null;
@@ -53,7 +46,8 @@ const requireSegment = (name: string, value: string): string => {
 };
 
 /**
- * Builds the cache key for one bookmark on one dataset.
+ * Builds the cache key for one bookmark on one dataset. Throws if any segment
+ * is empty.
  */
 export const buildCohortCacheKey = ({
     datasetId,
@@ -67,7 +61,8 @@ export const buildCohortCacheKey = ({
     ].join(COHORT_CACHE_KEY_DELIMITER);
 
 /**
- * Normalises a cohort into the stored value shape, dropping `patientIds`.
+ * Normalises a cohort into the stored value shape, dropping `patientIds`. A
+ * null or undefined cohort yields a negative entry.
  */
 export const buildCohortCacheValue = (
     materializedCohort: CohortType | null | undefined
@@ -80,7 +75,7 @@ export const buildCohortCacheValue = (
 };
 
 /**
- * Guards a value read back out of Postgres. A row whose JSON does not carry a
+ * Type guard for a value read back out of Postgres. A row whose JSON has no
  * `materializedCohort` property is treated as absent rather than as a
  * negative entry.
  */

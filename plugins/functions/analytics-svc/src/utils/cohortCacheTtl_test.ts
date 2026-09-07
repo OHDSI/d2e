@@ -8,9 +8,9 @@ import {
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
- * `COHORT_CACHE_TTL_HOURS` is required and schema-validated, but `initEnv()`
- * only runs at service startup, so under test the value has to be set
- * directly. There is deliberately no fallback in the module to lean on.
+ * `COHORT_CACHE_TTL_HOURS` is populated by `initEnv()` at service startup,
+ * which does not run under test, so the value is set directly around each
+ * assertion.
  */
 const withTtlHours = (hours: number, run: () => void): void => {
     const original = env.COHORT_CACHE_TTL_HOURS;
@@ -25,7 +25,7 @@ const withTtlHours = (hours: number, run: () => void): void => {
 const agedHours = (hours: number): Date =>
     new Date(Date.now() - hours * HOUR_MS);
 
-Deno.test("the configured TTL is read as hours", () => {
+Deno.test("getCohortCacheTtlMs converts the configured hours to milliseconds", () => {
     withTtlHours(24, () => {
         assert.assertEquals(getCohortCacheTtlMs(), 24 * HOUR_MS);
     });
@@ -34,29 +34,28 @@ Deno.test("the configured TTL is read as hours", () => {
     });
 });
 
-Deno.test("an entry younger than the TTL is fresh", () => {
+Deno.test("isCohortCacheEntryStale is false for an entry younger than the TTL", () => {
     withTtlHours(24, () => {
         assert.assertEquals(isCohortCacheEntryStale(agedHours(23)), false);
     });
 });
 
-Deno.test("an entry older than the TTL is stale", () => {
+Deno.test("isCohortCacheEntryStale is true for an entry older than the TTL", () => {
     withTtlHours(24, () => {
         assert.assertEquals(isCohortCacheEntryStale(agedHours(25)), true);
     });
 });
 
-Deno.test("an entry exactly at the TTL is stale", () => {
-    // The comparison is `>=`, and the clock only moves forward between building
-    // this timestamp and reading it, so the boundary is not flaky.
+Deno.test("isCohortCacheEntryStale is true for an entry exactly at the TTL", () => {
+    // The comparison is `>=`, and the clock only moves forward between
+    // building this timestamp and reading it, so the boundary is not flaky.
     withTtlHours(24, () => {
         assert.assertEquals(isCohortCacheEntryStale(agedHours(24)), true);
     });
 });
 
-Deno.test("a shorter TTL expires an entry the default would still serve", () => {
-    // Guards the unit: an entry 2 hours old is fresh under a 24h TTL and stale
-    // under a 1h one.
+Deno.test("isCohortCacheEntryStale follows the configured TTL", () => {
+    // An entry 2 hours old is fresh under a 24h TTL and stale under a 1h one.
     withTtlHours(24, () => {
         assert.assertEquals(isCohortCacheEntryStale(agedHours(2)), false);
     });
@@ -65,9 +64,7 @@ Deno.test("a shorter TTL expires an entry the default would still serve", () => 
     });
 });
 
-Deno.test("an entry with no usable timestamp is stale", () => {
-    // Revalidating costs one query; serving an entry of unknown age has no
-    // bound on how wrong it can be.
+Deno.test("isCohortCacheEntryStale is true for a value that is not a valid Date", () => {
     withTtlHours(24, () => {
         assert.assertEquals(isCohortCacheEntryStale(undefined), true);
         assert.assertEquals(isCohortCacheEntryStale(null), true);
@@ -79,7 +76,7 @@ Deno.test("an entry with no usable timestamp is stale", () => {
     });
 });
 
-Deno.test("a clock skewed into the future reads as fresh, not stale", () => {
+Deno.test("isCohortCacheEntryStale is false for a timestamp in the future", () => {
     withTtlHours(24, () => {
         assert.assertEquals(isCohortCacheEntryStale(agedHours(-1)), false);
     });

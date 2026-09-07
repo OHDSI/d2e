@@ -11,25 +11,18 @@ import {
 const logger = Logger.CreateLogger("analytics-log");
 
 /**
- * Keeps `analytics.cohort_cache` in step with the three cohort writes that can
- * change what the Cohorts overview shows for a bookmark:
+ * Keeps `analytics.cohort_cache` in step with the cohort writes that change
+ * what is cached for a bookmark: materializing a cohort
+ * (`refreshCohortCacheEntry`), deleting one (`evictCohortCacheEntry`), and
+ * updating its definition (`updateCohortCacheEntryMetadata`).
  *
- * - a cohort is materialized  -> `refreshCohortCacheEntry` overwrites the entry
- * - a cohort is deleted       -> `evictCohortCacheEntry` drops it, called
- *                                *before* the delete: the definition row holds
- *                                the only copy of the bookmark id
- * - a cohort is renamed       -> `updateCohortCacheEntryMetadata` rewrites the
- *                                cached name and description in place, keeping
- *                                the count a rename cannot have changed
- *
- * Nothing here throws. A cache write that fails leaves a stale entry, which the
- * TTL expires; it must never fail the cohort write it follows. Likewise a
- * bookmark id that cannot be recovered is left alone rather than escalating to
- * a blunt dataset-wide delete — expiry is cheaper than forcing every bookmark
- * on the dataset to be recomputed.
+ * Nothing here throws: a failed cache write leaves a stale entry for the TTL
+ * to expire, and must never fail the cohort write it follows. An entry whose
+ * key cannot be built is left alone rather than widened into a dataset-wide
+ * delete.
  */
 
-/** Just the DAO surface this module uses, so tests can supply a fake. */
+/** The DAO surface this module uses, so tests can supply a fake. */
 export interface CohortCacheWriter {
     lookup(keys: string[]): Promise<Map<string, CohortCacheRow>>;
     deleteKey(key: string): Promise<number>;
@@ -39,12 +32,10 @@ export interface CohortCacheWriter {
 }
 
 /**
- * Just the `CohortEndpoint` surface this module uses. Picked from the class
- * rather than redeclared, so editors resolve these calls to the real
- * implementation and a signature change there fails here instead of drifting.
- *
- * `Pick` rather than `CohortEndpoint` itself: the class is structurally typed,
- * so naming it outright would oblige every test double to implement all of it.
+ * The `CohortEndpoint` surface this module uses. Picked from the class rather
+ * than redeclared, so a signature change there fails here. `Pick` rather than
+ * the class itself: naming it outright would oblige every test double to
+ * implement all of it.
  */
 export type CohortDefinitionReader = Pick<
     CohortEndpoint,
@@ -55,9 +46,9 @@ const asNonEmptyString = (value: unknown): string | null =>
     typeof value === "string" && value.length > 0 ? value : null;
 
 /**
- * Pulls the bookmark id out of a `COHORT_DEFINITION_SYNTAX` blob. Returns null
- * for anything unparseable, or for a cohort that belongs to an Atlas definition
- * rather than a bookmark — neither has a cache entry to act on.
+ * Extracts `bookmarkId` from a `COHORT_DEFINITION_SYNTAX` JSON blob. Returns
+ * null for unparseable syntax and for Atlas-backed cohorts, which carry no
+ * bookmark id and so have no cache entry to act on.
  */
 export const readBookmarkIdFromSyntax = (syntax: unknown): string | null => {
     const raw = asNonEmptyString(syntax);
@@ -91,8 +82,9 @@ const buildKey = (
 };
 
 /**
- * Reads a cohort definition's `syntax`. Never throws. Callers use this before a
- * delete, because the definition row carries the only copy of the bookmark id.
+ * Reads a cohort definition's `COHORT_DEFINITION_SYNTAX`, or null if it cannot
+ * be read. Never throws. Callers must run this before deleting a cohort: the
+ * definition row carries the only copy of the bookmark id.
  */
 export const readCohortDefinitionSyntax = async (
     cohortEndpoint: CohortDefinitionReader,
@@ -124,7 +116,7 @@ export const readCohortDefinitionSyntax = async (
 };
 
 /**
- * Drops the entry for the bookmark named by `syntax`. Returns true only if a
+ * Deletes the entry for the bookmark named by `syntax`. Returns true only if a
  * delete was actually issued.
  */
 export const evictCohortCacheEntry = async (
@@ -141,8 +133,8 @@ export const evictCohortCacheEntry = async (
         readBookmarkIdFromSyntax(syntax)
     );
     if (!key) {
-        // Not a bookmark-backed cohort, or the request lacked the ids needed to
-        // address the entry. Leave it to the TTL.
+        // Not a bookmark-backed cohort, or the ids needed to address the
+        // entry are missing. Leave it to the TTL.
         return false;
     }
     try {
@@ -161,18 +153,11 @@ export const evictCohortCacheEntry = async (
 /**
  * Overwrites the entry for a bookmark whose cohort has just been materialized.
  *
- * Only `patientCount` actually needs the read — `createCohort` already holds
- * the name, description, timestamp and syntax. But the cache stores
- * `COUNT(DISTINCT SUBJECT_ID)`, and the write path has no such number:
- * `saveCohortToDb` returns an insert row count, and the generated insert
- * `LEFT JOIN`s `OBSERVATION_PERIOD`, so a patient with two observation periods
- * contributes two rows. Reusing it would inflate counts on exactly the datasets
- * with enrollment gaps. The streaming path (`streamCohortToDb`) returns nothing
- * comparable at all.
- *
- * Re-reading with `queryCohorts({ ID })` uses the *same* query that builds
- * cached values on the read path, so the two cannot drift; `excludePatientIds`
- * is set so this never pulls subject ids it would only have to discard.
+ * The cohort is re-read with `queryCohorts({ ID })` rather than assembled from
+ * what the write path already holds, because only that query yields the cached
+ * `patientCount` as `COUNT(DISTINCT SUBJECT_ID)`; both write paths return
+ * inserted row counts instead. `excludePatientIds` is set so no subject ids
+ * are fetched.
  */
 export const refreshCohortCacheEntry = async (
     {
@@ -202,8 +187,9 @@ export const refreshCohortCacheEntry = async (
             true
         );
         if (!materialized) {
-            // The definition should exist — it was just written. Rather than
-            // cache a guess, drop any stale entry and let the next read rebuild.
+            // The definition was just written, so an empty result means the
+            // read failed rather than that there is no cohort. Drop any stale
+            // entry and let the next read rebuild it.
             await dao.deleteKey(key);
             return false;
         }
@@ -220,18 +206,19 @@ export const refreshCohortCacheEntry = async (
 };
 
 /**
- * Rewrites the definition-derived fields of an already-cached entry after
- * `updateCohortDefinition` — a rename, or an edited description.
+ * Rewrites the cached `name` and `description` of an already-cached entry
+ * after a cohort definition update.
  *
- * Deliberately does NOT touch the analytics database. A rename cannot change
- * `patientCount`, so the cached count is carried over and the expensive
- * `COUNT(DISTINCT SUBJECT_ID)` is skipped entirely. That also makes this safe
- * to call without awaiting: it only uses the cache's own short-lived Postgres
- * connection, whereas anything going through `cohortEndpoint` would race
- * `cleanupMiddleware`, which closes `analyticsConnection` inside `res.end`.
+ * Does not touch the analytics database: a definition update cannot change
+ * `patientCount` or `creationTimestamp`, so the cached values are carried over
+ * and the expensive `COUNT(DISTINCT SUBJECT_ID)` is skipped. That also makes
+ * this safe to call without awaiting — it uses only the cache's own
+ * short-lived Postgres connection, whereas anything going through
+ * `cohortEndpoint` would race `cleanupMiddleware` closing
+ * `analyticsConnection` inside `res.end`.
  *
- * A cache miss is not an error — the next overview read builds the entry with
- * the new values anyway.
+ * A cache miss is not an error; the next read builds the entry with the new
+ * values.
  */
 export const updateCohortCacheEntryMetadata = async (
     {
@@ -261,8 +248,8 @@ export const updateCohortCacheEntryMetadata = async (
         const existing = (await dao.lookup([key])).get(key);
         const cached = existing?.value.materializedCohort;
         if (!cached) {
-            // No entry, or a negative entry — a rename cannot turn one into a
-            // positive. Leave it for the next read.
+            // No entry, or a negative entry, which a metadata update cannot
+            // turn into a positive one. Leave it for the next read.
             return false;
         }
         await dao.upsert([
@@ -276,8 +263,8 @@ export const updateCohortCacheEntryMetadata = async (
                             typeof description === "string"
                                 ? description
                                 : cached.description,
-                        // patientCount and creationTimestamp are unchanged by a
-                        // definition update, so the cached values stand.
+                        // patientCount and creationTimestamp are unchanged
+                        // by a definition update, so the cached values stand.
                     },
                 },
             },

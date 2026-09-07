@@ -437,6 +437,9 @@ export class CohortEndpoint {
 
     // Get cohort definition via cohort definition id
     public async getCohortDefinition(cohortDefinitionId: string) {
+        // TO_NVARCHAR is required for the TEXT columns: HANA hands those back
+        // as LOB objects rather than strings. The quoted aliases keep the
+        // result column names upper case across dialects.
         const queryString = `
         SELECT
             COHORT_DEFINITION_ID AS "COHORT_DEFINITION_ID",
