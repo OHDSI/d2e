@@ -1,28 +1,15 @@
 # Audit logs
 
-Patient-access and CDM SQL audit events use the same top-level JSON envelope.
+Patient-access and CDM SQL audit events include these top-level routing fields:
+
+```json
+{"log-type":"audit","audit-log-type":"access","service-name":"analytics-svc"}
+```
+
 Each event is serialized as one JSON line, including SQL containing newlines.
 The existing event details (`eventType`, `actor`, `occurredAt`, patient attributes,
-SQL, request/database metadata, success status, and errors) are retained.
-
-| Field | Patient access | CDM SQL |
-| --- | --- | --- |
-| `timestamp` | UTC ISO timestamp, equal to `occurredAt` | Same |
-| `log-type` | `audit` | `audit` |
-| `audit-log-type` | `access` | `access`, including failed executions |
-| `trace-id` | `x-req-correlation-id`, or a generated UUID shared by events for the request | Same |
-| `service-name` | `analytics-svc` | Same |
-| `service-version` | Version from the deployed functions `package.json` | Same |
-| `req-url` | Original request path, excluding query and fragment | Same |
-| `client-id` | JWT `client_id`, falling back to `azp`, then `appid` | Same |
-| `subject-id` | Existing audit actor ID | Same |
-| `event-type` | `read` | `execute` (the DB method remains in `operation`) |
-| `resource-type` | `patient` | `dataset` |
-| `resource-id` | Patient ID | Dataset ID |
-
-Unavailable request URLs, client IDs, and resource IDs are emitted as JSON `null`.
-`subject-id` preserves the existing actor resolution, which may use an OIDC `oid`
-or a third-party identity instead of the outer JWT `sub`.
+SQL, request/database metadata, success status, and errors) retain their names,
+values, and structure. Both loggers use `access`, including failed SQL executions.
 
 The enablement flags and output destinations are unchanged:
 

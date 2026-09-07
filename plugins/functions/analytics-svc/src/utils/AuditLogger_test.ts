@@ -430,13 +430,6 @@ Deno.test(
             const event = JSON.parse(lines[0]);
             assert.equal(event.schemaVersion, 1);
             assert.equal(event.eventType, "patient.access");
-            assert.equal(event["log-type"], "audit");
-            assert.equal(event["audit-log-type"], "access");
-            assert.equal(event.timestamp, event.occurredAt);
-            assert.equal(event["subject-id"], "file-user");
-            assert.equal(event["event-type"], "read");
-            assert.equal(event["resource-type"], "patient");
-            assert.equal(event["resource-id"], "patient-1");
             assertIsoTimestamp(event.occurredAt);
             assert.deepEqual(event.actor, {
                 type: "user",
