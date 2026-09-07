@@ -480,6 +480,9 @@ export class CdmSqlAuditLogger implements CdmSqlAuditRecorder {
                 execution.parameters
             );
             const event: Record<string, unknown> = {
+                "log-type": "audit",
+                "audit-log-type": "access",
+                "service-name": "analytics-svc",
                 schemaVersion: 1,
                 eventType: "cdm.sql",
                 occurredAt: new Date().toISOString(),
