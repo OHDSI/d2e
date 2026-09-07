@@ -632,9 +632,9 @@ export class CachedbDAO {
             select
               ${columnsToSelect}${columns.length === 0 ? ", " : ""}
               LOWER(concept_name) as concept_name_lower
-            from ${this.vocabSchemaName}.concept
-            where ${this.fts_concept_identifier}.match_bm25(concept_id, $1) IS NOT NULL
-               or concept_id in (select concept_id from synonym_scores)
+            from ${this.vocabSchemaName}.concept c
+            where ${this.fts_concept_identifier}.match_bm25(c.concept_id, $1) IS NOT NULL
+               or c.concept_id in (select concept_id from synonym_scores)
           ) c
         ),
       `;
