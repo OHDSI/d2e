@@ -931,7 +931,7 @@ const actions = {
         if (hasDependency) {
           commit(types.ADVANCEDTIME_SET_TIMEFILTER, {
             filterCardId: cardId,
-            timeFilters: [],
+            timeFilters: []
           })
         }
       })
