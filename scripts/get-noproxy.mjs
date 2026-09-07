@@ -45,7 +45,11 @@ const containerNames = Object.values(dcContainerName.services || {})
   .filter(name => name && name !== null)
   .join(',');
 
-let newNoProxy = `.alp.local,registry-1.docker.io,localhost,::1,${containerNames}`;
+// Read the internal domain rather than hardcoding it: a deployment that
+// overrides TLS__INTERNAL__DOMAIN is exactly the one that would otherwise lose
+// NO_PROXY coverage and start routing every internal call through the proxy.
+const internalDomain = process.env.TLS__INTERNAL__DOMAIN || 'd2e.local';
+let newNoProxy = `.${internalDomain},registry-1.docker.io,localhost,::1,${containerNames}`;
 let newHttpProxy = process.env.HTTP_PROXY || '';
 let newHttpsProxy = process.env.HTTPS_PROXY || '';
 

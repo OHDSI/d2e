@@ -17,7 +17,6 @@
     "zod": "npm:zod@^3.23.8",
     "pg": "npm:pg@^8.4.2",
     "pg-promise": "npm:pg-promise@^10.10.1",
-    "axios": "npm:axios@^1.7.7",
     "@sap/textbundle": "npm:@sap/textbundle@4.2.0",
     "./src/env": "./src/env.ts",
     "./src/types": "./src/types.ts",

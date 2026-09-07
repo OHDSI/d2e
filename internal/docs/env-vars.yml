@@ -31,7 +31,7 @@ D2E_MEMORY_LIMIT:
   publish: true
   type: string
 D2E_DUCKDB_MEMORY_LIMIT:
-  comment: DuckDB in-process memory limit for heavy queries (e.g. Data Characterization). If unset, DuckDB uses its default. Example: 64G
+  comment: "DuckDB in-process memory limit for heavy queries (e.g. Data Characterization). If unset, DuckDB uses its default. Example: 64G"
   publish: true
   type: string
 D2E_SWAP_LIMIT:
@@ -116,6 +116,10 @@ LOGTO__CLIENTID_PASSWORD__BASIC_AUTH:
   comment: From `LOGTO_API_M2M_CLIENT_ID` & `LOGTO_API_M2M_CLIENT_SECRET`
   publish: true
   type: base64 encoded
+LOGTO__SELF_BASE_URL:
+  comment: Base URL Logto's bundled connectors use to reach Logto's own API. Required when Logto serves TLS (no plaintext listener remains); must be a name the internal certificate covers, so the container FQDN rather than `localhost`. Defaults to `http://localhost:$PORT`. In Kubernetes the helm chart sets it to `https://idp.<release-namespace>.svc.cluster.local:443`, which the certificate's `*.<namespace>.svc.cluster.local` SAN covers.
+  publish: true
+  type: string
 MINIO__SECRET_KEY:
   comment: Meilisearch Secret_Key
   publish: true
@@ -177,12 +181,20 @@ TLS__CADDY_DIRECTIVE:
   comment: Generate self-signed or public x509 certificate
   publish: true
   type: string
+TLS__EXTRA__CA_CRTS:
+  comment: Additional trust anchors for upstreams that are not ours (e.g. an external PS config server with its own CA). One or more concatenated PEM blocks, needing real newlines — a value with literal `\n` is rejected at startup. Installed into the OS trust store, so `DENO_TLS_CA_STORE=system` consumers pick them up. There is no verification bypass.
+  publish: true
+  type: string
 TLS__INTERNAL__CA_CRT:
   comment: Internal Microservice TLS Communication Certificate Authority
   publish: true
 TLS__INTERNAL__CRT:
   comment: Internal Microservice TLS Communication Public Key
   publish: true
+TLS__INTERNAL__DOMAIN:
+  comment: Internal DNS domain for service-to-service TLS; must match the generated certificate's SAN. Defaults to `d2e.local` and is written back to the env file when certificates are generated. Cert generation also accepts the older `TLS__INTERNAL__DOMAIN_NAME`.
+  publish: true
+  type: string
 TLS__INTERNAL__KEY:
   comment: Internal Microservice TLS Communication Private
   publish: true

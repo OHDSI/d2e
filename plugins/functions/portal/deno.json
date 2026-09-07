@@ -22,7 +22,6 @@
     "reflect-metadata": "npm:reflect-metadata@0.2.2",
     "@danet/validatte": "jsr:@danet/validatte@0.7.9",
     "winston": "npm:winston@^3.7.2",
-    "axios": "npm:axios@^0.21.2",
     "jsonwebtoken": "npm:jsonwebtoken@^9.0.0",
     "class-validator": "npm:class-validator@0.14.1",
     "class-transformer": "npm:class-transformer@0.5.1",

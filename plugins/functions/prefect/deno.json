@@ -2,8 +2,7 @@
   "workspace": [],
   "nodeModulesDir": "auto",
   "imports": {
-    "express": "npm:express",
-    "http-proxy-middleware": "npm:http-proxy-middleware"
+    "express": "npm:express"
   },
   "tasks": {
     "start": "deno run --allow-all index.ts",

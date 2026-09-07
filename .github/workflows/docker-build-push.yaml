@@ -66,6 +66,7 @@ jobs:
         with:
           submodules: recursive
 
+
       - id: tag
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
@@ -227,6 +228,9 @@ jobs:
             DOCKER_BUILD_FILE_PATH: ./services/enterprise-gateway/kernels/R_ohdsi_docker/Dockerfile
             DOCKER_BUILD_CONTEXT_PATH: .
             build_disable: ${{ (needs.setup.outputs.changes_rkernel != 'true') && 'true' || 'false' }}
+          - AZ_REG_REPOSITORY: d2e-dataflow-gen
+            DOCKER_BUILD_FILE_PATH: ./services/alp-dataflow-gen/Dockerfile
+            DOCKER_BUILD_CONTEXT_PATH: ./services/alp-dataflow-gen
           - AZ_REG_REPOSITORY: d2e-dataflow-gen-worker
             # Slowest job in the matrix (~1h50m) and it rebuilt on every run,
             # including changes it cannot possibly bake. Gate it on the paths it
@@ -819,10 +823,30 @@ jobs:
             -days 30 -subj "/CN=d2e-ci-ca" 2>/dev/null
           openssl req -newkey rsa:2048 -nodes \
             -keyout "$D/srv.key" -out "$D/srv.csr" \
-            -subj "/CN=d2e.cluster.local" 2>/dev/null
+            -subj "/CN=d2e.local" 2>/dev/null
+          # The SAN has to go on the signing step: `openssl x509 -req` drops CSR
+          # extensions unless told otherwise. Without a SAN the cert validates
+          # against nothing at all, since clients ignore CN when no SAN is
+          # present — which only became visible once the chart started verifying.
+          # A wildcard matches exactly one label, so `*.d2e.cluster.local` does
+          # NOT cover `idp.d2e.svc.cluster.local`. The chart addresses every
+          # internal service by its cluster DNS name, so the SAN needs the
+          # namespace-scoped entries too or every hop fails hostname
+          # verification. The `*.d2e.local` entries are kept so one cert still
+          # serves docker-compose.
+          printf '%s\n' \
+            "subjectAltName=DNS:*.${NAMESPACE}.svc.cluster.local,DNS:*.${NAMESPACE}.svc,DNS:*.d2e.local,DNS:d2e.local,DNS:*.d2e.cluster.local,DNS:d2e.cluster.local" \
+            'keyUsage=critical,digitalSignature' \
+            'extendedKeyUsage=serverAuth,clientAuth' > "$D/srv.ext"
           openssl x509 -req -in "$D/srv.csr" \
             -CA "$D/ca.crt" -CAkey "$D/ca.key" -CAcreateserial \
-            -out "$D/srv.crt" -days 30 2>/dev/null
+            -out "$D/srv.crt" -days 30 -extfile "$D/srv.ext" 2>/dev/null
+          # Assert, don't just print: `openssl x509 -noout -ext subjectAltName`
+          # exits 0 and prints "No extensions in certificate" when the SAN is
+          # missing, so on its own it cannot fail the job it exists to guard.
+          openssl x509 -in "$D/srv.crt" -noout -ext subjectAltName \
+            | tee /dev/stderr | grep -q "DNS:\*\.${NAMESPACE}\.svc\.cluster\.local"
+          openssl verify -CAfile "$D/ca.crt" "$D/srv.crt"
 
       - name: Helm install (using just-built images)
         run: |
@@ -1555,6 +1579,7 @@ jobs:
           - d2e-enterprise-gateway
           - d2e-r-ohdsi-kernel
           - d2e-trex
+          - d2e-dataflow-gen
           - d2e-dataflow-gen-worker
           - d2e-supabase-storage
           - d2e-materialize-cohorts

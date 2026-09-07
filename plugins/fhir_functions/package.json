@@ -33,7 +33,7 @@
         "_shared": {},
         "fhir-gateway": {
           "BINARY_UPLOAD_LIMIT_SIZE": "${BINARY_UPLOAD_LIMIT_SIZE:-50mb}",
-          "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-alp.local}:33001/oauth/token",
+          "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}:33001/oauth/token",
           "IDP__ALP_DATA_CLIENT_ID": "${LOGTO__D2E_DATA__CLIENT_ID}",
           "IDP__ALP_DATA__CLIENT_SECRET": "${LOGTO__D2E_DATA__CLIENT_SECRET}"
         },
@@ -45,7 +45,7 @@
           "TREX__SQL__USER": "postgres",
           "TREX__SQL__PASSWORD": "${TREX__SQL__PASSWORD:-pencil}",
           "DB_CREDENTIALS__PUBLIC_KEYS": "${DB_CREDENTIALS__PUBLIC_KEYS}",
-          "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-alp.local}:33001/oauth/token",
+          "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}:33001/oauth/token",
           "IDP__ALP_DATA_CLIENT_ID": "${LOGTO__D2E_DATA__CLIENT_ID}",
           "IDP__ALP_DATA__CLIENT_SECRET": "${LOGTO__D2E_DATA__CLIENT_SECRET}"
         }

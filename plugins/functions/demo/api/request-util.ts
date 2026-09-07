@@ -1,21 +1,11 @@
-import axios, { AxiosRequestConfig } from "npm:axios";
+import axios, { AxiosRequestConfig } from "../../_shared/_axios.ts";
 //import { createLogger } from '../Logger'
 import * as dotenv from "npm:dotenv";
-import https from "node:https";
-import { env } from "../env.ts";
 dotenv.config();
 
 const logger = console;
 
 axios.defaults.timeout = 300000;
-
-if (env.NODE_ENV === "development") {
-  // const httpsAgent = new https.Agent({
-  //   rejectUnauthorized: false,
-  // });
-  // axios.defaults.httpsAgent = httpsAgent;
-  logger.info("rejectUnauthorized is disabled");
-}
 
 axios.interceptors.response.use(
   (response) => {

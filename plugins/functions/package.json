@@ -340,7 +340,7 @@
           "SQL_QUERY_TEMPLATES": "${SQL_QUERY_TEMPLATES:-}"
         },
         "analytics-svc": {
-          "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-alp.local}:33001/oauth/token",
+          "ALP_GATEWAY_OAUTH__URL": "http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}:33001/oauth/token",
           "ALP__SYSTEM_ID": "${ALP__SYSTEM_ID:-alp-research}",
           "ANALYTICS_SVC__PORT": 41102,
           "SQL_RETURN_ON": "${SQL_RETURN_ON:-false}",
@@ -378,7 +378,7 @@
           "IDP__ALP_ADMIN__CLIENT_ID": "${LOGTO_API_M2M_CLIENT_ID}",
           "IDP__ALP_ADMIN__CLIENT_SECRET": "${LOGTO_API_M2M_CLIENT_SECRET}",
           "IDP__ALP_ADMIN__RESOURCE": "https://default.logto.app/api",
-          "IDP__BASE_URL": "${IDP__BASE_URL:-http://${PROJECT_NAME:-d2e}-logto-1:3001}",
+          "IDP__BASE_URL": "${IDP__BASE_URL:-https://${PROJECT_NAME:-d2e}-logto-1.${TLS__INTERNAL__DOMAIN:-d2e.local}:3001}",
           "IDP__FETCH_USER_INFO_TYPE": "logto",
           "IDP__INITIAL_USER__NAME": "${IDP__INITIAL_USER__NAME:-admin}",
           "IDP__INITIAL_USER__UUID": "a6660e40-261e-4782-873e-f76b4328aecf",
@@ -454,7 +454,7 @@
           "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}"
         },
         "jobplugins": {
-          "PREFECT_API_URL": "${PREFECT_API_URL:-http://${PROJECT_NAME:-d2e}-dataflow-gen-1:41120/d2e/api}",
+          "PREFECT_API_URL": "${PREFECT_API_URL:-https://${PROJECT_NAME:-d2e}-dataflow-gen-1.${TLS__INTERNAL__DOMAIN:-d2e.local}:41120/d2e/api}",
           "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}",
           "PG_PASSWORD": "${PG_WRITE_PASSWORD}",
           "PG_ADMIN_USER": "${PG_ADMIN_USER:-alp_pg_admin_user}",
@@ -559,8 +559,8 @@
         "d2e-webapi": {},
         "alp-dataflow-gen-init": {
           "CACHE_TASK_TIMEOUT": "${CACHE_TASK_TIMEOUT:-10800}",
+          "PREFECT_API_URL": "${PREFECT_API_URL:-https://${PROJECT_NAME:-d2e}-dataflow-gen-1.${TLS__INTERNAL__DOMAIN:-d2e.local}:41120/d2e/api}",
           "CACHE_CHUNK_TIMEOUT": "${CACHE_CHUNK_TIMEOUT:-3600}",
-          "PREFECT_API_URL": "${PREFECT_API_URL:-http://${PROJECT_NAME:-d2e}-dataflow-gen-1:41120/d2e/api}",
           "CUSTOM_WORK_POOL_CONFIGURATION": "${CUSTOM_WORK_POOL_CONFIGURATION:-{}}",
           "DATAFLOW_MGMT__FLOWS__RESULTS_SB_NAME": "flow-results",
           "DATAFLOW_MGMT__FLOWS__RESULTS__S3_DIR_PATH": "s3://flows/results",

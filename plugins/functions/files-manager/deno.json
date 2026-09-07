@@ -42,7 +42,6 @@
     "./src/common/data-source/migrations/1733383345129-create-blob-data": "./src/common/data-source/migrations/1733383345129-create-blob-data.ts",
     "./src/common/data-source/migrations/1733383366413-create-user-data": "./src/common/data-source/migrations/1733383366413-create-user-data.ts",
     "winston": "npm:winston",
-    "axios": "npm:axios",
     "async": "npm:async",
     "bcryptjs": "npm:bcryptjs",
     "pako": "npm:pako",

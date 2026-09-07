@@ -1,13 +1,9 @@
 import axios, { AxiosRequestConfig } from "npm:axios";
-import { env } from "../env.ts";
 
 const logger = console;
 
 axios.defaults.timeout = 300000;
 
-if (env.NODE_ENV === "development") {
-  logger.info("rejectUnauthorized is disabled");
-}
 
 axios.interceptors.response.use(
   (response) => {

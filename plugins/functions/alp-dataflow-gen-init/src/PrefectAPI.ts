@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios from "../../_shared/_axios.ts";
 import { env } from "./env";
 import { BlockType } from "./types";
 import { PrefectVariable } from "./types";
@@ -14,16 +14,50 @@ export class PrefectAPI {
     }
   }
 
-  private async createOptions() {
+  private createOptions() {
     return {
       headers: { "Content-Type": "application/json" },
     };
   }
 
+  /**
+   * Block until Prefect answers, or throw.
+   *
+   * nginx terminates TLS in front of Prefect and starts before it, so an
+   * unready Prefect returns 502/503 straight away rather than refusing the
+   * connection. Every seeding call below treats that as fatal, so without this
+   * wait a slow Prefect start leaves all variables and secrets uncreated and
+   * flows fail much later with "Unable to find block document named ...".
+   */
+  public async waitUntilReady(
+    timeoutMs = 300_000,
+    intervalMs = 3_000,
+  ): Promise<void> {
+    const url = `${this.baseURL}/health`;
+    const deadline = Date.now() + timeoutMs;
+    let lastReason = "no attempt made";
+
+    while (Date.now() < deadline) {
+      try {
+        await axios.get(url, this.createOptions());
+        return;
+      } catch (error: any) {
+        lastReason = error.response?.status
+          ? `HTTP ${error.response.status}`
+          : (error.code ?? error.message ?? "unknown error");
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    throw new Error(
+      `Prefect at ${url} not ready after ${Math.round(timeoutMs / 1000)}s ` +
+        `(last: ${lastReason}); refusing to seed partially`,
+    );
+  }
+
   public async createPrefectVariable(
     variableObj: PrefectVariable
   ): Promise<string> {
-    let url = `${this.baseURL}/variables`;
+    let url = `${this.baseURL}/variables/`;
     const successMsg = `Successfully created/updated Prefect variable '${variableObj.name}'!`;
     const variableOptions = {
       name: variableObj.name,
@@ -64,7 +98,7 @@ export class PrefectAPI {
     blockType: BlockType
   ): Promise<string> {
     const slugName = blockType;
-    let url = `${this.baseURL}/block_documents`;
+    let url = `${this.baseURL}/block_documents/`;
     const successMsg = `Successfully created/updated Prefect ${blockType} block '${blockName}'!`;
     const blockTypeId = await this.getBlockTypeID(slugName);
     const blockSchemaId = await this.getBlockSchemaId(blockTypeId);

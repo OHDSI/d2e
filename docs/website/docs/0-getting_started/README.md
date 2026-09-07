@@ -108,9 +108,10 @@ Start Data2Evidence services:
 
 - Add the following in the `noProxy` configuration
 - If env `PROJECT_NAME` is different from the default `d2e`, do a search and replace from `d2e-` with `${PROJECT_NAME}-` in the below config
+- If env `TLS__INTERNAL__DOMAIN` is different from the default `d2e.local`, replace `.d2e.local` below with `.${TLS__INTERNAL__DOMAIN}` — otherwise internal calls start traversing the proxy
 
 ```bash
-.alp.local,registry-1.docker.io,localhost,::1,d2e-demodb,d2e-caddy,d2e-enterprise-gateway,d2e-minerva-redis-1,d2e-minerva-postgres-1,d2e-minerva-pg-mgmt-init-1,d2e-logto-1,d2e-logto-post-init-1,d2e-trex,d2e-supabase-storage-1,d2e-minerva-fhir-server-1,d2e-supabase-storage-post-init-1,d2e-dataflow-gen-1,d2e-dataflow-gen-worker
+.d2e.local,registry-1.docker.io,localhost,::1,d2e-demodb,d2e-caddy,d2e-enterprise-gateway,d2e-minerva-redis-1,d2e-minerva-postgres-1,d2e-minerva-pg-mgmt-init-1,d2e-logto-1,d2e-logto-post-init-1,d2e-trex,d2e-supabase-storage-1,d2e-minerva-fhir-server-1,d2e-supabase-storage-post-init-1,d2e-dataflow-gen-1,d2e-dataflow-gen-worker
 ```
 
 ## Data2Evidence guide

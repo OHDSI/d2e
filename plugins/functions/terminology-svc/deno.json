@@ -16,7 +16,6 @@
     "fs": "node:fs",
     "http": "node:http",
     "@asteasolutions/zod-to-openapi": "npm:@asteasolutions/zod-to-openapi@7.3.0",
-    "axios": "npm:axios@1.7.7",
     "express": "npm:express@5.0.0",
     "jsonwebtoken": "npm:jsonwebtoken@9.0.2",
     "yaml": "npm:yaml@2.6.1",

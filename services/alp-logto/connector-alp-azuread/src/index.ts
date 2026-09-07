@@ -32,7 +32,13 @@ import {
   authResponseGuard,
 } from "./types.js";
 
-const ENDPOINT = `http://localhost:${process.env.PORT}`;
+// Base URL this connector uses to call Logto's own API. When Logto serves its
+// port over TLS there is no plaintext listener left, so http://localhost fails
+// with ECONNRESET — LOGTO__SELF_BASE_URL then supplies the internal HTTPS URL
+// (a name the internal cert covers; localhost is not in its SAN). The http
+// fallback keeps non-TLS deployments working unchanged.
+const ENDPOINT =
+  process.env.LOGTO__SELF_BASE_URL || `http://localhost:${process.env.PORT}`;
 const RESEARCHER_ROLE_PREFIX = "role.researcher.";
 
 const parseScopes = (scopesConfig?: string): string[] => {
@@ -240,9 +246,6 @@ const getM2MLogtoAPIToken = async () => {
         "content-type": "application/x-www-form-urlencoded",
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     // console.log(`API TOKEN ${JSON.stringify(httpResponse.body)}`);
@@ -263,9 +266,6 @@ const getLogtoUserIdByEmail = async (email: string, apiToken: string) => {
         authorization: `Bearer ${apiToken}`,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     // console.log(`Logto USER INFO ${JSON.stringify(httpResponse.body)}`);
@@ -287,9 +287,6 @@ const getLogtoUsersByName = async (username: string, apiToken: string) => {
         authorization: `Bearer ${apiToken}`,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     console.log(
@@ -317,9 +314,6 @@ const fetchAllPages = async <T = any>(
         authorization: `Bearer ${apiToken}`,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     const items = JSON.parse(response.body) as T[];
@@ -375,9 +369,6 @@ const createLogtoRole = async (
         type: "User",
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     return JSON.parse(httpResponse.body);
@@ -418,9 +409,6 @@ const ensureScopeForRole = async (
             description: scopeName,
           },
           timeout: { request: defaultTimeout },
-          https: {
-            rejectUnauthorized: false,
-          },
         },
       );
       scope = JSON.parse(createScopeResponse.body);
@@ -444,9 +432,6 @@ const ensureScopeForRole = async (
           scopeIds: [scope!.id],
         },
         timeout: { request: defaultTimeout },
-        https: {
-          rejectUnauthorized: false,
-        },
       });
     }
   } catch (e) {
@@ -518,9 +503,6 @@ const addUser = async (
         username,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     // console.log(`Logto User creation ${JSON.stringify(httpResponse.body)}`);
@@ -546,9 +528,6 @@ const updateUserIdentity = async (
         },
         json: data,
         timeout: { request: defaultTimeout },
-        https: {
-          rejectUnauthorized: false,
-        },
       }
     );
 
@@ -578,9 +557,6 @@ const assignRolesToUser = async (
           userIds: [userId],
         },
         timeout: { request: defaultTimeout },
-        https: {
-          rejectUnauthorized: false,
-        },
       }
     );
 
@@ -605,9 +581,6 @@ const removeRolesFromUser = async (
           "content-type": "application/json",
         },
         timeout: { request: defaultTimeout },
-        https: {
-          rejectUnauthorized: false,
-        },
       }
     );
 

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-{{ .Chart.Name }}-caddy
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 data:
   Caddyfile: |
     {
@@ -57,10 +57,16 @@ data:
 
         handle @logto {
             uri strip_prefix /d2e/logto
-            reverse_proxy http://idp.d2e.svc.cluster.local {
+            reverse_proxy https://idp.{{ .Release.Namespace }}.svc.cluster.local {
             	header_up Host {$CADDY__D2E__PUBLIC_FQDN}
                 header_up X-Forwarded-Host {$CADDY__D2E__PUBLIC_FQDN}
             	transport http {
+                    tls
+                    # The internal CA is not in Caddy's system pool -- the
+                    # alpine image has no update-ca-certificates step -- so the
+                    # trust pool has to name the mounted file explicitly.
+                    # Without this the https:// upstream fails to verify.
+                    tls_trust_pool file /etc/d2e/tls/ca.pem
                     read_buffer 8192
                 }
             }
@@ -82,7 +88,8 @@ data:
             reverse_proxy https://{$TREX__D2E__INTERNAL_FQDN} {
                 header_up Host {$CADDY__D2E__PUBLIC_FQDN}
             	transport http {
-                    tls_insecure_skip_verify
+                    tls
+                    tls_trust_pool file /etc/d2e/tls/ca.pem
             	}
             }
         }
@@ -95,7 +102,7 @@ data:
                 import proxy_headers_default
             	transport http {
                     tls
-                    tls_insecure_skip_verify
+                    tls_trust_pool file /etc/d2e/tls/ca.pem
                     read_buffer 8192
             	}
             }
@@ -125,10 +132,56 @@ data:
             path /oidc/*
         }
         handle @oidc {
-            reverse_proxy http://idp.d2e.svc.cluster.local
+            reverse_proxy https://idp.{{ .Release.Namespace }}.svc.cluster.local {
+            	transport http {
+                    tls
+                    tls_trust_pool file /etc/d2e/tls/ca.pem
+                }
+            }
         }
         handle /check-liveness* {
             respond "OK-HTTP"
+        }
+        handle {
+            respond 404
+        }
+    }
+
+    # Internal callers reach the gateway by its in-cluster Service name over TLS.
+    # Logto advertises jwks_uri as https://gateway.<ns>.svc.cluster.local/oidc/jwks
+    # -- endpoint URLs follow the TLS hop into idp (and X-Forwarded-Proto https),
+    # while `issuer` stays the plaintext ENDPOINT. WebAPI reads that jwks_uri and
+    # dials it, so this name must be servable over 443.
+    #
+    # Without this block nothing on 443 matches the cluster name: the only other
+    # https site is {$CADDY__D2E__INTERNAL_FQDN}, so Caddy finds no certificate
+    # and aborts with an internal_error alert one message after Client Hello --
+    # before any certificate is offered, which is why `curl -k` fails identically.
+    # WebAPI then cannot build OidcAuthConfig$OpenidDirect, returns 500, and every
+    # analytics-svc call that proxies to WebAPI 500s with it.
+    #
+    # It serves the internal certificate, not SERVER__CRT: SERVER__CRT is the
+    # environment's real public certificate and has no reason to carry
+    # cluster-internal SANs. (CI hides this by feeding the same self-signed cert
+    # to both SERVER__CRT and TLS__INTERNAL__CRT, so its gateway happens to cover
+    # the cluster name.) Routes mirror the :8080 block above so internal callers
+    # get the same behaviour over either scheme.
+    https://gateway.{{ .Release.Namespace }}.svc.cluster.local {
+        tls /etc/d2e/tls/cert.pem /etc/d2e/tls/key.pem
+
+        @oidc {
+            path /oidc/*
+        }
+        handle @oidc {
+            reverse_proxy https://idp.{{ .Release.Namespace }}.svc.cluster.local {
+            	transport http {
+                    tls
+                    tls_trust_pool file /etc/d2e/tls/ca.pem
+                }
+            }
+        }
+        handle /check-liveness* {
+            respond "OK-INTERNAL-TLS"
         }
         handle {
             respond 404
@@ -153,7 +206,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-{{ .Chart.Name }}
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 data:
   CADDY__D2E__INTERNAL_FQDN: "{{ .Values.global.config.CADDY__D2E__INTERNAL_FQDN }}"
   CADDY__D2E__PUBLIC_FQDN: "{{ .Values.global.config.CADDY__D2E__PUBLIC_FQDN }}"

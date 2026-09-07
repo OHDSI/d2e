@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: dataflow-gen-svc-acc
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: worker
 ---
@@ -10,6 +10,6 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: pod-viewer
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: viewer

@@ -10,7 +10,6 @@
     "emitDecoratorMetadata": true
   },
   "imports": {
-    "axios": "npm:axios@^0.21.2",
     "UserMgmtAPI": "../_shared/alp-base-utils/src/api/UserMgmtAPI.ts",
     "../_shared/alp-base-utils/src/api/request-util": "../_shared/alp-base-utils/src/api/request-util.ts",
     "express": "npm:express@^4.19.2",

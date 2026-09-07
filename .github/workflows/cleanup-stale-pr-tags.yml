@@ -32,6 +32,7 @@ jobs:
           - d2e-enterprise-gateway
           - d2e-r-ohdsi-kernel
           - d2e-trex
+          - d2e-dataflow-gen
           - d2e-dataflow-gen-worker
           - d2e-supabase-storage
     steps:

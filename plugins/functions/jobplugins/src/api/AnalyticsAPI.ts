@@ -1,5 +1,5 @@
 import https from "node:https";
-import { AxiosRequestConfig } from "axios";
+import { AxiosRequestConfig } from "../../../_shared/_axios.ts";
 import { env, services } from "../env.ts";
 
 export class AnalyticsSvcAPI {

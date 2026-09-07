@@ -40,7 +40,6 @@
     "./src/db/knexfile-admin": "./src/db/knexfile-admin.ts",
     "./src/env": "./src/env.ts",
     "winston": "npm:winston",
-    "axios": "npm:axios",
     "async": "npm:async",
     "bcryptjs": "npm:bcryptjs",
     "pako": "npm:pako",

@@ -1,5 +1,4 @@
 import { env } from "../env";
-import axios from "axios";
 import { D2ECohortDefinition } from "../types/tool-schemas";
 import { getUserName } from "../utils/request-helpers";
 
@@ -177,7 +176,7 @@ export class WebAPIAPI {
       options.headers["Authorization"] = authorization;
       options.headers["datasetId"] = datasetId;
       const url = `${this.baseURL}/cohortdefinition/${cohortId}`;
-      const res = await axios.delete(url, options);
+      const res = await this.channel.delete(url, options);
       return res.status === 204;
     } catch (error) {
       console.error("DELETE Error:", error);

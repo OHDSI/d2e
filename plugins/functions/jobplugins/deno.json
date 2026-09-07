@@ -20,7 +20,6 @@
     "pg": "npm:pg@^8.4.2",
     "uuid": "npm:uuid@^10.0.0",
     "jsonwebtoken": "npm:jsonwebtoken@^9.0.2",
-    "axios": "npm:axios@^0.21.2",
     "dotenv": "npm:dotenv@^16.3.1",
     "dayjs": "npm:dayjs@^1.11.9",
     "typeorm": "npm:typeorm@^0.3.20",

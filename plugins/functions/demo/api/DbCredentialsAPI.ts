@@ -1,4 +1,4 @@
-import { AxiosRequestConfig } from "axios";
+import { AxiosRequestConfig } from "../../_shared/_axios.ts";
 import { services } from "../env.ts";
 import { get, post } from "./request-util.ts";
 import { IDbCreateDto, IDbDto } from "../type.d.ts";

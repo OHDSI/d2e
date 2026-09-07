@@ -1,6 +1,6 @@
 import { Injectable, SCOPE } from "@danet/core";
 // import { Agent } from 'node:https';
-import { AxiosRequestConfig } from "axios";
+import { AxiosRequestConfig } from "../../../_shared/_axios.ts";
 import { PA_CONFIG_TYPE } from "../common/const.ts";
 import { RequestContextService } from "../common/request-context.service.ts";
 import { env, services } from "../env.ts";

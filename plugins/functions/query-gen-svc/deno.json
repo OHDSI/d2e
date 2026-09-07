@@ -21,7 +21,6 @@
     "@types/bcryptjs": "npm:@types/bcryptjs@^2.4.6",
     "@types/jsonstream": "npm:@types/jsonstream@^0.8.33",
     "@types/passport-azure-ad": "npm:@types/passport-azure-ad@^4.3.6",
-    "axios": "npm:axios@^0.21.4",
     "bcryptjs": "npm:bcryptjs@^2.4.3",
     "hdb": "npm:hdb@2.27.1",
     "pako": "npm:pako@1.0.11",

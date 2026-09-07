@@ -1,5 +1,5 @@
 //import { Service } from 'typedi'
-import { AxiosRequestConfig } from "npm:axios";
+import { AxiosRequestConfig } from "../../_shared/_axios.ts";
 //import { createLogger } from '../Logger'
 import { services } from "../env.ts";
 import type { Dataset } from "../types.d.ts";

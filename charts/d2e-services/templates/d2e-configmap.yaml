@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 data:
   CADDY__D2E__INTERNAL_FQDN: "{{ .Values.global.config.CADDY__D2E__INTERNAL_FQDN }}"
   CADDY__D2E__PUBLIC_FQDN: "{{ .Values.global.config.CADDY__D2E__PUBLIC_FQDN }}"

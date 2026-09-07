@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from 'axios'
+import axios, { AxiosRequestConfig } from "../../../_shared/_axios.ts"
 import { createLogger } from '../Logger'
 
 const logger = createLogger()

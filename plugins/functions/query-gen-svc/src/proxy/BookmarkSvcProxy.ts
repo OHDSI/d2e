@@ -5,7 +5,7 @@ import * as dotenv from "dotenv";
 import { URL } from "url";
 import { IMRIRequest, BookmarkCMDType } from "../types";
 import { env } from "../env";
-import axios, { AxiosRequestConfig } from "axios";
+import axios, { AxiosRequestConfig } from "../../../_shared/_axios.ts";
 
 dotenv.config();
 const log = Logger.CreateLogger();

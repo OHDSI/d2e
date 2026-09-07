@@ -1,4 +1,4 @@
-import { isAxiosError } from "axios";
+import { isAxiosError } from "../../../_shared/_axios.ts";
 import { env } from "../env.ts";
 import { ICohortGeneratorFlowRun } from "./types.ts";
 

@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: dataflow-gen-worker-role
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: worker
 rules:
@@ -17,7 +17,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: dataflow-gen-worker-rolebinding
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/component: worker
 roleRef:
@@ -27,14 +27,14 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: dataflow-gen-svc-acc
-    namespace: d2e
+    namespace: {{ .Release.Namespace }}
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: pod-viewer-role
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log", "nodes"]
@@ -48,11 +48,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: pod-viewer-binding
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 subjects:
   - kind: ServiceAccount
     name: pod-viewer
-    namespace: d2e
+    namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
   name: pod-viewer-role

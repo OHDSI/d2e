@@ -4,7 +4,7 @@ metadata:
   labels:
     profile: d2e-functions
   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
@@ -40,6 +40,19 @@ spec:
         - name: atlas-db-init
           configMap:
             name: "{{ .Release.Name }}-{{ .Chart.Name }}-atlas-db-init"
+        # Internal CA, delivered as a file the way caddy-local-pki already is.
+        # Only the CA lands here: trex writes its own cert/key from
+        # TLS__INTERNAL__* env, and nothing in this pod terminates TLS on the
+        # mounted pair, so the private key stays out of the pod. 0444 because
+        # every consumer must be able to read it whatever user it runs as -- a
+        # CA certificate is public material.
+        - name: d2e-tls
+          secret:
+            secretName: "{{ .Release.Name }}-{{ .Chart.Name }}"
+            items:
+              - key: TLS__INTERNAL__CA_CRT
+                path: ca.pem
+                mode: 0444
         {{- if .Values.features.materializeCohorts }}
         - name: materialize-cohorts-pki
           secret:
@@ -49,6 +62,41 @@ spec:
             secretName: "{{ .Release.Name }}-{{ .Chart.Name }}-materialize-cohorts-client"
         {{- end }}
       initContainers:
+        # Fail fast on TLS material that is configured but unusable. A blank
+        # secret key mounts as a zero-byte file, and each consumer then fails
+        # separately and obscurely (PKIX / UnknownIssuer) with nothing naming the
+        # real cause. Compose gets this from a FATAL guard in its entrypoints; in
+        # Kubernetes an initContainer is the equivalent — it runs before every
+        # container and depends on nothing in this pod, so it cannot deadlock.
+        # Uses the trex image because trex is a container in this pod already:
+        # no extra pull, no second tag to keep in step, and it has openssl.
+        - name: tls-material-check
+          image: ghcr.io/ohdsi/d2e-trex:{{ .Values.global.image.tag }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              f=/etc/d2e/tls/ca.pem
+              if [ ! -s "$f" ]; then
+                echo "FATAL: $f is empty or missing — check global.secrets.TLS__INTERNAL__CA_CRT" >&2
+                exit 1
+              fi
+              if ! openssl x509 -in "$f" -noout >/dev/null 2>&1; then
+                echo "FATAL: $f is not a valid PEM certificate — check global.secrets.TLS__INTERNAL__CA_CRT" >&2
+                exit 1
+              fi
+              echo "internal CA present and parseable: $(openssl x509 -in "$f" -noout -subject)"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 50Mi
+            limits: 
+              cpu: 70m
+              memory: 70Mi
+          volumeMounts:
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
         - name: trex-init
           image: busybox:latest
           resources:
@@ -78,14 +126,21 @@ spec:
               cp -rfv /data/plugins/bunfig.toml /usr/src/data/plugins/bunfig.toml && exit 0",
             ]
         - name: logto-check
-          image: busybox:latest
+          # Not busybox: its wget has no --ca-certificate, only the
+          # --no-check-certificate bypass. The trex image is already pulled for
+          # this pod and ships curl, which verifies chain and hostname by default.
+          image: ghcr.io/ohdsi/d2e-trex:{{ .Values.global.image.tag }}
           resources:
             {{- toYaml .Values.global.resources.logtoCheck | nindent 12 }}
+          volumeMounts:
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
           command:
             [
               "sh",
               "-c",
-              "while :;do sleep 20 && wget -O success http://idp.d2e.svc.cluster.local:443/api/status && if test -f success; then exit 0; fi; done",
+              "until curl -sf --cacert /etc/d2e/tls/ca.pem https://idp.{{ .Release.Namespace }}.svc.cluster.local:443/api/status >/dev/null; do echo 'waiting for logto ...'; sleep 20; done",
             ]
         - name: logto-post-init
           env:
@@ -209,7 +264,7 @@ spec:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: LOGTO__ROLES_SCOPES
             - name: LOGTO__ADMIN_SERVER__FQDN_URL
-              value: "http://idp-admin.d2e.svc.cluster.local:443"
+              value: "https://idp-admin.{{ .Release.Namespace }}.svc.cluster.local:443"
             - name: LOGTO__ALP_ADMIN_APP
               value: '{"application": {"id": "$(LOGTO_API_M2M_CLIENT_ID)", "name":"alp-admin","description":"alp-admin", "secret": "$(LOGTO_API_M2M_CLIENT_SECRET)"}, "role": { "name":"api-access","description":"Logto API access"}}'
             - name: LOGTO__TERM_OF_USE_URL
@@ -227,9 +282,17 @@ spec:
                 configMapKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: LOGTO__CUSTOM_CSS
+            # Node reads its extra trust anchors from a file, so the mount alone
+            # is enough -- no entrypoint override needed to materialise the CA.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/d2e/tls/ca.pem
 
           image: ghcr.io/ohdsi/d2e-logto-post-init:{{ .Values.global.image.tag }}
           imagePullPolicy: Always
+          volumeMounts:
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
           resources:
             {{- toYaml .Values.global.resources.logtoPostInit | nindent 12 }}
       containers:
@@ -261,26 +324,36 @@ spec:
               value: /d2e/api
             - name: PREFECT_UI_SERVE_BASE
               value: /d2e
+            # Relative API URL: the UI calls whatever origin it was loaded
+            # from, so API calls stay same-origin and avoid the cross-origin
+            # CORS preflight that the in-container nginx answers with 503. Must
+            # line up with PREFECT_SERVER_API_BASE_PATH above.
             - name: PREFECT_UI_API_URL
-              value: http://0.0.0.0:41120/d2e/api
+              value: /d2e/api
             - name: PREFECT_UI_URL
-              value: http://0.0.0.0:41120/d2e
+              value: https://127.0.0.1:41120/d2e
             - name: PREFECT_LOGGING_LEVEL
               value: DEBUG
             - name: PREFECT_LOGGING_SERVER_LEVEL
               value: WARNING
+            # Prefect itself stays on loopback, HTTP only. nginx -- started by
+            # the image entrypoint -- is the only thing listening on 41120,
+            # terminating TLS with the shared TLS__INTERNAL__* cert and
+            # proxying to 127.0.0.1:41121. The entrypoint hardcodes that
+            # upstream, so these two values are load-bearing: leaving Prefect
+            # on 0.0.0.0:41120 would collide with nginx.
             - name: PREFECT_SERVER_API_HOST
-              value: "0.0.0.0"
+              value: 127.0.0.1
             - name: PREFECT_UI_STATIC_DIRECTORY
               value: /app/ui-files
             - name: PREFECT_SERVER_API_PORT
-              value: "41120"
+              value: "41121"
             - name: PREFECT_API_ENABLE_HTTP2
               value: "False"
             - name: PREFECT_API_DEFAULT_LIMIT
               value: "5000"
             - name: DB_CREDENTIALS_MGR__API_URL
-              value: "http://trex-http.d2e.svc.cluster.local:443/db-credentials/db/"
+              value: "https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/db-credentials/db/"
             - name: DB_CREDENTIALS__PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
@@ -300,10 +373,35 @@ spec:
               value: "https://alp-default"
             - name: IDP_SUBJECT_PROP
               value: "sub"
-          command: ["/bin/sh"]
-          args: ["-c", "prefect server start"]
-          image: prefecthq/prefect:3.6.10-python3.12
-          imagePullPolicy: IfNotPresent
+            # Read by the image entrypoint to write the nginx cert/key and set
+            # server_name on the TLS listener.
+            - name: TLS__INTERNAL__CRT
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: TLS__INTERNAL__CRT
+            - name: TLS__INTERNAL__KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: TLS__INTERNAL__KEY
+            - name: TLS__INTERNAL__CA_CRT
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: TLS__INTERNAL__CA_CRT
+            - name: DATAFLOW_GEN_HOSTNAME
+              value: dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local
+          # No command/args override: the baked entrypoint writes the internal
+          # cert, starts nginx (TLS on 41120 -> Prefect on loopback 41121),
+          # then execs `prefect server start`. Overriding it would skip nginx
+          # and leave the hop plaintext.
+          #
+          # This image is FROM prefecthq/prefect:3.6.10-python3.12 -- the same
+          # base and version the chart ran directly -- plus nginx and that
+          # entrypoint, so the swap changes no Prefect behaviour.
+          image: ghcr.io/ohdsi/d2e-dataflow-gen:{{ .Values.global.image.tag }}
+          imagePullPolicy: Always
           ports:
             - containerPort: 41120
               protocol: TCP
@@ -317,10 +415,28 @@ spec:
             httpGet:
               path: /d2e/api/health
               port: 41120
+              # nginx terminates TLS on 41120. The kubelet does not verify the
+              # server certificate for httpGet probes, so no CA is needed.
+              scheme: HTTPS
             failureThreshold: 5
             initialDelaySeconds: 120
             periodSeconds: 10
             timeoutSeconds: 20
+          # nginx listens on 41120 before Prefect does, answering 502 in the gap.
+          # httpGet treats anything outside 200-399 as failure, so this makes
+          # "ready" mean "Prefect answers" rather than "nginx is up", and keeps
+          # the dataflow-gen Service from routing to a container that would 502.
+          # Note this gates Service endpoints only, not sibling containers in
+          # this pod — trex's seeding waits via PrefectAPI.waitUntilReady().
+          readinessProbe:
+            httpGet:
+              path: /d2e/api/health
+              port: 41120
+              scheme: HTTPS
+            failureThreshold: 30
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
         - name: webapi-init
           image: postgres:16-alpine
           resources:
@@ -390,7 +506,43 @@ spec:
             - |
               mkdir -p /usr/src/cert
               printf '%s' "$TLS__INTERNAL__CRT" > /usr/src/cert/cert.pem
-              printf '%s' "$TLS__INTERNAL__KEY" > /usr/src/cert/key.pem
+              (umask 077; printf '%s' "$TLS__INTERNAL__KEY" > /usr/src/cert/key.pem)
+              # Three runtimes share this container and each finds its trust
+              # anchors somewhere different. The OS store covers shell/curl and,
+              # via DENO_TLS_CA_STORE=system, the Deno edge functions. GraalVM
+              # WebAPI ignores the OS store entirely and reads WEBAPI_TRUST_CERTS
+              # (which points at this same file). All three are required: a
+              # pod-level curl check passes while the other two runtimes fail.
+              #
+              # Assert rather than hope. This copy previously ran against a path
+              # the container did not mount: the cp failed, update-ca-certificates
+              # had nothing to add, and the process started with public roots only.
+              # Every internal TLS call then failed -- UnknownIssuer from rustls,
+              # PKIX from GraalVM -- while the `curl -fk` liveness probe still went
+              # green, so the pod reported Ready. Starting untrusted is worse than
+              # not starting, so each step below is checked.
+              ca=/etc/d2e/tls/ca.pem
+              if [ ! -s "$ca" ]; then
+                echo "FATAL: $ca is missing or empty -- the d2e-tls volume is not mounted, or global.secrets.TLS__INTERNAL__CA_CRT is empty. Refusing to start without the internal trust anchor." >&2
+                exit 1
+              fi
+              if ! grep -q '^-----BEGIN CERTIFICATE-----$' "$ca"; then
+                echo "FATAL: $ca is not a PEM certificate. Refusing to start without the internal trust anchor." >&2
+                exit 1
+              fi
+              cp "$ca" /usr/local/share/ca-certificates/d2e-internal-ca.crt || {
+                echo "FATAL: could not install $ca into the OS trust store." >&2
+                exit 1
+              }
+              update-ca-certificates
+              # The anchor is self-signed, so verifying it against the freshly
+              # rebuilt bundle proves it is actually in the store -- not merely
+              # that the file was copied and the rebuild exited 0.
+              if ! openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt "$ca" >/dev/null 2>&1; then
+                echo "FATAL: the internal CA is not present in the OS trust store after update-ca-certificates. Refusing to start untrusted." >&2
+                exit 1
+              fi
+              echo "internal CA installed into OS trust store: $(openssl x509 -in "$ca" -noout -subject)"
               exec /usr/src/entrypoint.sh ${TREX_OTEL_ENABLED:+--enable-otel}
           env:
             - name: RUST_BACKTRACE
@@ -447,7 +599,7 @@ spec:
             - name: DATABASE_CREDENTIALS
               value: "{}"
             - name: DB_CREDENTIALS_MGR__API_URL
-              value: "http://trex-http.d2e.svc.cluster.local:443/db-credentials/db/"
+              value: "https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/db-credentials/db/"
             - name: EXCLUDE_ANALYSIS_IDS
               valueFrom:
                 configMapKeyRef:
@@ -467,7 +619,7 @@ spec:
             - name: DC_HANA_READ_ROLE
               value: ""
             - name: HOSTNAME
-              value: "trex-http.d2e.svc.cluster.local"
+              value: "trex-http.{{ .Release.Namespace }}.svc.cluster.local"
             - name: LOGTO_API_M2M_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -529,7 +681,7 @@ spec:
             - name: IDP__ALP_ADMIN__RESOURCE
               value: https://default.logto.app/api
             - name: IDP__BASE_URL
-              value: http://idp.d2e.svc.cluster.local:443
+              value: https://idp.{{ .Release.Namespace }}.svc.cluster.local:443
             - name: IDP__FETCH_USER_INFO_TYPE
               value: logto
             - name: IDP__INITIAL_USER__NAME
@@ -555,7 +707,7 @@ spec:
             - name: LOCAL_DEBUG
               value: "false"
             - name: LOGTO__ADMIN_SERVER__FQDN_URL
-              value: http://idp-admin.d2e.svc.cluster.local:443
+              value: https://idp-admin.{{ .Release.Namespace }}.svc.cluster.local:443
             - name: LOGTO__DEFAULT_TENANT__FQDN_URL
               value: https://default.logto.app/api
             - name: LOGTO__AUDIENCES
@@ -568,9 +720,9 @@ spec:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: LOGTO__SCOPE
             - name: LOGTO__TOKEN_URL
-              value: http://idp.d2e.svc.cluster.local:443/oidc/token
+              value: https://idp.{{ .Release.Namespace }}.svc.cluster.local:443/oidc/token
             - name: LOGTO__ISSUER
-              value: "http://gateway.d2e.svc.cluster.local/oidc"
+              value: "http://gateway.{{ .Release.Namespace }}.svc.cluster.local/oidc"
             - name: NODE_ENV
               value: development
             - name: NOT_EQ_CHECK_FILTERCARDS
@@ -738,7 +890,7 @@ spec:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: LOGTO__APP_CLIENT_SECRET
             - name: SECURITY_AUTH_OIDC_URL
-              value: "http://gateway.d2e.svc.cluster.local/oidc/.well-known/openid-configuration"
+              value: "http://gateway.{{ .Release.Namespace }}.svc.cluster.local/oidc/.well-known/openid-configuration"
             # External URL for browser redirects - used to rewrite internal OIDC URLs to external ones
             - name: SECURITY_AUTH_OIDC_EXTERNALURL
               value: "https://$(CADDY__D2E__PUBLIC_FQDN)/oidc"
@@ -758,7 +910,7 @@ spec:
             # TrexSQL configuration
             # PG__ vars needed by trex (npm start) for database connection                            
             - name: TREX__SQL__HOST
-              value: trex-sql.d2e.svc.cluster.local
+              value: trex-sql.{{ .Release.Namespace }}.svc.cluster.local
             - name: TREX__SQL__USER
               value: postgres
             - name: TREX__SQL__DBNAME
@@ -911,9 +1063,9 @@ spec:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: PG__SSL
             - name: PREFECT_API_URL
-              value: http://dataflow-gen.d2e.svc.cluster.local:443/d2e/api
+              value: https://dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local:443/d2e/api
             - name: PREFECT_HEALTH_CHECK
-              value: "http://dataflow-gen.d2e.svc.cluster.local:443/d2e/api/health"
+              value: "https://dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local:443/d2e/api/health"
             - name: PREFECT_POOL
               value: "process-pool"
             - name: WORKPOOL_TYPE
@@ -966,12 +1118,24 @@ spec:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: TLS__INTERNAL__CRT
             - name: TLS__INTERNAL__DOMAIN
-              value: alp.local
+              value: {{ ((.Values.global).tls).internalDomain | default "d2e.local" | quote }}
             - name: TLS__INTERNAL__KEY
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: TLS__INTERNAL__KEY
+            # The trexas worker HTTP client honors DENO_TLS_CA_STORE=system, so
+            # the Deno edge functions trust the internal CA that this container's
+            # args install into the OS store via update-ca-certificates.
+            - name: DENO_TLS_CA_STORE
+              value: system
+            # Java analog of the above for the embedded native WebAPI. The GraalVM
+            # libwebapi-native.so bakes its truststore at build time and ignores the
+            # OS store, so WebApiNativeLibrary.start() reads this PEM at startup and
+            # installs a composite SSLContext (JDK roots + the internal CA) before
+            # Spring boots -- needed for OIDC discovery/JWKS over internal TLS.
+            - name: WEBAPI_TRUST_CERTS
+              value: /etc/d2e/tls/ca.pem
             - name: TREX__SQL__PORT
               value: "443"
             - name: TREX_SQL_PASSWORD
@@ -1051,6 +1215,12 @@ spec:
           volumeMounts:
             - mountPath: /usr/src/data
               name: trex-volume
+            # The internal CA, read by the args above (OS trust store, for
+            # shell/curl and DENO_TLS_CA_STORE=system) and by the GraalVM WebAPI
+            # via WEBAPI_TRUST_CERTS. Without this mount all three go untrusted.
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
             {{- if .Values.features.materializeCohorts }}
             - mountPath: /usr/src/cert/client.crt
               name: materialize-cohorts-client-pki
@@ -1122,7 +1292,11 @@ spec:
             timeoutSeconds: 5
         {{- end }}
         - name: supabase-storage
-          command: ["/bin/sh", "-c"]
+          # Restore the image entrypoint ahead of the existing shell. It writes
+          # the internal cert, installs the CA into the OS store, starts nginx
+          # (TLS on 9000 -> storage-api on loopback 9001), then execs "$@" --
+          # so the args below still run exactly as before.
+          command: ["/usr/src/entrypoint.sh", "/bin/sh", "-c"]
           args:
             [
               "-c",
@@ -1131,8 +1305,16 @@ spec:
           env:
             - name: PROJECT_REF
               value: "d2e"
+            # storage-api moves off 9000 so nginx can own it. Resolution order
+            # in the image's config is SERVER_HOST || HOST and
+            # SERVER_PORT || PORT, and the baked nginx.conf proxies to
+            # 127.0.0.1:9001, so all three must agree.
             - name: PORT
-              value: "9000"
+              value: "9001"
+            - name: SERVER_HOST
+              value: 127.0.0.1
+            - name: SERVER_PORT
+              value: "9001"
             - name: FILE_SIZE_LIMIT
               value: "1048576000"
             - name: DATABASE_URL
@@ -1162,10 +1344,13 @@ spec:
               value: file
             - name: GLOBAL_S3_BUCKET
               value: stub
+            # Inert under STORAGE_BACKEND=file, but kept consistent: the
+            # endpoint has to be a name the internal certificate covers if the
+            # S3 backend ever goes live.
             - name: GLOBAL_S3_ENDPOINT
-              value: http://storage.d2e.svc.cluster.local:443/s3
+              value: https://storage.{{ .Release.Namespace }}.svc.cluster.local:443/s3
             - name: GLOBAL_S3_PROTOCOL
-              value: http
+              value: https
             - name: GLOBAL_S3_FORCE_PATH_STYLE
               value: "true"
             - name: FILE_STORAGE_BACKEND_PATH
@@ -1174,18 +1359,46 @@ spec:
               value: "stub"
             - name: REGION
               value: stub
+            # Read by the image entrypoint to write the nginx cert/key and to
+            # install the CA into this container's OS trust store.
+            - name: TLS__INTERNAL__CRT
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: TLS__INTERNAL__CRT
+            - name: TLS__INTERNAL__KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: TLS__INTERNAL__KEY
+            - name: TLS__INTERNAL__CA_CRT
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: TLS__INTERNAL__CA_CRT
           image: ghcr.io/ohdsi/d2e-supabase-storage:{{ .Values.global.image.tag }}
           volumeMounts:
             - name: storage-volume
               mountPath: /var/lib/storage
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
           imagePullPolicy: IfNotPresent
+          # nginx now owns :9000 with TLS, so both probes move to https. They
+          # stay on loopback and skip validation, matching compose and trex's
+          # own probe: these must not route through the Service (a readiness
+          # probe that does can never pass, since the Service has no ready
+          # endpoints until the probe succeeds), and no certificate can cover
+          # 127.0.0.1 without an IP SAN. The CA chain on this listener is
+          # exercised for real by in-cluster callers.
           livenessProbe:
             exec:
               command:
                 - wget
+                - --no-check-certificate
                 - -O
                 - liveness
-                - http://127.0.0.1:9000/status
+                - https://127.0.0.1:9000/status
             failureThreshold: 5
             initialDelaySeconds: 150
             periodSeconds: 5
@@ -1194,9 +1407,10 @@ spec:
             exec:
               command:
                 - wget
+                - --no-check-certificate
                 - -O
                 - readiness
-                - http://127.0.0.1:9000/status
+                - https://127.0.0.1:9000/status
             failureThreshold: 5
             initialDelaySeconds: 150
             periodSeconds: 5

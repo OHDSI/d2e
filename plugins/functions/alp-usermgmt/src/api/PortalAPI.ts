@@ -1,5 +1,5 @@
 import { Container, Service } from 'typedi'
-import { AxiosRequestConfig } from 'axios'
+import { AxiosRequestConfig } from "../../../_shared/_axios.ts"
 import { createLogger } from '../Logger'
 import { CONTAINER_KEY } from '../const'
 import https from 'https'

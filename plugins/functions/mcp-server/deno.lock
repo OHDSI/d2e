@@ -3,7 +3,6 @@
   "specifiers": {
     "npm:@modelcontextprotocol/sdk@*": "1.25.1_zod@3.25.76_ajv@8.17.1_express@5.2.1",
     "npm:@modelcontextprotocol/sdk@^1.20.2": "1.25.1_zod@3.25.76_ajv@8.17.1_express@5.2.1",
-    "npm:axios@^1.7.9": "1.13.2",
     "npm:express@^4.19.2": "4.22.1",
     "npm:pako@1.0.11": "1.0.11",
     "npm:papaparse@^5.4.1": "5.5.3",
@@ -74,14 +73,6 @@
     },
     "asynckit@0.4.0": {
       "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q=="
-    },
-    "axios@1.13.2": {
-      "integrity": "sha512-VPk9ebNqPcy5lRGuSlKx752IlDatOjT9paPlm8A7yOuW2Fbvp4X3JznJtT4f0GzGLLiWE9W8onz51SqLYwzGaA==",
-      "dependencies": [
-        "follow-redirects",
-        "form-data",
-        "proxy-from-env"
-      ]
     },
     "body-parser@1.20.4": {
       "integrity": "sha512-ZTgYYLMOXY9qKU/57FAo8F+HA2dGX7bqGc71txDRC1rS4frdFI5R7NhluHxH6M0YItAP0sHB4uqAOcYKxO6uGA==",
@@ -760,7 +751,6 @@
     "dependencies": [
       "npm:@modelcontextprotocol/sdk@*",
       "npm:@modelcontextprotocol/sdk@^1.20.2",
-      "npm:axios@^1.7.9",
       "npm:express@^4.19.2",
       "npm:pako@1.0.11",
       "npm:papaparse@^5.4.1",

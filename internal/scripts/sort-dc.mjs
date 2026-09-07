@@ -11,7 +11,7 @@
 $.verbose = false;
 // $.verbose = true;
 
-const domain = "${TLS__INTERNAL__DOMAIN:-alp.local}";
+const domain = "${TLS__INTERNAL__DOMAIN:-d2e.local}";
 
 let git_base_dir = (await $`git rev-parse --show-toplevel`).stdout.trim();
 cd(git_base_dir);
@@ -186,9 +186,9 @@ if (argv.update) {
         // appDoc.set("hostname", String(container_name));
         appDoc.set(
           "hostname",
-          String(container_name) + ".${TLS__INTERNAL__DOMAIN:-alp.local}"
+          String(container_name) + ".${TLS__INTERNAL__DOMAIN:-d2e.local}"
         );
-        // appDoc.set("domainname", String(container_name) + '.${TLS__INTERNAL__DOMAIN:-alp.local}');
+        // appDoc.set("domainname", String(container_name) + '.${TLS__INTERNAL__DOMAIN:-d2e.local}');
 
         container_name.anchor = `c${i}`;
         let alias = srcDoc.createAlias(container_name);

@@ -15,7 +15,6 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.0",
     "@std/testing/mock": "jsr:@std/testing@^1.0.0/mock",
-    "axios": "npm:axios@1.7.7",
     "https": "node:https",
     "winston": "npm:winston",
     "async": "npm:async",

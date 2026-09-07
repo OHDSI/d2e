@@ -15,7 +15,6 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.0",
     "@std/testing/mock": "jsr:@std/testing@^1.0.0/mock",
-    "axios": "npm:axios@^0.21.2",
     "dotenv": "npm:dotenv@^16.3.1",
     "express": "npm:express@^4.18",
     "stream": "node:stream",

@@ -4,7 +4,7 @@ metadata:
   labels:
     profile: d2e-core
   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
@@ -29,6 +29,27 @@ spec:
                 operator: NotIn
                 values:
                 - d2e
+      volumes:
+        # Logto terminates TLS on :3001/:3002 from this mounted pair (see
+        # HTTPS_CERT_PATH on the logto container) and verifies its own outbound
+        # calls against ca.pem via NODE_EXTRA_CA_CERTS. The key is 0400 because
+        # it is the only private material here; the CA and cert are public.
+        - name: d2e-tls
+          secret:
+            secretName: "{{ .Release.Name }}-{{ .Chart.Name }}"
+            items:
+              - key: TLS__INTERNAL__CA_CRT
+                path: ca.pem
+                mode: 0444
+              - key: TLS__INTERNAL__CRT
+                path: cert.pem
+                mode: 0444
+              - key: TLS__INTERNAL__KEY
+                path: key.pem
+                mode: 0400
+        - name: logto-seed-scripts
+          configMap:
+            name: "{{ .Release.Name }}-{{ .Chart.Name }}-logto-seed-scripts"
       initContainers:
         - name: supabase-storage-pre-init
           env:
@@ -351,15 +372,19 @@ spec:
               value: "60000"
             - name: ADMIN_DISABLE_LOCALHOST
               value: "false"
+            # Scheme follows the listener: with HTTPS_CERT_PATH set below there
+            # is no plaintext listener left on either port. (docker-compose
+            # leaves ADMIN_ENDPOINT unset entirely and lets Logto derive it;
+            # kept explicit here to preserve the chart's existing behaviour.)
             - name: ADMIN_ENDPOINT
-              value: "http://localhost:3002"
+              value: "https://localhost:3002"
             - name: DB_URL
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: IDP__JDBC__URL
             - name: ENDPOINT
-              value: "http://gateway.d2e.svc.cluster.local"
+              value: "http://gateway.{{ .Release.Namespace }}.svc.cluster.local"
             - name: LOGTO_API_M2M_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -378,13 +403,38 @@ spec:
             - name: NODE_ENV
               value: production
             - name: TLS__INTERNAL__DOMAIN
-              value: alp.local
+              value: {{ ((.Values.global).tls).internalDomain | default "d2e.local" | quote }}
             - name: TRUST_PROXY_HEADER
               value: "true"
             - name: PORT
               value: "3001"
+            # Node reads its extra trust anchors from a file, so the mount alone
+            # is enough -- no cert-writing entrypoint needed.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/d2e/tls/ca.pem
+            # Logto terminates TLS natively on both :3001 and :3002 once these
+            # point at a cert/key pair. Files come from the d2e-tls mount, so no
+            # cert-writing shell is needed here either.
+            - name: HTTPS_CERT_PATH
+              value: /etc/d2e/tls/cert.pem
+            - name: HTTPS_KEY_PATH
+              value: /etc/d2e/tls/key.pem
+            # Base URL the bundled connectors (alp-azuread, alp-entra-external-id)
+            # use to call Logto's own API. They default to http://localhost:$PORT,
+            # but with HTTPS_CERT_PATH set there is no plaintext listener left, so
+            # those calls fail with ECONNRESET -- which only surfaces once a social
+            # connector is configured. It must be a name the internal certificate
+            # covers: `localhost` is not in the SAN, hence the service FQDN.
+            # Verified against the internal CA via NODE_EXTRA_CA_CERTS above;
+            # there is no verification bypass.
+            - name: LOGTO__SELF_BASE_URL
+              value: https://idp.{{ .Release.Namespace }}.svc.cluster.local:443
           image: ghcr.io/ohdsi/d2e-logto:{{ .Values.global.image.tag }}
           imagePullPolicy: Always
+          volumeMounts:
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
           lifecycle:
             postStart:
               exec:
@@ -395,6 +445,9 @@ spec:
             httpGet:
               path: /api/status
               port: 3001
+              # :3001 now serves TLS. The kubelet does not verify the server
+              # certificate for httpGet probes, so no CA reference is needed.
+              scheme: HTTPS
             failureThreshold: 5
             initialDelaySeconds: 100
             periodSeconds: 5
@@ -404,7 +457,3 @@ spec:
               protocol: TCP
             - containerPort: 3002
               protocol: TCP
-      volumes:
-        - name: logto-seed-scripts
-          configMap:
-            name: "{{ .Release.Name }}-{{ .Chart.Name }}-logto-seed-scripts"

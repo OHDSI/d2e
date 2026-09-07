@@ -20,6 +20,7 @@
 | `LOGTO__D2E_SVC__CLIENT_ID`                     | string         | Logto Alp Svc Client Id                                                             |
 | `LOGTO__D2E_SVC__CLIENT_SECRET`                 | password       | Logto Alp Svc Client Secret                                                         |
 | `LOGTO__CLIENTID_PASSWORD__BASIC_AUTH`          | base64 encoded | From `LOGTO_API_M2M_CLIENT_ID` & `LOGTO_API_M2M_CLIENT_SECRET`                      |
+| `LOGTO__SELF_BASE_URL`                          | string         | Base URL Logto's bundled connectors use to reach Logto's own API; must be a name the internal certificate covers |
 | `MINIO__SECRET_KEY`                             | password       | Meilisearch Secret_Key                                                              |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`                   | url            | OTLP collector endpoint, e.g. `http://jaeger:4318`. Empty disables export.          |
 | `OTEL_EXPORTER_OTLP_HEADERS`                    | string         | Optional OTLP exporter headers, e.g. `key=value,key2=value2`.                       |
@@ -31,6 +32,8 @@
 | `PG__LOGTO_MANAGER_PASSWORD`                    | string         |
 | `REDIS_PASSWORD`                                | string         | Redis Password                                                                      |
 | `TLS__CADDY_DIRECTIVE`                          | string         | Generate self-signed or public x509 certificate                                     |
+| `TLS__EXTRA__CA_CRTS`                           | string         | Extra trust anchors for non-internal upstreams; concatenated PEM blocks with real newlines |
+| `TLS__INTERNAL__DOMAIN`                         | string         | Internal DNS domain for service-to-service TLS; must match the certificate SAN (default `d2e.local`) |
 | `TREX_OTEL_ENABLED`                             | bool           | Passes `--enable-otel` to trex; empty/unset keeps telemetry off (default).          |
 | `USERMGMT__AUTO_PROVISION_ENABLED`              | bool           | Auto-create a usermgmt.user row on first federated OIDC login (default `false`).    |
 | `USERMGMT__AUTO_PROVISION_CONNECTORS`           | csv            | Logto social-connector targets allowed to auto-provision (e.g. `physionet,oidc`).   |

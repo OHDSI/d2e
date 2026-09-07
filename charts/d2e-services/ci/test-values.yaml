@@ -50,10 +50,11 @@ config:
   TREX_BUNFIG: ""
   SERVICE_ROUTES: |
     {
-      "alpdb": "http://trex-http.d2e.svc.cluster.local:443/gateway/api/db",
-      "analytics": "http://trex-http.d2e.svc.cluster.local:443",
-      "trex": "http://trex-http.d2e.svc.cluster.local:443",
-      "logto": "http://idp.d2e.svc.cluster.local:443"
+      "alpdb": "https://trex.d2e.svc.cluster.local:443/gateway/api/db",
+      "analytics": "https://trex.d2e.svc.cluster.local:443",
+      "trex": "https://trex.d2e.svc.cluster.local:443",
+      "logto": "https://idp.d2e.svc.cluster.local:443",
+      "prefect": "https://dataflow-gen.d2e.svc.cluster.local:443/d2e/api"
     }
   baseJobTemplate:
     configuration: |

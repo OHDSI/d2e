@@ -1,7 +1,7 @@
 import { env } from "../env";
 import { Dataset } from "../types";
 import https from "https";
-import { AxiosRequestConfig } from "axios";
+import { AxiosRequestConfig } from "../../../_shared/_axios.ts";
 
 export class PortalAPI {
   private readonly baseURL: string;

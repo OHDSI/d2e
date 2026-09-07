@@ -11,7 +11,6 @@
   },
   "imports": {
     "@microsoft/microsoft-graph-client": "npm:@microsoft/microsoft-graph-client@3.0.1",
-    "axios": "npm:axios@1.6.0",
     "compression": "npm:compression@1.7.4",
     "dotenv": "npm:dotenv@10.0.0",
     "express": "npm:express@4.17.3",

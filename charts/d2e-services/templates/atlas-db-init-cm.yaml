@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: "{{ .Release.Name }}-{{ .Chart.Name }}-atlas-db-init"
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 data:
   100_populate_source_source_daimon.sql: |
     -- Ensure ohdsi schema exists (should already exist from broadsea-atlasdb image)

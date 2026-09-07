@@ -12,7 +12,6 @@
   "imports": {
     "express": "npm:express@^4.19.2",
     "express-validator": "npm:express-validator@^7.2.0",
-    "axios": "npm:axios@^1.7.7",
     "./src/env": "./src/env.ts",
     "./src/types": "./src/types.ts",
     "./src/api/AWSTokenAPI": "./src/api/AWSTokenAPI.ts",

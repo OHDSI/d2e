@@ -1,15 +1,19 @@
 # sourced library functions used by:
 # - scripts/cli.sh
-# - internal/scripts/flatten-env.sh
-# - internal/scripts/gen-env-internal.sh
-# - internal/scripts/set-env.sh
+# (the three internal/scripts/*.sh consumers this used to list are gone)
 
 [ -z $DOTENV_FILE ] && echo . FATAL DOTENV_FILE is not set
 
 # inputs
 D2E_MEM_TO_SWAP_LIMIT_RATIO=${D2E_MEM_TO_SWAP_LIMIT_RATIO:-4}
 D2E_RESOURCE_LIMIT=${D2E_RESOURCE_LIMIT:-0.7}
-TLS__INTERNAL__DOMAIN_NAME=${TLS__INTERNAL__DOMAIN_NAME:-d2e.local}
+# The domain the internal cert is issued for. Consumers (docker-compose, Helm)
+# read TLS__INTERNAL__DOMAIN, so that name wins here; TLS__INTERNAL__DOMAIN_NAME
+# is kept as a fallback for existing .env files. Keeping these in sync matters:
+# the SAN below is built from this value, and a mismatch means every internal
+# HTTPS hop fails hostname verification.
+TLS__INTERNAL__DOMAIN=${TLS__INTERNAL__DOMAIN:-${TLS__INTERNAL__DOMAIN_NAME:-d2e.local}}
+TLS__INTERNAL__DOMAIN_NAME=$TLS__INTERNAL__DOMAIN
 TLS__X509__SUBJ_BASE=${TLS__X509__SUBJ_BASE:-/C=SG/O=D4L/OU=D2E}
 
 # vars
@@ -36,7 +40,7 @@ function gen-tls-internal {
         TLS__INTERNAL__CA_CRT="$(openssl req -x509 -key <(echo "${TLS__INTERNAL__CA_KEY}") -sha256 -days 3650 -subj "/CN=D2E Internal CA" -addext 'keyUsage=critical,keyCertSign,cRLSign' -addext 'basicConstraints=critical,CA:TRUE,pathlen:1')" # && echo "${TLS__INTERNAL__CA_CRT}" | openssl x509 -text -noout
         # containers
         TLS__INTERNAL__KEY="$(openssl genpkey -algorithm $PKEY_ALGORITHM -pkeyopt $PKEY_OPT)" # && echo "$TLS__INTERNAL__KEY"
-        TLS__INTERNAL__CSR="$(openssl req -new -sha256 -key <(echo "${TLS__INTERNAL__KEY}") -subj "/CN=$TLS__INTERNAL__DOMAIN_NAME" -addext "subjectAltName=DNS:*.d2e.local" -addext 'keyUsage=critical,digitalSignature' -addext 'extendedKeyUsage=serverAuth,clientAuth')" # && echo "$TLS__INTERNAL__CSR" | openssl req -text -noout
+        TLS__INTERNAL__CSR="$(openssl req -new -sha256 -key <(echo "${TLS__INTERNAL__KEY}") -subj "/CN=$TLS__INTERNAL__DOMAIN_NAME" -addext "subjectAltName=DNS:*.$TLS__INTERNAL__DOMAIN,DNS:$TLS__INTERNAL__DOMAIN" -addext 'keyUsage=critical,digitalSignature' -addext 'extendedKeyUsage=serverAuth,clientAuth')" # && echo "$TLS__INTERNAL__CSR" | openssl req -text -noout
         TLS__INTERNAL__CRT="$(openssl x509 -req -in <(echo "${TLS__INTERNAL__CSR}") -CA <(echo "${TLS__INTERNAL__CA_CRT}") -CAkey <(echo "${TLS__INTERNAL__CA_KEY}") -days 3650 -sha256 -copy_extensions copyall)" # && echo "${TLS__INTERNAL__CRT}" | openssl x509 -text -noout
         sed -i.bak -e "/TLS__INTERNAL__CA_CRT/,/END CERTIFICATE-----'/d" $DOTENV_FILE
         sed -i.bak -e "/TLS__INTERNAL__CRT/,/END CERTIFICATE-----'/d" $DOTENV_FILE
@@ -44,6 +48,10 @@ function gen-tls-internal {
         echo TLS__INTERNAL__CA_CRT=\'"$TLS__INTERNAL__CA_CRT"\' >> $DOTENV_FILE
         echo TLS__INTERNAL__CRT=\'"$TLS__INTERNAL__CRT"\' >> $DOTENV_FILE
         echo TLS__INTERNAL__KEY=\'"$TLS__INTERNAL__KEY"\' >> $DOTENV_FILE
+        # Persist the domain the cert was actually issued for, so compose and the
+        # chart cannot silently drift onto a name the SAN does not cover.
+        sed -i.bak -e "/^TLS__INTERNAL__DOMAIN=/d" $DOTENV_FILE
+        echo TLS__INTERNAL__DOMAIN=\'"$TLS__INTERNAL__DOMAIN"\' >> $DOTENV_FILE
     else
         echo "FATAL openssl version 3 is required"
     fi

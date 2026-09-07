@@ -1,5 +1,12 @@
+// Mirrors what docker-compose builds for this variable:
+// https://${PROJECT_NAME:-d2e}-logto-1.${TLS__INTERNAL__DOMAIN:-d2e.local}:3002
+// The previous literal used a container name (alp-logto-1) that no deployment
+// creates, so the fallback failed DNS resolution rather than degrading.
+const projectName = process.env.PROJECT_NAME || "d2e";
+const internalDomain = process.env.TLS__INTERNAL__DOMAIN || "d2e.local";
 let LOGTO__ADMIN_SERVER__FQDN_URL =
-  process.env.LOGTO__ADMIN_SERVER__FQDN_URL || "http://alp-logto-1:3002";
+  process.env.LOGTO__ADMIN_SERVER__FQDN_URL ||
+  `https://${projectName}-logto-1.${internalDomain}:3002`;
 let LOGTO__CLIENTID_PASSWORD__BASIC_AUTH =
   process.env.LOGTO__CLIENTID_PASSWORD__BASIC_AUTH;
 

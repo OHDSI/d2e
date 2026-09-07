@@ -4,7 +4,7 @@ metadata:
   labels:
     profile: d2e-dataflow-worker
   name: "{{ .Release.Name }}-{{ .Chart.Name }}-dataflow-worker"
-  namespace: d2e
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
@@ -33,13 +33,21 @@ spec:
       #       claimName: trex-pvc
       initContainers:
         - name: dependencies-check
-          image: busybox:latest
+          # Not busybox: its wget has no --ca-certificate, only the
+          # --no-check-certificate bypass. The worker image is already pulled for
+          # this pod and ships curl (see its Dockerfile), which verifies chain and
+          # hostname by default.
+          image: ghcr.io/ohdsi/d2e-dataflow-gen-worker:{{ .Values.global.image.tag }}
           command:
             [
               "sh",
               "-c",
-              "while :;do sleep {{ .Values.dataflowWorker.readinessSleep }} && wget -O success-trex http://trex-http.d2e.svc.cluster.local:443/trex/_internal/health && wget -O success-dataflow http://dataflow-gen.d2e.svc.cluster.local:443/d2e/api/health && if test -f success-trex; then if test -f success-dataflow; then exit 0; fi; fi; done",
+              "until curl -sf --cacert /etc/d2e/tls/ca.pem https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/trex/_internal/health >/dev/null && curl -sf --cacert /etc/d2e/tls/ca.pem https://dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local:443/d2e/api/health >/dev/null; do echo 'waiting for trex and dataflow-gen ...'; sleep {{ .Values.dataflowWorker.readinessSleep }}; done",
             ]
+          volumeMounts:
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -153,6 +161,16 @@ spec:
         - name: d2e-worker-cm
           configMap:
             name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+        # Internal CA only: nothing in this pod terminates TLS, so the private
+        # key stays out. 0444 because a CA certificate is public material and
+        # every consumer must be able to read it whatever user it runs as.
+        - name: d2e-tls
+          secret:
+            secretName: "{{ .Release.Name }}-{{ .Chart.Name }}"
+            items:
+              - key: TLS__INTERNAL__CA_CRT
+                path: ca.pem
+                mode: 0444
       containers:
         - name: dataflow-gen-worker
           env:
@@ -198,8 +216,6 @@ spec:
               value: /home/docker/fhir
             - name: ACHILLES_THREAD_COUNT
               value: "5"
-            - name: PYTHON_VERIFY_SSL
-              value: "false"
             - name: PG__HOST
               valueFrom:
                 secretKeyRef:
@@ -223,11 +239,11 @@ spec:
             - name: PREFECT_API_DATABASE_CONNECTION_URL
               value: postgresql+asyncpg://$(PG__USER):$(PG__PASSWORD)@$(PG__HOST):5432/$(PG__DB_NAME)
             - name: PREFECT_API_URL
-              value: http://dataflow-gen.d2e.svc.cluster.local:443/d2e/api
+              value: https://dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local:443/d2e/api
             - name: INSTALL_SQLALCHEMY_HANA
               value: "true"
             - name: TREX_STORAGE_URL
-              value: "http://trex-http.d2e.svc.cluster.local:443/plugins/trex/storage-api"
+              value: "https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/plugins/trex/storage-api"
             - name: TREX_STORAGE_SERVICE_KEY
               value: ""
             - name: PREFECT_API_ENABLE_HTTP2
@@ -243,7 +259,7 @@ spec:
             - name: PREFECT_EVENTS_ENABLED
               value: "false"
             - name: DB_CREDENTIALS_MGR__API_URL
-              value: "http://trex-http.d2e.svc.cluster.local:443/db-credentials/db/"
+              value: "https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/db-credentials/db/"
             - name: DOCKER_REGISTRY_USERNAME
               value: dummy
             - name: DOCKER_REGISTRY_PASSWORD
@@ -302,6 +318,21 @@ spec:
               value: "10"
             - name: ROUNDING_TARGET
               value: "10"
+            # Trust the internal self-signed CA across every Python HTTP stack,
+            # matching docker-compose (alp-dataflow-gen-worker). The args above
+            # put the CA into the OS bundle; these point urllib/requests/httpx at
+            # that bundle. Without them only clients that explicitly pass
+            # certifi.where() are covered -- stdlib urlopen (run-flow.sh's
+            # deployment lookup) and websockets (the prefect events subscriber)
+            # read OpenSSL's defaults, which under `pixi run` resolve inside the
+            # env prefix (<env>/ssl/cert.pem) and never see the CA. Flows also
+            # exec in their own per-plugin pixi env provisioned at run time, so a
+            # startup-time append to this env's certifi cannot reach them; an
+            # inherited env var can.
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/ca-certificates.crt
+            - name: REQUESTS_CA_BUNDLE
+              value: /etc/ssl/certs/ca-certificates.crt
           command:
             - /entrypoint.sh
             - pixi
@@ -313,6 +344,12 @@ spec:
           args:
             - >-
               rm -rf /root/.prefect/storage/run_cache.db /root/.prefect/storage/events.db;
+              if [ ! -s /etc/d2e/tls/ca.pem ]; then echo "FATAL: /etc/d2e/tls/ca.pem is missing or empty -- the d2e-tls volume is not mounted, or global.secrets.TLS__INTERNAL__CA_CRT is empty. Refusing to start without the internal trust anchor." >&2; exit 1; fi;
+              grep -q '^-----BEGIN CERTIFICATE-----$' /etc/d2e/tls/ca.pem || { echo "FATAL: /etc/d2e/tls/ca.pem is not a PEM certificate. Refusing to start untrusted." >&2; exit 1; };
+              cp /etc/d2e/tls/ca.pem /usr/local/share/ca-certificates/d2e-internal-ca.crt || { echo "FATAL: could not install the internal CA into the OS trust store." >&2; exit 1; };
+              update-ca-certificates;
+              openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /etc/d2e/tls/ca.pem >/dev/null 2>&1 || { echo "FATAL: the internal CA is not present in /etc/ssl/certs/ca-certificates.crt after update-ca-certificates. SSL_CERT_FILE/REQUESTS_CA_BUNDLE point at that bundle, so every Python HTTP stack would fail verification. Refusing to start untrusted." >&2; exit 1; };
+              python -c 'import certifi; open(certifi.where(), "a").write("\n" + open("/etc/d2e/tls/ca.pem").read() + "\n")';
               prefect work-pool create "${PREFECT_POOL:-process-pool}" --type ${WORKPOOL_TYPE:-process};
               prefect worker start --pool "${PREFECT_POOL:-process-pool}" --type ${WORKPOOL_TYPE:-process}
               --name prefect-${WORKPOOL_TYPE:-process}-worker --with-healthcheck
@@ -323,6 +360,9 @@ spec:
             - mountPath: /opt/prefect/libs/baseJobTemplate.json
               name: d2e-worker-cm
               subPath: baseJobTemplate.json
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
           resources:
             {{- toYaml .Values.global.resources.dataflowGenWorker | nindent 12 }}
           livenessProbe:

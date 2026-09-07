@@ -75,7 +75,7 @@ metadata:
   namespace: default
 spec:
   type: ExternalName
-  externalName: d2e-trex.d2e.svc.cluster.local
+  externalName: d2e-trex.{{ .Release.Namespace }}.svc.cluster.local
 ---
 apiVersion: v1
 kind: Service
@@ -84,7 +84,7 @@ metadata:
   namespace: default
 spec:
   type: ExternalName
-  externalName: demodb.d2e.svc.cluster.local
+  externalName: demodb.{{ .Release.Namespace }}.svc.cluster.local
 {{- end }}
 ---
 apiVersion: v1

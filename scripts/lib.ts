@@ -20,8 +20,14 @@ export class LibUtils {
     this.D2E_RESOURCE_LIMIT = parseFloat(
       process.env.D2E_RESOURCE_LIMIT || "0.7"
     );
+    // Consumers (docker-compose, Helm) read TLS__INTERNAL__DOMAIN, so that name
+    // wins here; TLS__INTERNAL__DOMAIN_NAME stays as a fallback for existing
+    // .env files. The SAN is built from this value — a mismatch means every
+    // internal HTTPS hop fails hostname verification.
     this.TLS__INTERNAL__DOMAIN_NAME =
-      process.env.TLS__INTERNAL__DOMAIN_NAME || "d2e.local";
+      process.env.TLS__INTERNAL__DOMAIN ||
+      process.env.TLS__INTERNAL__DOMAIN_NAME ||
+      "d2e.local";
     this.TLS__X509__SUBJ_BASE =
       process.env.TLS__X509__SUBJ_BASE || "/C=SG/O=D4L/OU=D2E";
     this.OS = this.detectOS();
@@ -237,8 +243,8 @@ export class LibUtils {
         {
           name: "subjectAltName",
           altNames: [
-            { type: 2, value: "*.d2e.local" },
-            { type: 2, value: "d2e.local" },
+            { type: 2, value: `*.${this.TLS__INTERNAL__DOMAIN_NAME}` },
+            { type: 2, value: this.TLS__INTERNAL__DOMAIN_NAME },
           ],
         },
       ]);
@@ -263,6 +269,7 @@ export class LibUtils {
         .replace(/^TLS__INTERNAL__CRT=[\s\S]*?END CERTIFICATE-----"$/gm, "")
         .replace(/^TLS__INTERNAL__KEY=[\s\S]*?END PRIVATE KEY-----"$/gm, "")
         .replace(/^TLS__INTERNAL__CA_KEY=[\s\S]*?END PRIVATE KEY-----"$/gm, "")
+        .replace(/^TLS__INTERNAL__DOMAIN=.*$/gm, "")
         .trim();
 
       const esc = (v: string) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -270,6 +277,9 @@ export class LibUtils {
       envContent += `\nTLS__INTERNAL__CA_CRT="${esc(TLS__INTERNAL__CA_CRT)}"\n`;
       envContent += `TLS__INTERNAL__CRT="${esc(TLS__INTERNAL__CRT)}"\n`;
       envContent += `TLS__INTERNAL__KEY="${esc(TLS__INTERNAL__KEY)}"\n`;
+      // Persist the domain the cert was actually issued for, so compose and the
+      // chart cannot silently drift onto a name the SAN does not cover.
+      envContent += `TLS__INTERNAL__DOMAIN="${this.TLS__INTERNAL__DOMAIN_NAME}"\n`;
       fs.writeFileSync(dotenvFile, envContent);
       console.log("TLS certificates generated successfully");
     } catch (error) {

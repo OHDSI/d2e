@@ -16,7 +16,6 @@
     "winston": "npm:winston@^3.13.1",
     "https": "node:https",
     "jsonwebtoken": "npm:jsonwebtoken@^9.0.0",
-    "axios": "npm:axios@^0.21.2",
     "./src/seed": "./src/seed.ts",
     "./src/PrefectAPI": "./src/PrefectAPI.ts",
     "./src/types": "./src/types.ts",

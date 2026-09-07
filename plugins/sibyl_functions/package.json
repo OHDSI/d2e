@@ -64,7 +64,7 @@
         "metadata-api": {
           "METADATA_ENC_KEY": "${METADATA_ENC_KEY:-}",
           "HADES_OUTPUT_BASE_DIR": "${HADES_OUTPUT_BASE_DIR:-/tmp/hades/output}",
-          "STORAGE_BASE_URL": "${STORAGE_BASE_URL:-http://${PROJECT_NAME:-d2e}-supabase-storage-1:9000}",
+          "STORAGE_BASE_URL": "${STORAGE_BASE_URL:-https://${PROJECT_NAME:-d2e}-supabase-storage-1.${TLS__INTERNAL__DOMAIN:-d2e.local}:9000}",
           "SUPABASE_STORAGE_JWT_TOKEN": "${SUPABASE_STORAGE_JWT_TOKEN}",
           "TREX_BASE_URL": "${TREX_BASE_URL:-http://localhost:8001/trex}"
         },

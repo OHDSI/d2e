@@ -26,7 +26,6 @@
     "pako": "npm:pako@1.0.11",
     "hdb": "npm:hdb@2.27.1",
     "pg": "npm:pg@^8.12.0",
-    "axios": "npm:axios@^0.21.2",
     "pg-query-stream": "npm:pg-query-stream@^4.2.4",
     "underscore": "npm:underscore@^1.12.1",
     "@godaddy/terminus": "npm:@godaddy/terminus@^4.4.1",

@@ -12,7 +12,10 @@ services:
       - |
         mkdir -p /usr/src/cert
         printf '%s' "$$TLS__INTERNAL__CRT" > /usr/src/cert/cert.pem
-        printf '%s' "$$TLS__INTERNAL__KEY" > /usr/src/cert/key.pem
+        (umask 077; printf '%s' "$$TLS__INTERNAL__KEY" > /usr/src/cert/key.pem)
+        printf '%s' "$$TLS__INTERNAL__CA_CRT" > /usr/src/cert/ca.pem
+        cp /usr/src/cert/ca.pem /usr/local/share/ca-certificates/d2e-internal-ca.crt
+        update-ca-certificates
         if [ "$${TREX_DX_ENABLED:-}" = "true" ] && [ -n "$${TREX_ROOT_KEY:-}" ]; then
           mkdir -p /trex-secrets
           printf 'TREX_ROOT_KEY=%s\n' "$$TREX_ROOT_KEY" > /trex-secrets/root.env
@@ -40,7 +43,7 @@ services:
     networks:
       alp:
         aliases:
-          - ${PROJECT_NAME:-alp}-trex.${TLS__INTERNAL__DOMAIN:-alp.local}
+          - ${PROJECT_NAME:-alp}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}
     ports:
       - 9229:9229
       - 25432:5432
@@ -101,7 +104,7 @@ services:
       LOCAL_DEBUG: "true"
       DATABASE_CREDENTIALS: ${DATABASE_CREDENTIALS:-{}}
       # Supabase Studio sidecar (LOCAL ONLY) — trex proxies /plugins/trex/studio/** to it.
-      STUDIO_INTERNAL_URL: http://${PROJECT_NAME:-d2e}-studio.${TLS__INTERNAL__DOMAIN:-alp.local}:3000
+      STUDIO_INTERNAL_URL: http://${PROJECT_NAME:-d2e}-studio.${TLS__INTERNAL__DOMAIN:-d2e.local}:3000
       EDGE_FUNCTIONS_MANAGEMENT_FOLDER: /app/edge-functions
       # Bind-mounted source plugins win over bundled ones with the same package name.
       # /usr/src/plugins-dev first so trex's own web/studio/notebook plugins load too.
@@ -176,6 +179,9 @@ services:
       CADDY__CORS_LOCAL_UI: "import cors"
 
   alp-dataflow-gen:
+    build:
+      context: ./services/alp-dataflow-gen
+      dockerfile: Dockerfile
     ports:
       - 41120:41120
     environment:
@@ -320,13 +326,13 @@ services:
   studio:
     image: ghcr.io/ohdsi/trex-studio:latest
     container_name: ${PROJECT_NAME:-d2e}-studio
-    hostname: ${PROJECT_NAME:-d2e}-studio.${TLS__INTERNAL__DOMAIN:-alp.local}
+    hostname: ${PROJECT_NAME:-d2e}-studio.${TLS__INTERNAL__DOMAIN:-d2e.local}
     restart: unless-stopped
     networks:
       alp:
         aliases:
           - studio
-          - ${PROJECT_NAME:-d2e}-studio.${TLS__INTERNAL__DOMAIN:-alp.local}
+          - ${PROJECT_NAME:-d2e}-studio.${TLS__INTERNAL__DOMAIN:-d2e.local}
     depends_on:
       trex:
         condition: service_healthy
@@ -353,9 +359,9 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       # trex serves the supabase-compat surface under /trex at its internal endpoint.
-      SUPABASE_URL: http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-alp.local}:33001/trex
+      SUPABASE_URL: http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}:33001/trex
       SUPABASE_PUBLIC_URL: https://localhost:41100/trex
-      STUDIO_PG_META_URL: http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-alp.local}:33001/trex/pg/v1
+      STUDIO_PG_META_URL: http://${PROJECT_NAME:-d2e}-trex.${TLS__INTERNAL__DOMAIN:-d2e.local}:33001/trex/pg/v1
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
       SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
       # Fallback direct DB access — trexdb lives in the alp Postgres.

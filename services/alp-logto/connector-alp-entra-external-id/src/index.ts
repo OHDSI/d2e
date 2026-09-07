@@ -27,7 +27,13 @@ import {
   authResponseGuard,
 } from "./types.js";
 
-const ENDPOINT = `http://localhost:${process.env.PORT}`;
+// Base URL this connector uses to call Logto's own API. When Logto serves its
+// port over TLS there is no plaintext listener left, so http://localhost fails
+// with ECONNRESET — LOGTO__SELF_BASE_URL then supplies the internal HTTPS URL
+// (a name the internal cert covers; localhost is not in its SAN). The http
+// fallback keeps non-TLS deployments working unchanged.
+const ENDPOINT =
+  process.env.LOGTO__SELF_BASE_URL || `http://localhost:${process.env.PORT}`;
 const defaultTimeout = 5000;
 
 const parseScopes = (scopesConfig?: string): string[] => {
@@ -155,9 +161,6 @@ const getM2MLogtoAPIToken = async () => {
         "content-type": "application/x-www-form-urlencoded",
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     return JSON.parse(httpResponse.body).access_token!;
@@ -176,9 +179,6 @@ const getLogtoUserIdByEmail = async (email: string, apiToken: string) => {
         authorization: `Bearer ${apiToken}`,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     return JSON.parse(httpResponse.body)[0]?.id;
@@ -198,9 +198,6 @@ const getLogtoUsersByName = async (username: string, apiToken: string) => {
         authorization: `Bearer ${apiToken}`,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     console.log(
@@ -230,9 +227,6 @@ const addUser = async (
         username,
       },
       timeout: { request: defaultTimeout },
-      https: {
-        rejectUnauthorized: false,
-      },
     });
 
     return JSON.parse(httpResponse.body) as { id: string };
@@ -256,9 +250,6 @@ const updateUserIdentity = async (
         },
         json: data,
         timeout: { request: defaultTimeout },
-        https: {
-          rejectUnauthorized: false,
-        },
       }
     );
 
