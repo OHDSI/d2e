@@ -1,93 +1,106 @@
-<template :key="bookmark.name">
+<template :key="bookmark?.name">
   <div class="filtercard-summary" data-testid="pa-filter-summary-panel">
-    <div class="header d-flex">
-      <label class="summary-title mr-auto">{{ getText('MRI_PA_TITLE_FILTER_SUMMARY') }}</label>
-      <label class="separator"></label>
-      <div class="spacer"></div>
-      <button class="btn btn-sm" @click="unloadBookmark">
-        <icon icon="close" />
-      </button>
+    <div class="filtercard-summary__header">
+      <div class="filtercard-summary__title-row">
+        <span class="filtercard-summary__title">{{ getText('MRI_PA_TITLE_FILTER_SUMMARY') }}</span>
+        <D2eIconButton
+          category="no-stroke"
+          size="lg"
+          icon="mdi-close"
+          :aria-label="getText('MRI_PA_TITLE_FILTER_SUMMARY')"
+          @click="unloadBookmark"
+        />
+      </div>
+      <p v-if="displayName" class="filtercard-summary__subtitle">
+        <span>{{ getText('MRI_PA_FILTER_SUMMARY_EXPLORATION_COHORT_NAME') }}</span
+        ><span class="filtercard-summary__subtitle-name">{{ displayName }}</span>
+      </p>
     </div>
     <div class="bookmark-content">
-      <ul class="bookmark-list">
-        <li v-if="bookmark">
-          <template v-for="(container, cIdx) in getCardsFormatted" :key="container.content">
-            <div>
-              <div v-if="cIdx === 0" class="summary-desc">{{ getText('MRI_PA_FILTER_SUMMARY_DESC_LABEL') }}</div>
-              <div class="condition-container and-label" v-if="cIdx > 0">{{ getText('MRI_PA_AND') }}</div>
-              <div :class="{ 'bookmark-filter-container': cIdx >= 0 }">
-                <template v-for="(filterCard, fIdx) in container.content" :key="filterCard.name">
-                  <div class="condition-container or-label" v-if="fIdx > 0">
-                    {{ getText('MRI_PA_OR') }}
-                  </div>
-                  <div class="bookmark-filtercard">
-                    <div>
-                      <span class="bookmark-headelement" v-if="cIdx === 0">{{
-                        getText('MRI_PA_FILTERCARD_TITLE_BASIC_DATA')
-                      }}</span>
-                      <span class="bookmark-headelement" v-else>{{ filterCard.name }}</span>
-                      <bs-badge v-if="isDisplayBadge(filterCard)" variant="light" class="ml-2 filter-card-badge">{{
-                        getBadgeText(filterCard)
-                      }}</bs-badge>
-                      <span class="bookmark-headelement" v-if="filterCard.isExcluded"
-                        >({{ getText('MRI_PA_LABEL_EXCLUDED') }})</span
-                      >
+      <div v-if="bookmark && getCardsFormatted.length" class="summary-desc">
+        {{ getText('MRI_PA_FILTER_SUMMARY_DESC_LABEL') }}
+      </div>
+      <div class="bookmark-content__card">
+        <ul class="bookmark-list">
+          <li v-if="bookmark">
+            <template v-for="(container, cIdx) in getCardsFormatted" :key="container.content">
+              <div>
+                <div class="condition-container and-label" v-if="cIdx > 0">{{ getText('MRI_PA_AND') }}</div>
+                <div :class="{ 'bookmark-filter-container': cIdx >= 0 }">
+                  <template v-for="(filterCard, fIdx) in container.content" :key="filterCard.name">
+                    <div class="condition-container or-label" v-if="fIdx > 0">
+                      {{ getText('MRI_PA_OR') }}
                     </div>
-                    <template v-for="attribute in filterCard.visibleAttributes" :key="attribute.name">
-                      <div class="bookmark-attribute">
-                        <div class="bookmark-element">{{ attribute.name }}:</div>
-                        <div
-                          :key="constraint"
-                          class="bookmark-element bookmark-constraint"
-                          v-for="(constraint, constraintIdx) in attribute.visibleConstraints"
+                    <div class="bookmark-filtercard">
+                      <div>
+                        <span class="bookmark-headelement" v-if="cIdx === 0">{{
+                          getText('MRI_PA_FILTERCARD_TITLE_BASIC_DATA')
+                        }}</span>
+                        <span class="bookmark-headelement" v-else>{{ filterCard.name }}</span>
+                        <bs-badge v-if="isDisplayBadge(filterCard)" variant="light" class="ml-2 filter-card-badge">{{
+                          getBadgeText(filterCard)
+                        }}</bs-badge>
+                        <span class="bookmark-headelement" v-if="filterCard.isExcluded"
+                          >({{ getText('MRI_PA_LABEL_EXCLUDED') }})</span
                         >
-                          {{ constraint }}{{constraintIdx &lt; attribute.visibleConstraints.length - 1 ? ",": ""}}
-                        </div>
                       </div>
-                    </template>
-                    <template v-if="filterCard.visibleAdvanceTime.length">
-                      <template v-for="advanceTimeFilter in filterCard.visibleAdvanceTime" :key="advanceTimeFilter">
+                      <template v-for="attribute in filterCard.visibleAttributes" :key="attribute.name">
                         <div class="bookmark-attribute">
-                          <span class="bookmark-element" v-html="advanceTimeFilter"></span>
+                          <div class="bookmark-element">{{ attribute.name }}</div>
+                          <div
+                            :key="constraint"
+                            class="bookmark-element bookmark-constraint"
+                            v-for="(constraint, constraintIdx) in attribute.visibleConstraints"
+                          >
+                            {{ constraint }}{{constraintIdx &lt; attribute.visibleConstraints.length - 1 ? ",": ""}}
+                          </div>
                         </div>
                       </template>
-                    </template>
-                  </div>
-                </template>
+                      <template v-if="filterCard.visibleAdvanceTime.length">
+                        <template v-for="advanceTimeFilter in filterCard.visibleAdvanceTime" :key="advanceTimeFilter">
+                          <div class="bookmark-attribute">
+                            <span class="bookmark-element" v-html="advanceTimeFilter"></span>
+                          </div>
+                        </template>
+                      </template>
+                    </div>
+                  </template>
+                </div>
               </div>
-            </div>
-          </template>
-        </li>
-      </ul>
+            </template>
+          </li>
+        </ul>
+      </div>
     </div>
-    <div class="download-cohort-definition" v-if="enableAtlasCohortDefinition">
-      <d4l-button
-        @click="onClickCreateCohortDefinition"
-        :text="getText('MRI_PA_FILTER_SUMMARY_CREATE_ATLAS_COHORT_DEFINITION')"
-        :title="getText('MRI_PA_FILTER_SUMMARY_CREATE_ATLAS_COHORT_DEFINITION')"
-        classes="button--block"
+    <div class="filtercard-summary__actions">
+      <D2eButton
+        v-if="enableAtlasCohortDefinition"
+        variant="primary"
+        block
+        class="filtercard-summary__action-atlas"
         :disabled="chartBusy"
-      />
-    </div>
-    <div class="sql-actions">
-      <div class="download-sql">
-        <d4l-button
-          @click="onClickDownloadSql"
-          :text="getText('MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL')"
-          :title="getText('MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL')"
-          classes="button--block"
-          :disabled="chartBusy"
-        />
-      </div>
-      <div class="copy-sql">
-        <d4l-button
-          @click="onClickCopySql"
-          :text="getText('MRI_PA_FILTER_SUMMARY_COPY_SQL')"
-          :title="getText('MRI_PA_FILTER_SUMMARY_COPY_SQL')"
-          classes="button--block"
-          :disabled="chartBusy"
-        />
-      </div>
+        @click="onClickCreateCohortDefinition"
+      >
+        {{ getText('MRI_PA_FILTER_SUMMARY_CREATE_ATLAS_COHORT_DEFINITION') }}
+      </D2eButton>
+      <D2eButton
+        variant="secondary"
+        block
+        class="filtercard-summary__action-sql"
+        :disabled="chartBusy"
+        @click="onClickDownloadSql"
+      >
+        {{ getText('MRI_PA_FILTER_SUMMARY_DOWNLOAD_SQL') }}
+      </D2eButton>
+      <D2eButton
+        variant="secondary"
+        block
+        class="filtercard-summary__action-sql"
+        :disabled="chartBusy"
+        @click="onClickCopySql"
+      >
+        {{ getText('MRI_PA_FILTER_SUMMARY_COPY_SQL') }}
+      </D2eButton>
     </div>
     <create-cohort-definition-dialog
       v-if="showCohortDefinitionDownloadDialog"
@@ -99,8 +112,8 @@
 <script lang="ts">
 import { mapGetters } from 'vuex'
 import { useNotificationStore } from '../stores/notifications'
+import { D2eButton, D2eIconButton } from '@d2e/ui'
 import appButton from '../lib/ui/app-button.vue'
-import icon from '../lib/ui/app-icon.vue'
 import appLabel from '../lib/ui/app-label.vue'
 import bsBadge from '../lib/ui/bs-badge.vue'
 import messageBox from './MessageBox.vue'
@@ -109,7 +122,14 @@ import { getAttributeName, getAdvanceTimeFilterFormatted } from '../utils/filter
 
 export default {
   name: 'filterCardSummary',
-  props: ['unloadBookmarkEv', 'chartBusy'],
+  /**
+   * `explorationName` is optional and only the exploration page passes it.
+   * That page deliberately does not set the active bookmark — doing so trips
+   * `PatientAnalytics`'s `getActiveBookmark` watcher, which switches to the
+   * cohort builder — so the name has to come in from the caller. In the cohort
+   * builder the prop is absent and the active bookmark supplies it, unchanged.
+   */
+  props: ['unloadBookmarkEv', 'chartBusy', 'explorationName'],
   setup() {
     return {
       notificationStore: useNotificationStore(),
@@ -134,6 +154,10 @@ export default {
     currentBookmark() {
       return this.getBookmarksData
     },
+    /** The caller's name when given, else the active bookmark's. */
+    displayName() {
+      return this.explorationName || this.getActiveBookmark?.bookmarkname || ''
+    },
     bookmark() {
       const bookmarkObj = this.currentBookmark
       let returnValue
@@ -152,7 +176,12 @@ export default {
       return returnValue
     },
     getCardsFormatted() {
-      const boolContainers = this.bookmark.filterCardData
+      // `bookmark` is undefined until the store holds a restored bookmark.
+      // The cohort builder always has one by the time this panel opens; the
+      // exploration page mounts it while `loadbookmarkToState` is still in
+      // flight, so render an empty body rather than throwing.
+      const boolContainers = this.bookmark?.filterCardData
+      if (!boolContainers) return []
 
       const returnObj = []
       try {
@@ -254,9 +283,16 @@ export default {
     },
     onClickDownloadSql() {
       const content = this.getResponse()?.data?.sql || ''
+      // Only a chart query fills this. Writing the empty string produces a
+      // 0-byte .sql file that looks like a successful export, so refuse and
+      // say why instead.
+      if (!content) {
+        this.notificationStore.setToastMessage({ text: this.getText('MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE') })
+        return
+      }
       const blob = new Blob([content], { type: 'text/sql' })
       const link = document.createElement('a')
-      link.download = `${this.getActiveBookmark?.bookmarkname || 'Untitled'}.sql`
+      link.download = `${this.displayName || 'Untitled'}.sql`
       link.href = URL.createObjectURL(blob)
       document.body.appendChild(link)
       link.click()
@@ -264,6 +300,12 @@ export default {
     },
     async onClickCopySql() {
       const content = this.getResponse()?.data?.sql || ''
+      // Same reason as the download: copying '' and then raising the success
+      // toast tells the user it worked when nothing was copied.
+      if (!content) {
+        this.notificationStore.setToastMessage({ text: this.getText('MRI_PA_FILTER_SUMMARY_SQL_UNAVAILABLE') })
+        return
+      }
       await navigator.clipboard.writeText(content)
       this.notificationStore.setToastMessage({ text: this.getText('MRI_PA_FILTER_SUMMARY_SQL_COPIED') })
     },
@@ -283,7 +325,8 @@ export default {
     },
   },
   components: {
-    icon,
+    D2eButton,
+    D2eIconButton,
     messageBox,
     appButton,
     appLabel,
@@ -293,24 +336,143 @@ export default {
 }
 </script>
 
-<style scoped>
-.sql-actions {
+<style scoped lang="scss">
+.filtercard-summary {
   display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 10px;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--d2e-font-family);
+
+  &__header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 16px 8px;
+  }
+
+  &__title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__title {
+    flex: 1 1 auto;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--d2e-color-primary);
+  }
+
+  &__subtitle {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--d2e-color-neutral);
+  }
+
+  &__subtitle-name {
+    font-weight: 600;
+  }
 }
 
-.sql-actions .download-sql,
-.sql-actions .copy-sql {
+.bookmark-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+  font-size: 12px;
+
+  &__card {
+    border: 1px solid var(--d2e-color-neutral-lighter);
+    border-radius: var(--d2e-radius-md);
+    padding: 16px;
+  }
+
+  ul.bookmark-list li {
+    width: 100%;
+  }
+
+  .summary-desc {
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--d2e-color-neutral);
+  }
+
+  .bookmark-headelement {
+    font-size: 14px;
+    line-height: 19px;
+    font-weight: 600;
+    color: var(--d2e-color-neutral-black);
+  }
+
+  .bookmark-filtercard {
+    .bookmark-attribute {
+      display: flex;
+      flex-direction: column;
+      padding-top: 4px;
+    }
+
+    .bookmark-element {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--d2e-color-neutral);
+    }
+
+    .bookmark-constraint {
+      color: var(--d2e-color-primary);
+      font-weight: 600;
+    }
+  }
+
+  .condition-container {
+    display: inline-block;
+    font-size: 12px;
+    line-height: 13px;
+    padding: 4px 13px;
+    border-radius: 4px;
+    margin-top: 7px;
+    margin-bottom: 7px;
+    color: var(--d2e-color-neutral-xtra-lightest);
+  }
+
+  .and-label {
+    background-color: var(--d2e-color-primary);
+  }
+
+  .or-label {
+    background-color: var(--d2e-color-neutral-lighter);
+    color: var(--d2e-color-neutral-black);
+  }
+}
+
+.filtercard-summary__actions {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  flex: 1;
-  margin: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--d2e-color-neutral-lighter);
+}
+
+.filtercard-summary__action-atlas {
+  // D2eButton's label weight is --d2e-font-button-weight (500); the frame
+  // asks for 600 on this button only, so override it here rather than the
+  // shared token.
+  :deep(.v-btn__content) {
+    font-weight: 600;
+  }
+}
+
+.filtercard-summary__action-sql {
+  // D2eButton's `secondary` variant outlines in --d2e-color-primary; the
+  // frame outlines in --d2e-color-primary-lightest, same override
+  // ExplorationsPage.vue applies to the card's Materialize button.
+  &.v-btn--variant-outlined {
+    border-color: var(--d2e-color-primary-lightest);
+  }
 }
 
 .filter-card-badge {
-  color: var(--d2e-color-primary, #000080) !important;
+  color: var(--d2e-color-primary) !important;
 }
 </style>
