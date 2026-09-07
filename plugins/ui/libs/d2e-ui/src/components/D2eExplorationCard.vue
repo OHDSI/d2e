@@ -1,8 +1,16 @@
 <template>
-  <section class="d2e-exploration-card" :style="{ width }">
+  <section
+    class="d2e-exploration-card"
+    :class="{ 'd2e-exploration-card--clickable': clickable }"
+    :style="{ width }"
+    :tabindex="clickable ? 0 : undefined"
+    :role="clickable ? 'button' : undefined"
+    @keydown.enter.self="onActivate"
+    @keydown.space.prevent.self="onActivate"
+  >
     <div class="d2e-exploration-card__head">
       <div class="d2e-exploration-card__title-row">
-        <h3 class="d2e-exploration-card__title" :title="name">{{ name }}</h3>
+        <h3 v-truncation-title class="d2e-exploration-card__title">{{ name }}</h3>
         <v-checkbox
           class="d2e-exploration-card__checkbox"
           :model-value="selected"
@@ -44,10 +52,7 @@
             class="d2e-exploration-card__row"
           >
             <dt class="d2e-exploration-card__row-label">{{ row.label }}</dt>
-            <dd
-              class="d2e-exploration-card__row-value"
-              :title="String(row.value)"
-            >
+            <dd v-truncation-title class="d2e-exploration-card__row-value">
               {{ row.value }}
             </dd>
           </div>
@@ -70,10 +75,7 @@
             class="d2e-exploration-card__row"
           >
             <dt class="d2e-exploration-card__row-label">{{ row.label }}</dt>
-            <dd
-              class="d2e-exploration-card__row-value"
-              :title="String(row.value)"
-            >
+            <dd v-truncation-title class="d2e-exploration-card__row-value">
               {{ row.value }}
             </dd>
           </div>
@@ -98,6 +100,7 @@ import type {
 import { VCheckbox } from "vuetify/components";
 import { computed } from "vue";
 import D2eStatusChip from "./D2eStatusChip.vue";
+import { vTruncationTitle } from "./truncation";
 
 interface Props {
   name: string;
@@ -111,10 +114,20 @@ interface Props {
   metadata?: D2eExplorationCardRow[];
   bookmarkTitle?: string;
   bookmark?: D2eExplorationCardRow[];
+  /** Paints the hover state and a pointer cursor, for a card that opens on click. */
+  clickable?: boolean;
+}
+
+// A clickable card is reachable by keyboard: without this the focus-visible
+// ring below can never be seen, and the only way to open an exploration is a
+// mouse.
+function onActivate(event: KeyboardEvent) {
+  (event.currentTarget as HTMLElement | null)?.click();
 }
 
 const props = withDefaults(defineProps<Props>(), {
   width: "336px",
+  clickable: false,
   selected: false,
   checkboxLabel: "Select exploration",
   status: undefined,
@@ -144,6 +157,24 @@ const resolvedStatus = computed(() =>
   border-radius: var(--d2e-radius-lg);
   box-shadow: var(--d2e-elevation-card);
   font-family: var(--d2e-font-family);
+
+  // Without this the card gives the reader no sign it opens on click.
+  &--clickable {
+    cursor: pointer;
+    transition:
+      box-shadow 120ms ease-in-out,
+      border-color 120ms ease-in-out;
+
+    &:hover {
+      border-color: var(--d2e-color-primary-light);
+      box-shadow: var(--d2e-elevation-e8);
+    }
+
+    &:focus-visible {
+      outline: var(--d2e-border-width-md) solid var(--d2e-color-primary-light);
+      outline-offset: 2px;
+    }
+  }
 
   &__head {
     display: flex;
@@ -199,7 +230,9 @@ const resolvedStatus = computed(() =>
     align-items: center;
     justify-content: space-between;
     gap: var(--d2e-spacing-xs);
-    min-height: 40px;
+    height: 40px;
+    margin-bottom: var(--d2e-spacing-xs);
+    overflow: hidden;
   }
 
   &__count {

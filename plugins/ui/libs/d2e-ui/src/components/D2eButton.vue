@@ -11,6 +11,9 @@
     :append-icon="appendIcon"
     :ripple="false"
   >
+    <template v-if="$slots.prepend" #prepend>
+      <slot name="prepend" />
+    </template>
     <slot />
   </v-btn>
 </template>

@@ -35,7 +35,7 @@ const resolved = computed(() => STATUS_CHIP_VARIANT_MAP[props.variant]);
   justify-content: center;
   gap: var(--d2e-spacing-xxs);
   height: 25px;
-  padding: var(--d2e-spacing-xxs);
+  padding: var(--d2e-spacing-xxs) var(--d2e-spacing-xs);
   border-radius: 100px;
   font-family: var(--d2e-font-family);
   font-size: var(--d2e-font-caption1-size);
