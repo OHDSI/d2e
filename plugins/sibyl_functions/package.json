@@ -82,7 +82,15 @@
           "PG_DATABASE": "${PG_DB_NAME:-alp}",
           "PG_SCHEMA": "network",
           "PG_ADMIN_PASSWORD": "${PG_ADMIN_PASSWORD}",
-          "PG_ADMIN_USER": "${PG_ADMIN_USER:-alp_pg_admin_user}"
+          "PG_ADMIN_USER": "${PG_ADMIN_USER:-alp_pg_admin_user}",
+          "PG__DB_NAME": "${PG_DB_NAME:-alp}",
+          "PG__DEBUG": "${PG_DEBUG:-1}",
+          "PG__HOST": "${PG_HOST:-${PROJECT_NAME:-d2e}-minerva-postgres-1}",
+          "PG__PORT": "${PG_PORT:-5432}",
+          "PG__SSL": "${PG__SSL:-false}",
+          "PG__MAX_POOL": 10,
+          "PG__MIN_POOL": 0,
+          "PG__IDLE_TIMEOUT_IN_MS": 1000
         },
         "trex-token": {
           "LOGTO__ISSUER": "${LOGTO__ISSUER}",
