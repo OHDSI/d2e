@@ -16,6 +16,7 @@ import { getRuleDisplayName } from '@/utils/filterCardUtils'
 import { wrapTextByWidth, wrapTextToLineLimit } from '@/utils/ExportUtils'
 
 export interface FunnelChartData {
+  /** One y axis label per funnel point, each distinct from the rest - see `labelPoints` */
   labels: string[]
   values: number[]
   hoverTexts: string[]
@@ -25,6 +26,8 @@ export interface FunnelChartData {
 
 /** The funnel is plotted first, with the legend placeholder traces after it. */
 const FUNNEL_TRACE_INDEX = 0
+
+const ZERO_WIDTH_SPACE = '\u200B'
 
 /** The graph div plotly hands back: an element that also carries plotly's event emitter API. */
 type PlotlyGraphDiv = HTMLElement & {
@@ -146,11 +149,16 @@ export function useFunnelChart(
 
     // Every label is hoverable, so each one maps to the funnel point it was drawn for.
     const labelPoints: Record<string, number> = {}
-    labels.forEach((label, pointNumber) => {
-      labelPoints[label] = pointNumber
+    const drawnLabels = new Set<string>()
+    const uniqueLabels = labels.map((label, pointNumber) => {
+      let unique = label
+      while (drawnLabels.has(unique)) unique += ZERO_WIDTH_SPACE
+      drawnLabels.add(unique)
+      labelPoints[unique] = pointNumber
+      return unique
     })
 
-    return { labels, values, hoverTexts, labelPoints }
+    return { labels: uniqueLabels, values, hoverTexts, labelPoints }
   })
 
   const renderFunnelChart = () => {

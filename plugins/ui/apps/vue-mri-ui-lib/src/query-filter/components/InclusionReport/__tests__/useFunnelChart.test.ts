@@ -17,11 +17,15 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
  * Stands in for plotly's tick rendering, which is what the label hovers have to find: an unclassed
  * <text> inside a `g.ytick`, one <tspan> per wrapped line, and the label plotly was handed kept
  * verbatim in `data-unformatted`.
+ *
+ * The y axis is categorical, so a repeated label is not drawn twice - plotly maps it back to the
+ * category already registered for it (`setCategoryIndex` in its set_convert) and the two funnel
+ * points end up sharing one tick. Deduplicating here is what keeps that visible to these tests.
  */
 function drawTicks(graphDiv: HTMLElement, labels: string[]) {
   graphDiv.innerHTML = ''
   const svg = document.createElementNS(SVG_NS, 'svg')
-  labels.forEach(label => {
+  ;[...new Set(labels)].forEach(label => {
     const group = document.createElementNS(SVG_NS, 'g')
     group.setAttribute('class', 'ytick')
     const tick = document.createElementNS(SVG_NS, 'text')
@@ -126,5 +130,46 @@ describe('useFunnelChart y axis label tooltips', () => {
     graphDiv.handlers.plotly_afterplot()
     tickAt(graphDiv, 1).onmouseover?.(new MouseEvent('mouseover'))
     expect(hover).toHaveBeenCalledWith(graphDiv, [{ curveNumber: 0, pointNumber: 1 }])
+  })
+})
+
+describe('useFunnelChart rules that render to the same label', () => {
+  beforeEach(() => {
+    newPlot.mockReset()
+    hover.mockReset()
+    unhover.mockReset()
+  })
+
+  /** Two rules named alike, and two long rules whose names only differ past the line budget. */
+  const collidingStats: AttritionStat[] = [
+    makeStat(SHORT_NAME, 0),
+    makeStat(SHORT_NAME, 1),
+    makeStat(`${LONG_NAME} ending on one clause`, 2),
+    makeStat(`${LONG_NAME} ending on another clause`, 3),
+  ]
+
+  it('gives each of them its own label, hovering its own funnel layer', async () => {
+    const graphDiv = renderChart(collidingStats)
+    await nextTick()
+    await nextTick()
+
+    expect(graphDiv.querySelectorAll('g.ytick > text')).toHaveLength(collidingStats.length + 1)
+
+    collidingStats.forEach((_stat, index) => {
+      const pointNumber = index + 1 // the Total layer is drawn first
+      tickAt(graphDiv, pointNumber).onmouseover?.(new MouseEvent('mouseover'))
+      expect(hover).toHaveBeenLastCalledWith(graphDiv, [{ curveNumber: 0, pointNumber }])
+    })
+  })
+
+  it('keeps them reading identically, since only the rule names tell them apart', async () => {
+    const graphDiv = renderChart(collidingStats)
+    await nextTick()
+    await nextTick()
+
+    const visibleText = (index: number) => tickAt(graphDiv, index).textContent?.replace(/\u200B/g, '')
+    expect(visibleText(1)).toBe(`+ ${SHORT_NAME}`)
+    expect(visibleText(2)).toBe(`+ ${SHORT_NAME}`)
+    expect(visibleText(3)).toBe(visibleText(4))
   })
 })
