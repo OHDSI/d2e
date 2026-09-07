@@ -19,10 +19,19 @@ import {
   ViewerCodeQuery,
   ViewerCodeWithQueries,
 } from "../types";
-import { ConfigTypes } from "../constant";
+import { ConfigTypes, LogResponseType } from "../constant";
 const SYSTEM_PORTAL_URL = "system-portal/";
 
 export class SystemPortal {
+  public logAuditResponse(response: LogResponseType) {
+    return request({
+      baseURL: SYSTEM_PORTAL_URL,
+      url: "audit/log",
+      method: "POST",
+      data: { response },
+    });
+  }
+
   public getTenants() {
     return request<Tenant[]>({
       baseURL: SYSTEM_PORTAL_URL,

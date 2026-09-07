@@ -66,4 +66,12 @@ export class UserService {
 
     await this.userRepo.update(user, { id: user.id }, tokenUser, trx)
   }
+
+  async touchAuthzChangedAt(id: string, trx?: Knex) {
+    this.logger.info(`Stamp authz_changed_at for user ${id}`)
+
+    const tokenUser = Container.get<ITokenUser>(CONTAINER_KEY.CURRENT_USER)
+
+    await this.userRepo.update({ authz_changed_at: new Date() }, { id }, tokenUser, trx)
+  }
 }

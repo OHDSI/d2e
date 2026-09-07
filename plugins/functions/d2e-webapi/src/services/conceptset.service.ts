@@ -95,6 +95,7 @@ export const getConceptSet = async (
   conceptSetId: string | number,
 ): Promise<IConceptSetResponseDto> => {
   const ref = parseConceptSetRef(conceptSetId);
+  const currentUserId = getCurrentUserId(token);
 
   if (ref.source === "webapi") {
     const webApiConceptSetApi = new WebApiConceptSetAPI(token);
@@ -110,7 +111,10 @@ export const getConceptSet = async (
     datasetId,
   );
 
-  return mapLegacyConceptSetToWebApiConceptSet(terminologyConceptSet);
+  return mapLegacyConceptSetToWebApiConceptSet(
+    terminologyConceptSet,
+    currentUserId,
+  );
 };
 
 export const getConceptSets = async (
@@ -119,6 +123,7 @@ export const getConceptSets = async (
 ): Promise<IConceptSetListResponseDto> => {
   const terminologySvcApi = new TerminologySvcAPI(token);
   const webApiConceptSetApi = new WebApiConceptSetAPI(token);
+  const currentUserId = getCurrentUserId(token);
 
   const [terminologyConceptSets, webApiConceptSets] = await Promise.all([
     terminologySvcApi.getConceptSets(datasetId),
@@ -126,7 +131,9 @@ export const getConceptSets = async (
   ]);
 
   const merged = [
-    ...terminologyConceptSets.map(mapLegacyConceptSetToWebApiConceptSet),
+    ...terminologyConceptSets.map((conceptSet) =>
+      mapLegacyConceptSetToWebApiConceptSet(conceptSet, currentUserId),
+    ),
     ...webApiConceptSets.map(mapWebApiConceptSetToFacadeConceptSet),
   ];
 
@@ -437,21 +444,19 @@ export const checkIfConceptSetExists = async (
 ): Promise<number> => {
   const ref = parseConceptSetRef(conceptSetId);
   const terminologySvcApi = new TerminologySvcAPI(token);
-  const webApiConceptSetApi = new WebApiConceptSetAPI(token);
 
-  // Probe WebAPI with the source-scoped externalId so that an in-flight
-  // rename of the same row doesn't false-positive against itself. For
-  // legacy refs there is no WebAPI counterpart to exclude, so use 0 (a
-  // never-existing id) which still surfaces unrelated WebAPI duplicates.
-  const webApiExcludeId = ref.source === "webapi" ? ref.externalId : 0;
-
-  const [terminologyConceptSets, webApiExistsCount] = await Promise.all([
-    terminologySvcApi.getConceptSets(datasetId),
-    webApiConceptSetApi.checkIfConceptSetExists(
-      webApiExcludeId,
-      conceptSetName,
-    ),
-  ]);
+  // Only the legacy store is probed here. The WebAPI store enforces name
+  // uniqueness with the `uq_cs_name` constraint and reports a duplicate as
+  // HTTP 409 on create and on update, which the routes map to a typed error.
+  //
+  // Asking WebAPI the same question needs `read:conceptset` or
+  // `write:conceptset`. The `concept set creator` role holds neither, so a
+  // researcher-only user was denied here and could never save a concept set,
+  // even though the create itself was permitted. Atlas3 does not ask this
+  // question at all.
+  const terminologyConceptSets = await terminologySvcApi.getConceptSets(
+    datasetId,
+  );
 
   // For legacy refs we must exclude the same legacy row by id; for webapi
   // refs the legacy table is a disjoint namespace, so no row should match
@@ -464,7 +469,7 @@ export const checkIfConceptSetExists = async (
       : terminologyConceptSet.name === conceptSetName
   );
 
-  return (result === undefined ? 0 : 1) + webApiExistsCount;
+  return result === undefined ? 0 : 1;
 };
 
 const parseDateValue = (value: string | number): number => {
@@ -743,6 +748,7 @@ export const getIncludedConcepts = async (
 
 export const mapLegacyConceptSetToWebApiConceptSet = (
   conceptSet: ITerminologyConceptSet,
+  currentUserId?: string,
 ): IConceptSetResponseDto => {
   return {
     createdDate: Date.parse(conceptSet.createdDate),
@@ -754,7 +760,13 @@ export const mapLegacyConceptSetToWebApiConceptSet = (
       name: conceptSet.userName,
     },
     tags: [],
-    hasWriteAccess: true,
+    // A legacy set is writable only by its owner. A shared set owned by another
+    // user reports no write access, so the UI does not offer an active Update
+    // button. When the caller passes no user (for example in unit tests), keep
+    // the historical writable default so behaviour is unchanged.
+    hasWriteAccess: currentUserId
+      ? conceptSet.createdBy === currentUserId
+      : true,
     hasReadAccess: true,
     id: formatConceptSetRef({ source: "legacy", externalId: conceptSet.id }),
     externalId: conceptSet.id,
@@ -762,6 +774,21 @@ export const mapLegacyConceptSetToWebApiConceptSet = (
     shared: conceptSet.shared,
     source: "legacy",
   };
+};
+
+const getCurrentUserId = (token: string): string | undefined => {
+  try {
+    const encoded = token.replace(/^bearer\s+/i, "").split(".")[1];
+    if (!encoded) {
+      return undefined;
+    }
+    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as { sub?: unknown };
+    return typeof payload.sub === "string" ? payload.sub : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 export const mapWebApiConceptSetToFacadeConceptSet = (

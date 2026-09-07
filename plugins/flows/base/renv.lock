@@ -400,11 +400,11 @@
     },
     "PhenotypeLibrary": {
       "Package": "PhenotypeLibrary",
-      "Version": "3.36.0",
+      "Version": "3.37.0",
       "Source": "GitHub",
       "Type": "Package",
       "Title": "The OHDSI Phenotype Library",
-      "Date": "2025-04-02",
+      "Date": "2026-04-09",
       "Author": "Gowtham Rao [aut, cre]",
       "Maintainer": "Gowtham Rao <rao@ohdsi.org>",
       "Description": "A repository to store the content of the OHDSI Phenotype library.",
@@ -435,8 +435,8 @@
       "RemoteHost": "api.github.com",
       "RemoteUsername": "OHDSI",
       "RemoteRepo": "PhenotypeLibrary",
-      "RemoteRef": "v3.36.0",
-      "RemoteSha": "bf0180d522382c733e50b14a0ba55434508cc90b"
+      "RemoteRef": "v3.37.0",
+      "RemoteSha": "40106e4e2892d883c208b9df10ad56711da3e21d"
     },
     "R6": {
       "Package": "R6",

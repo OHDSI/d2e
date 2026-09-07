@@ -19,6 +19,20 @@ export class ConceptSetInUseError extends Error {
 }
 
 /**
+ * Thrown when WebAPI rejects a concept set name that is already taken.
+ * WebAPI has no duplicate-name check of its own; the `uq_cs_name` unique
+ * constraint on `webapi.concept_set` rejects the write and WebAPI reports it
+ * as HTTP 409. Route handlers map this error back to a 409 so that the browser
+ * can show a duplicate-name message instead of a generic failure.
+ */
+export class ConceptSetNameConflictError extends Error {
+  constructor(public readonly conceptSetName: string) {
+    super(`A concept set named "${conceptSetName}" already exists`);
+    this.name = "ConceptSetNameConflictError";
+  }
+}
+
+/**
  * Thrown when concept set validation fails (e.g., invalid ID format).
  */
 export class ConceptSetValidationError extends Error {

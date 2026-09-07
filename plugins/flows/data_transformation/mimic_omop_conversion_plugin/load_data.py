@@ -2,6 +2,7 @@ import os, glob
 
 from prefect import task
 from prefect.logging import get_run_logger
+from prefect.cache_policies import NONE
 
 from .const import *
 from .utils import *
@@ -24,7 +25,7 @@ def make_table_name(file_path):
     dirname = os.path.basename(pathname)
     return f"mimiciv_{dirname}.{table_name}", dirname
 
-@task(log_prints=True)
+@task(log_prints=True, cache_policy=NONE)
 def load_mimic_data(conn, mimic_dir):
     logger = get_run_logger()
     initialize_id_sequence(conn)
@@ -42,7 +43,7 @@ def load_mimic_data(conn, mimic_dir):
             logger.error(f"Error loading {file_path}: {str(e)}")
             raise Exception()
 
-@task(log_prints=True)
+@task(log_prints=True, cache_policy=NONE)
 def load_vocab(conn, vocab_dir):
     logger = get_run_logger()
     create_schema(conn, 'mimic_staging')

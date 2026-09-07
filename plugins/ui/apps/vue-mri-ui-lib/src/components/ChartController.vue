@@ -359,12 +359,19 @@ export default {
       this.pendingConfirmResolve = null
       this.pendingCancelRevert = null
     },
+    // Conditions that make an automatic default-selection admissible and that can change
+    // between the chart response and the deferred commit below.
+    canAutoDefaultColorAxis() {
+      // colorAxisIndex already set (restored from bookmark or chosen by the user) → don't override
+      if (this.getColorAxisIndex !== null) return false
+      if (this.stackAttributeHasSelection) return false
+      if (this.isColorButtonDisabled) return false
+      return true
+    },
     onChartDataReady(xAxisCategoryCounts: { axisIndex: number; count: number }[]) {
-      // If colorAxisIndex is already set (restored from bookmark or chosen by the user), don't override
-      if (this.getColorAxisIndex !== null) return
-      if (this.hasSetDefaultColorAxis || xAxisCategoryCounts.length === 0) return
-      if (this.stackAttributeHasSelection) return
-      if (this.isColorButtonDisabled) return
+      if (xAxisCategoryCounts.length === 0) return
+      if (this.hasSetDefaultColorAxis) return
+      if (!this.canAutoDefaultColorAxis()) return
       this.hasSetDefaultColorAxis = true
 
       // Find the axis with the smaller number of categories
@@ -374,7 +381,17 @@ export default {
       // Only set default if the smallest category count is <= 5
       if (smallest.count > 5) return
 
+      // StackBarChart resolves the color attribute from getAllAxes at render time, so the slot
+      // must still hold the attribute these counts were measured on — otherwise the bars would be
+      // colored by an attribute whose cardinality was never checked against the limit above.
+      const attributeId = this.getAllAxes?.[smallest.axisIndex]?.props?.attributeId
+      if (!attributeId) return
+
       this.$nextTick(() => {
+        // Re-check: the guards above were evaluated a tick ago and the axis configuration
+        // (or the color selection itself) may have changed since.
+        if (!this.canAutoDefaultColorAxis()) return
+        if (this.getAllAxes?.[smallest.axisIndex]?.props?.attributeId !== attributeId) return
         this.setDefaultColorAxisIndex(smallest.axisIndex)
       })
     },

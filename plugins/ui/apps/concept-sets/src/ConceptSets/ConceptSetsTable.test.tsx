@@ -89,7 +89,7 @@ describe("ConceptSetsTable", () => {
 
     fireEvent.click(buttons[0]);
     fireEvent.click(buttons[1]);
-    expect(onAddEdit).toHaveBeenCalledWith("legacy:15");
+    expect(onAddEdit).toHaveBeenCalledWith("legacy:15", true);
     expect(onDelete).toHaveBeenCalledWith(
       expect.objectContaining({ id: "legacy:15", hasWriteAccess: true })
     );
@@ -130,7 +130,7 @@ describe("ConceptSetsTable", () => {
     fireEvent.click(buttons[0]);
     fireEvent.click(buttons[1]);
 
-    expect(onAddEdit).toHaveBeenCalledWith("webapi:7");
+    expect(onAddEdit).toHaveBeenCalledWith("webapi:7", true);
     expect(onDelete).toHaveBeenCalledWith(
       expect.objectContaining({ id: "webapi:7", hasWriteAccess: true })
     );
@@ -233,7 +233,7 @@ describe("ConceptSetsTable", () => {
     fireEvent.click(buttons[0]);
     fireEvent.click(buttons[1]);
 
-    expect(onAddEdit).toHaveBeenCalledWith("webapi:2");
+    expect(onAddEdit).toHaveBeenCalledWith("webapi:2", true);
     expect(onDelete).toHaveBeenCalledWith(
       expect.objectContaining({ id: "webapi:2", hasWriteAccess: false })
     );

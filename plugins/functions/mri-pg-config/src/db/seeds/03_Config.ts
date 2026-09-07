@@ -9663,7 +9663,6 @@ export const cdwConfig = {
         "settings": {
             "fuzziness": 0.7,
             "maxResultSize": 5000,
-            "sqlReturnOn": false,
             "errorDetailsReturnOn": false,
             "errorStackTraceReturnOn": false,
             "enableFreeText": true,
@@ -23507,7 +23506,6 @@ export const cdwConfigDuckdb = {
         "settings": {
             "fuzziness": 0.7,
             "maxResultSize": 5000,
-            "sqlReturnOn": false,
             "errorDetailsReturnOn": false,
             "errorStackTraceReturnOn": false,
             "enableFreeText": true,
@@ -28381,7 +28379,6 @@ const cdwI2b2ConfigDuckdb = {
     settings: {
       fuzziness: 0.7,
       maxResultSize: 5000,
-      sqlReturnOn: false,
       errorDetailsReturnOn: false,
       errorStackTraceReturnOn: false,
       enableFreeText: true,
@@ -32989,7 +32986,6 @@ const cdwjsonfhirConfigDuckdb = {
         "settings": {
             "fuzziness": 0.7,
             "maxResultSize": 5000,
-            "sqlReturnOn": false,
             "errorDetailsReturnOn": false,
             "errorStackTraceReturnOn": false,
             "enableFreeText": true,
@@ -37318,7 +37314,6 @@ const omopHanaLeanCdwConfig = {
 		"settings": {
 			"fuzziness": 0.7,
 			"maxResultSize": 5000,
-			"sqlReturnOn": false,
 			"errorDetailsReturnOn": false,
 			"errorStackTraceReturnOn": false,
 			"enableFreeText": true,

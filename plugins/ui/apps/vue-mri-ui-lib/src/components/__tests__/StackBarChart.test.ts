@@ -519,3 +519,99 @@ describe('StackBarChart busy-state lifecycle', () => {
     expect(wrapper.emitted('busyEv')).toContainEqual([false])
   })
 })
+
+describe('StackBarChart default color axis counts', () => {
+  const createDeferred = () => {
+    let resolve: (value: any) => void = () => {}
+    const promise = new Promise(res => {
+      resolve = res
+    })
+    return { promise, resolve }
+  }
+
+  const fireAndResolve = async (response: any, allAxes: any[]) => {
+    const { promise, resolve } = createDeferred()
+    const fireQuery = vi.fn().mockReturnValue(promise)
+    const store = createStore({
+      state: { fireRequest: false },
+      actions: { ...actions, fireQuery },
+      getters: {
+        ...getters,
+        getAllAxes: () => allAxes,
+        getBookmarksData: () => ({ datasetId: '1', test: true }),
+        getFireRequest: (state: any) => state.fireRequest,
+      },
+    })
+    const wrapper = shallowMount(StackBarChart as any, {
+      global: { plugins: [store, createPinia()] },
+      props: { busyEv: false, shouldRerenderChart: false },
+    })
+
+    // setupPlotly attaches Plotly event handlers to the container element; a plain DOM node
+    // has no .on(), which would abort the success callback before it reaches the emit.
+    const container = (wrapper.vm as any).$el.querySelector('.stackbar-container')
+    container.on = vi.fn()
+
+    store.state.fireRequest = !store.state.fireRequest
+    await wrapper.vm.$nextTick()
+
+    resolve(response)
+    await new Promise(r => setTimeout(r, 0))
+
+    return wrapper
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(globalThis as any).ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+    }
+  })
+
+  it('ignores the synthetic dummy_category when no x axis is selected', async () => {
+    const wrapper = await fireAndResolve(
+      {
+        data: [{ dummy_category: 'Current Cohort', 'patient.attributes.pcount': 42 }],
+        measures: [{ id: 'patient.attributes.pcount', name: 'Patient Count' }],
+        categories: [{ id: 'dummy_category', axis: 1 }],
+        totalPatientCount: 42,
+      },
+      [{ props: {} }, { props: {} }]
+    )
+
+    expect(wrapper.emitted('chartDataReady')).toEqual([[[]]])
+  })
+
+  it('reports the distinct value count against the axis slot holding the attribute', async () => {
+    const wrapper = await fireAndResolve(
+      {
+        data: [
+          { 'patient.attributes.gender': 'Female', 'patient.attributes.pcount': 3 },
+          { 'patient.attributes.gender': 'Male', 'patient.attributes.pcount': 4 },
+          { 'patient.attributes.gender': 'Male', 'patient.attributes.pcount': 5 },
+        ],
+        measures: [{ id: 'patient.attributes.pcount', name: 'Patient Count' }],
+        categories: [{ id: 'patient.attributes.gender', axis: 1 }],
+        totalPatientCount: 12,
+      },
+      [{ props: {} }, { props: { attributeId: 'patient.attributes.gender' } }]
+    )
+
+    expect(wrapper.emitted('chartDataReady')).toEqual([[[{ axisIndex: 1, count: 2 }]]])
+  })
+
+  it('drops x categories that no axis slot holds instead of falling back to X1', async () => {
+    const wrapper = await fireAndResolve(
+      {
+        data: [{ 'patient.attributes.gender': 'Female', 'patient.attributes.pcount': 3 }],
+        measures: [{ id: 'patient.attributes.pcount', name: 'Patient Count' }],
+        categories: [{ id: 'patient.attributes.gender', axis: 1 }],
+        totalPatientCount: 3,
+      },
+      [{ props: { attributeId: '' } }, { props: {} }]
+    )
+
+    expect(wrapper.emitted('chartDataReady')).toEqual([[[]]])
+  })
+})

@@ -236,20 +236,29 @@ const grantOrRevokeResearcherRole = async (userId: string, tenantId: string, rol
   }
 }
 
+// `skipAuthzStamp`: these two helpers serve the reconciliation below, which
+// writes the *token's own* role claims into the database. Stamping here would
+// mark the caller's own token stale for a change it supplied, forcing a
+// renewal that returns identical claims — pure churn on every first login.
+// Every other caller of these two service methods carries a change the token
+// cannot know about, and so stamps normally.
 const addUserToGroup = async (userId: string, groupId: string) => {
   const userGroupService = Container.get(UserGroupService)
 
   logger.info(`Grant ${userId} to ${groupId}`)
-  await userGroupService.registerUserToGroup(userId, groupId, undefined, { skipUserValidation: true })
+  await userGroupService.registerUserToGroup(userId, groupId, undefined, {
+    skipUserValidation: true,
+    skipAuthzStamp: true
+  })
 }
 
 const removeUserFromGroup = async (userId: string, groupId: string) => {
   const userGroupService = Container.get(UserGroupService)
-  
+
   const member = await userGroupService.getUserGroup(userId, groupId)
   if (member?.id) {
     logger.info(`Revoke ${userId} from ${groupId}`)
-    await userGroupService.withdrawUserFromGroup(userId, groupId)
+    await userGroupService.withdrawUserFromGroup(userId, groupId, undefined, { skipAuthzStamp: true })
   }
 }
 

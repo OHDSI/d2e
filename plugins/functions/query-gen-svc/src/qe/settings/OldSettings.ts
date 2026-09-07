@@ -345,7 +345,6 @@ const defaultSettings: GlobalSettingsType = {
     maxResultSize: 5000,
     // flags controlling the information which is returned from backend
     // Note: all flags should be set to false for productive systems
-    sqlReturnOn: false,
     errorDetailsReturnOn: false,
     errorStackTraceReturnOn: false,
     vbEnabled: true,
@@ -378,7 +377,6 @@ export type GlobalSettingsType = {
     maxResultSize: number;
     // flags controlling the information which is returned from backend
     // Note: all flags should be set to false for productive systems
-    sqlReturnOn: boolean;
     errorDetailsReturnOn: boolean;
     errorStackTraceReturnOn: boolean;
     vbEnabled: boolean;

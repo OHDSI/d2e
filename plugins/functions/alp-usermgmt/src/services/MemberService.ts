@@ -58,6 +58,8 @@ export class MemberService {
       const updateFields = { id: newUser.id, idp_user_id: idpUserId }
       await this.userService.updateUser(updateFields, trx)
 
+      await this.userService.touchAuthzChangedAt(newUser.id, trx)
+
       await trx.commit()
 
       // Sync roles to Logto AFTER commit (user now has idpUserId)
@@ -127,6 +129,9 @@ export class MemberService {
     try {
       const updateFields: Partial<UserField> = { id: userId, active }
       await this.userService.updateUser(updateFields, trx)
+
+      await this.userService.touchAuthzChangedAt(userId, trx)
+
       await this.logtoApi.activateUser(user.idpUserId, active)
 
       await trx.commit()

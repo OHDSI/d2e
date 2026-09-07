@@ -14,6 +14,7 @@ export interface UserField {
   username: string
   idp_user_id: string
   active: boolean
+  authz_changed_at: Date | null
 }
 
 @Service()
@@ -22,12 +23,13 @@ export class UserRepository extends Repository<User, UserCriteria> {
     super(db)
   }
 
-  reducer({ id, username, idp_user_id, active }: UserField) {
+  reducer({ id, username, idp_user_id, active, authz_changed_at }: UserField) {
     return new User({
       id,
       username,
       idpUserId: idp_user_id,
-      active
+      active,
+      authzChangedAt: authz_changed_at ?? null
     })
   }
 }

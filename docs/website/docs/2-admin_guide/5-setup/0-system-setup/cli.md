@@ -94,7 +94,7 @@ Download the updated binary for your operating system and architecture using the
 In the d2e directory, open the `.env` file and make these changes:
 - Set `DOCKER_TAG_NAME` to the docker image tag for the new version.
   - Example: For version `0.12.0`, set `DOCKER_TAG_NAME=0.12.0-beta`. The format is `DOCKER_TAG_NAME=<version>-beta`.
-- Add `PLUGINS_SEED_UPDATE=true` to trigger a plugin upgrade on the next startup.
+- Additional step for upgrades from versions earlier than v0.18: add `PLUGINS_SEED_UPDATE=true` to trigger a plugin upgrade on the next startup.
 
 - Verify the new version is active:
 

@@ -391,8 +391,10 @@
                                         <Switch state="{globalSettingsModel>/settings/errorDetailsReturnOn}"/>
                                         <Label class="sapMxConfigProp" text="{i18n>HPH_CFG_GLOBAL_ERRORSTACKTRACERETURN_LABEL}" tooltip="{i18n>HPH_CFG_GLOBAL_ERRORSTACKTRACERETURN_TOOLTIP}" />
                                         <Switch state="{globalSettingsModel>/settings/errorStackTraceReturnOn}"/>
+                                        <!-- sqlReturnOn is no longer part of the config; the flag lives in the trex function env.
                                         <Label class="sapMxConfigProp" text="{i18n>HPH_CFG_GLOBAL_SQLRETURN_LABEL}" tooltip="{i18n>HPH_CFG_GLOBAL_SQLRETURN_TOOLTIP}" />
                                         <Switch state="{globalSettingsModel>/settings/sqlReturnOn}"/>
+                                        -->
                                         <Label class="sapMxConfigProp" text="{i18n>HPH_CFG_GLOBAL_GENOMICS_ENABLED_LABEL}" tooltip="{i18n>HPH_CFG_GLOBAL_GENOMICS_ENABLED_TOOLTIP}" />
                                         <Switch state="{globalSettingsModel>/settings/genomicsEnabled}"/>
                                         <Label class="sapMxConfigProp" text="Enable Filter Summary" tooltip="Enable Filter Summary" />

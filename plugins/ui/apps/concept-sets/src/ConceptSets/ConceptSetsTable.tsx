@@ -21,7 +21,7 @@ import "./ConceptSets.scss";
 interface ConceptSetsTableProps {
   data: ConceptSet[];
   isLoading: boolean;
-  onAddEdit: (conceptSetId?: string) => void;
+  onAddEdit: (conceptSetId?: string, canWrite?: boolean) => void;
   onDelete: (conceptSet: ConceptSet) => void;
   userName?: string;
 }
@@ -124,7 +124,7 @@ export const ConceptSetsTable: FC<ConceptSetsTableProps> = ({
                     <VisibilityOnIcon />
                   )
                 }
-                onClick={() => onAddEdit(row.original.id)}
+                onClick={() => onAddEdit(row.original.id, isWritable)}
               />
               {isWritable && (
                 <IconButton

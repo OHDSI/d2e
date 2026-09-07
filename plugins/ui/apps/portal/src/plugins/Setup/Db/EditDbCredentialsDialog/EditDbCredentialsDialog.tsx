@@ -80,8 +80,7 @@ export const EditDbCredentialsDialog: FC<EditDbCredentialDialogProps> = ({ open,
 
   useEffect(() => {
     if (open) {
-      const { authenticationMode } = db;
-      setFormData({ ...EMPTY_FORM_DATA, authenticationMode });
+      setFormData({ ...EMPTY_FORM_DATA, authenticationMode: AUTHENTICATION_MODES.PASSWORD });
       setFeedback({});
       setLoading(false);
     }
@@ -237,7 +236,7 @@ export const EditDbCredentialsDialog: FC<EditDbCredentialDialogProps> = ({ open,
       title={getText(i18nKeys.EDIT_DB_CREDENTIAL_DIALOG__EDIT_DATABASE_CREDENTIALS)}
       closable
       fullWidth
-      maxWidth={formData.authenticationMode === AUTHENTICATION_MODES.JWT ? "sm" : "md"}
+      maxWidth="md"
       open={open}
       onClose={() => handleClose("cancelled")}
       feedback={feedback}

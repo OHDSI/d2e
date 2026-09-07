@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        default: "0.17.0-beta"
+        default: "0.18.0-beta"
         description: Enter version to use
         required: true
         type: string
 
 env:
-  DEFAULT_VERSION: "0.17.0-beta"
+  DEFAULT_VERSION: "0.18.0-beta"
 
 jobs:
   demosetup:

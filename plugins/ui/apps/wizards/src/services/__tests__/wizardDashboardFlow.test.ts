@@ -34,10 +34,10 @@ describe("Wizard dashboard flow", () => {
     expect(materializeBookmark).not.toHaveBeenCalled();
   });
 
-  it("materializes an existing match and refreshes the bookmark list once", async () => {
+  it("uses the materialization response without waiting for the bookmark refresh", async () => {
     const createBookmark = vi.fn();
-    const materializeBookmark = vi.fn().mockResolvedValue(undefined);
-    const refreshCache = vi.fn().mockResolvedValue([bookmarkItem({ cohortDefinitionId: 42 })]);
+    const materializeBookmark = vi.fn().mockResolvedValue({ cohortDefinitionId: 42 });
+    const refreshCache = vi.fn().mockImplementation(() => new Promise<unknown>(() => undefined));
 
     const result = await runWizardDashboardFlow(baseInput, {
       ensureCache: vi.fn().mockResolvedValue([bookmarkItem()]),
@@ -52,13 +52,10 @@ describe("Wizard dashboard flow", () => {
     expect(result).toMatchObject({ cohortId: 42, cacheOutcome: "hit-unmaterialized" });
   });
 
-  it("uses the returned bookmark id, materializes, then refreshes once for the cohort id", async () => {
+  it("uses the returned bookmark and cohort ids for a new analysis", async () => {
     const createBookmark = vi.fn().mockResolvedValue({ status: "success", bmkId: "created-bookmark" });
-    const materializeBookmark = vi.fn().mockResolvedValue(undefined);
-    const refreshCache = vi
-      .fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([bookmarkItem({ bmkId: "created-bookmark", cohortDefinitionId: 42 })]);
+    const materializeBookmark = vi.fn().mockResolvedValue({ cohortDefinitionId: 42 });
+    const refreshCache = vi.fn().mockResolvedValue([]);
     const onBookmarkCreated = vi.fn();
     const stages: string[] = [];
 
@@ -80,25 +77,19 @@ describe("Wizard dashboard flow", () => {
       bmkId: "created-bookmark",
       bookmarkName: "wizards-1783670400000",
     });
-    expect(stages).toEqual([
-      "awaiting-cache",
-      "saving-bookmark",
-      "materializing",
-      "resolving-cohort",
-      "opening-dashboard",
-    ]);
+    expect(stages).toEqual(["applying-filters", "materializing", "opening-dashboard"]);
   });
 
   it("reuses a saved bookmark id on retry instead of saving again", async () => {
     const createBookmark = vi.fn();
-    const materializeBookmark = vi.fn().mockResolvedValue(undefined);
+    const materializeBookmark = vi.fn().mockResolvedValue({ cohortDefinitionId: 9 });
     const pendingBookmark = { bmkId: "created-bookmark", bookmarkName: "wizards-1783670400000" };
 
     const result = await runWizardDashboardFlow(
       { ...baseInput, pendingBookmark },
       {
         ensureCache: vi.fn().mockResolvedValue([]),
-        refreshCache: vi.fn().mockResolvedValue([bookmarkItem({ bmkId: "created-bookmark", cohortDefinitionId: 9 })]),
+        refreshCache: vi.fn().mockResolvedValue([]),
         createBookmark,
         materializeBookmark,
       },
@@ -122,33 +113,6 @@ describe("Wizard dashboard flow", () => {
       }),
     ).rejects.toThrow("save failed");
     expect(materializeBookmark).not.toHaveBeenCalled();
-  });
-
-  it("refreshes without materializing again after submission already completed", async () => {
-    const materializeBookmark = vi.fn();
-    const refreshCache = vi.fn().mockResolvedValue([bookmarkItem({ cohortDefinitionId: 42 })]);
-
-    await runWizardDashboardFlow(
-      { ...baseInput, materializationSubmittedForBookmarkId: "bookmark-1" },
-      {
-        ensureCache: vi.fn().mockResolvedValue([bookmarkItem()]),
-        refreshCache,
-        materializeBookmark,
-      },
-    );
-
-    expect(materializeBookmark).not.toHaveBeenCalled();
-    expect(refreshCache).toHaveBeenCalledTimes(1);
-  });
-
-  it("fails after the single refresh when no cohort id is returned", async () => {
-    await expect(
-      runWizardDashboardFlow(baseInput, {
-        ensureCache: vi.fn().mockResolvedValue([bookmarkItem()]),
-        refreshCache: vi.fn().mockResolvedValue([bookmarkItem()]),
-        materializeBookmark: vi.fn().mockResolvedValue(undefined),
-      }),
-    ).rejects.toThrow("materialized Wizard cohort was not returned");
   });
 
   it("generates only the strict timestamp bookmark format", () => {

@@ -18,24 +18,26 @@ get_cohort_definitions <- function(cohortsID, vocabschemaName, materialize = FAL
     vocabschemaName <- toString(vocabschemaName)
     library('PhenotypeLibrary')
     library('CirceR')
+    phenotypeLog <- PhenotypeLibrary::getPhenotypeLog(showHidden = FALSE)
+
     create_cohort_definitionsets <- function(cohortsID, vocabschemaName) {
-        # CirceR version 1.1.1 does not support cohort 344, and CirceR version 1.3.3 (currently used) does not support cohort 921
         if (is.character(cohortsID) && cohortsID == 'default') {
-            cohorts <- PhenotypeLibrary::getPhenotypeLog()
-            cohortDefinitionSets <- PhenotypeLibrary::getPlCohortDefinitionSet(cohorts$cohortId[1:nrow(cohorts)])
-            cohortDefinitionSets <- cohortDefinitionSets[cohortDefinitionSets$cohortId!=921,]
+            cohortDefinitionSets <- PhenotypeLibrary::getPlCohortDefinitionSet(phenotypeLog$cohortId[1:nrow(phenotypeLog)])
             for (i in 1:nrow(cohortDefinitionSets)) {
                 cohortDefinitionSets$sql[i] <- CirceR::buildCohortQuery(cohortDefinitionSets$json[i], options = CirceR::createGenerateOptions(generateStats = TRUE, vocabularySchema = vocabschemaName))
             }
         } else if (class(cohortsID) == "integer") {
-            if (921 %in% cohortsID) {
-                cohortsID <- cohortsID[cohortsID!=921]
-            }
             cohortDefinitionSets <- PhenotypeLibrary::getPlCohortDefinitionSet(cohortsID)
             for (i in 1:nrow(cohortDefinitionSets)) {
                 cohortDefinitionSets$sql[i] <- CirceR::buildCohortQuery(cohortDefinitionSets$json[i], options = CirceR::createGenerateOptions(generateStats = TRUE, vocabularySchema = vocabschemaName))
             }
         }
+
+        # getPlCohortDefinitionSet returns only cohortId/cohortName/json/sql; the
+        # status lives in the phenotype log, so carry it across for tagging.
+        cohortDefinitionSets$status <- phenotypeLog$status[match(cohortDefinitionSets$cohortId, phenotypeLog$cohortId)]
+        cohortDefinitionSets$status[is.na(cohortDefinitionSets$status) | cohortDefinitionSets$status == ""] <- "Unspecified"
+
         return(cohortDefinitionSets)
     }
     
@@ -51,7 +53,8 @@ get_cohort_definitions <- function(cohortsID, vocabschemaName, materialize = FAL
                 cohortId = cohortDefinitionSets$cohortId[i],
                 cohortName = cohortDefinitionSets$cohortName[i],
                 json = cohortDefinitionSets$json[i],
-                sql = cohortDefinitionSets$sql[i]
+                sql = cohortDefinitionSets$sql[i],
+                status = cohortDefinitionSets$status[i]
             )
         }
         return(result_list)

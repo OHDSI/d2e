@@ -1,10 +1,18 @@
 import axios, { AxiosRequestConfig } from "axios";
 import memoize from "memoizee";
-import { getAuthToken } from "../containers/auth/auth";
+import { authLogout, getAuthToken, refreshAuthToken } from "../containers/auth/auth";
 import { isOidcAuthenticated } from "../containers/auth/oidc/oidc";
 
 const PUBLIC_URL_PREFIXES = ["dataset/public/list", "config/public"];
 const isPublicUrl = (url?: string) => !!url && PUBLIC_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
+
+// The backend rejects access tokens minted before the user's roles last
+// changed. The token itself is still validly signed, so a silent refresh
+// (which re-mints against Logto's current role state) resolves it without
+// forcing a full re-login.
+const isStaleTokenError = (error: any) =>
+  error.response?.status === 401 &&
+  (error.response.headers?.["x-token-stale"] === "1" || error.response.data?.code === "AUTHZ_STALE_TOKEN");
 
 const client = axios.create();
 
@@ -40,6 +48,27 @@ client.interceptors.response.use(
         await new Promise((resolve) => setTimeout(resolve, 10000));
         return client.request(config);
       }
+    }
+
+    if (isStaleTokenError(error)) {
+      if (config.__isStaleTokenRetry) {
+        console.error("[Portal API] Token still stale after refresh, logging out");
+        await authLogout();
+        return Promise.reject(error);
+      }
+
+      console.warn("[Portal API] Access token stale (AUTHZ_STALE_TOKEN), refreshing and retrying...");
+      config.__isStaleTokenRetry = true;
+      const token = await refreshAuthToken();
+      if (!token) {
+        console.error("[Portal API] Token refresh failed, logging out");
+        await authLogout();
+        return Promise.reject(error);
+      }
+
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+      return client.request(config);
     }
 
     return Promise.reject(error);

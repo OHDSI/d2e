@@ -284,7 +284,7 @@ jobs:
           sleep 120
           curl --max-time 100 --fail -k https://localhost:41100/trex/_internal/health
 
-      - name: Assign and verify researcher assigned to user
+      - name: Assign researcher role to user
         run: |
           curl --max-time 100 --fail -ik 'https://localhost:41100/d2e/usermgmt/api/user-group/register-study-roles' \
               -H 'accept: application/json, text/plain, */*' \
@@ -294,13 +294,9 @@ jobs:
               -H 'referer: https://localhost:41100/d2e/portal/systemadmin/dataset-overview' \
               --data-raw "{\"userIds\":[\"$USER_MGMT_ID\"],\"tenantId\":\"e0348e4d-2e17-43f2-a3c6-efd752d17c23\",\"studyId\":\"cd13fd3e-9f35-4812-b2a1-497b232a8771\",\"roles\":[\"RESEARCHER\"]}"
 
-          curl --max-time 100 --fail -k 'https://localhost:41100/d2e/usermgmt/api/me/roles' \
-              -H 'accept: application/json, text/plain, */*' \
-              -H 'accept-language: en-GB,en-US;q=0.9,en;q=0.8' \
-              -H 'content-type: application/json' \
-              -H 'origin: https://localhost:41100' \
-              -H "authorization: Bearer $BEARER_TOKEN"
-
+      # The role change stamps authz_changed_at on this user, so the token used
+      # above is now stale and usermgmt rejects it with 401 AUTHZ_STALE_TOKEN.
+      # Renew the token first, then verify the role, the way a real client does.
       - name: Refresh bearer token to pick up researcher role
         run: |
           response=$(curl -ik 'https://localhost:41100/d2e/oauth/token' \
@@ -316,6 +312,15 @@ jobs:
 
           export REFRESH_TOKEN=$(echo "$response" | grep -o '"refresh_token":"[^"]*"' | sed 's/"refresh_token":"\([^"]*\)"/\1/')
           echo "REFRESH_TOKEN=$REFRESH_TOKEN" >> $GITHUB_ENV
+
+      - name: Verify researcher role on the refreshed token
+        run: |
+          curl --max-time 100 --fail -k 'https://localhost:41100/d2e/usermgmt/api/me/roles' \
+              -H 'accept: application/json, text/plain, */*' \
+              -H 'accept-language: en-GB,en-US;q=0.9,en;q=0.8' \
+              -H 'content-type: application/json' \
+              -H 'origin: https://localhost:41100' \
+              -H "authorization: Bearer $BEARER_TOKEN"
 
       - name: Install dependencies in backend integration tests
         run: |

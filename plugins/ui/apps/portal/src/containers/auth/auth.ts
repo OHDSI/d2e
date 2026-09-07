@@ -1,7 +1,11 @@
-import { getOidcToken, isOidcAuthenticated, oidcLogout } from "./oidc/oidc";
+import { getOidcToken, isOidcAuthenticated, oidcLogout, refreshOidcToken } from "./oidc/oidc";
 
 export const getAuthToken = async (redirect = true): Promise<string | void> => {
   return await getOidcToken(redirect);
+};
+
+export const refreshAuthToken = async (): Promise<string | void> => {
+  return await refreshOidcToken();
 };
 
 export const isAuthenticated = () => {

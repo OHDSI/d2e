@@ -1045,8 +1045,6 @@ spec:
                 secretKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: DB_CREDENTIALS__PRIVATE_KEY
-            - name: SQL_RETURN_ON
-              value: "true"
             - name: SUPABASE_STORAGE_JWT_SECRET
               valueFrom:
                 secretKeyRef:

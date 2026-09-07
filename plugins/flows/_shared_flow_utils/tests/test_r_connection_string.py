@@ -13,6 +13,7 @@ def test_bigquery_r_connection_string_shape():
         "connectionString = 'jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;"
         "ProjectId=my-gcp-project;OAuthType=0;"
         "OAuthServiceAcctEmail=svc@my-gcp-project.iam.gserviceaccount.com;"
-        "OAuthPvtKeyPath=/tmp/google-sa.json'" in result
+        "OAuthPvtKeyPath=/tmp/google-sa.json;"
+        "EnableSession=1'" in result
     )
     assert "user = ''" in result and "password = ''" in result

@@ -10,8 +10,31 @@ class PhenotypeAPI(BaseAPI):
         self.url = self.get_service_route("d2e-webapi")  
         self.cohort_definition_url = self.url + 'cohortdefinition'
         self.headers = self.get_options()
+
+    def get_cohort_name_index(self, dataset_id: str) -> dict:
+        headers = self.headers.copy()
+        headers["datasetId"] = dataset_id
+
+        response = requests.get(
+            self.cohort_definition_url,
+            headers=headers,
+            verify=self.get_verify_value()
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Failed to list cohort definitions: "
+                f"{response.status_code} - {response.text}"
+            )
+
+        return {
+            cohort["name"]: cohort["id"]
+            for cohort in response.json()
+            if cohort.get("name") is not None
+        }
         
-    def create_single_cohort_definition(self, cohort_def: json, dataset_id: str, user_name: str):
+    def create_single_cohort_definition(self, cohort_def: dict, dataset_id: str, user_name: str,
+                                        name_index: dict):
         logger = get_run_logger()
         current_time = int(time.time() * 1000)
         headers = self.headers.copy()
@@ -19,9 +42,10 @@ class PhenotypeAPI(BaseAPI):
         
         # Parse the JSON expression
         expression = json.loads(cohort_def['json'])
+        name = f"{cohort_def['cohortId']}_{cohort_def['cohortName']}"
         payload = {
-            "id": cohort_def['cohortId'],
-            "name": f"{cohort_def['cohortId']}_{cohort_def['cohortName']}",
+            "id": 0,
+            "name": name,
             "description": f"Phenotype Library cohort: {cohort_def['cohortName']}",
             "expressionType": "SIMPLE_EXPRESSION",
             "expression": expression,
@@ -29,23 +53,42 @@ class PhenotypeAPI(BaseAPI):
             "createdDate": current_time,
             "modifiedBy": user_name,
             "modifiedDate": current_time,
-            "datasetId": dataset_id,
-            "tags": ["phenotype_library"],
+            "tags": [],
         }
-        
-        logger.info(f"Creating cohort: {cohort_def['cohortName']} (ID: {cohort_def['cohortId']})")
-        response = requests.post(
-            self.cohort_definition_url, 
-            headers=headers, 
-            json=payload, 
-            verify=self.get_verify_value()
-        )
+        # datasetId travels in the header, not the body.
+
+        existing_id = name_index.get(name)
+        verb = "Updating" if existing_id else "Creating"
+        logger.info(f"{verb} cohort: {cohort_def['cohortName']} (ID: {cohort_def['cohortId']})")
+
+        if existing_id:
+            response = requests.put(
+                f"{self.cohort_definition_url}/{existing_id}",
+                headers=headers,
+                json=payload,
+                verify=self.get_verify_value()
+            )
+
+        else:
+            response = requests.post(
+                self.cohort_definition_url,
+                headers=headers,
+                json=payload,
+                verify=self.get_verify_value()
+            )
         
         if response.status_code in [200, 201]:
             result = response.json()
-            logger.info(f"Successfully created cohort {cohort_def['cohortId']}")
+            name_index[name] = result["id"]
+            logger.info(
+                f"{'Updated' if existing_id else 'Created'} WebAPI cohort definition "
+                f"{result["id"]} for phenotype cohort {cohort_def['cohortId']}"
+            )
             return result
         else:
-            error_msg = f"Failed to create cohort {cohort_def['cohortId']}: {response.status_code} - {response.text}"
+            error_msg = (
+                f"Failed to {'update' if existing_id else 'create'} cohort "
+                f"{cohort_def['cohortId']}: {response.status_code} - {response.text}"
+            )
             logger.error(error_msg)
             raise Exception(error_msg)

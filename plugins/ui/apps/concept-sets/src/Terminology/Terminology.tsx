@@ -50,6 +50,7 @@ export interface TerminologyProps {
   open?: boolean;
   onClose?: (values: OnCloseReturnValues) => void;
   selectedConceptSetId?: string;
+  selectedConceptSetCanWrite?: boolean;
   mode?:
     | "CONCEPT_MAPPING"
     | "CONCEPT_SET"
@@ -210,18 +211,16 @@ const NameSection = ({
               />
             </div>
           )}
-          {isUserConceptSet && (
-            <Button
-              style={{ marginLeft: 10 }}
-              text={
-                conceptSetId
-                  ? getText(i18nKeys.TERMINOLOGY__UPDATE)
-                  : getText(i18nKeys.TERMINOLOGY__CREATE)
-              }
-              onClick={saveConceptSet}
-              disabled={isLoading}
-            />
-          )}
+          <Button
+            style={{ marginLeft: 10 }}
+            text={
+              conceptSetId
+                ? getText(i18nKeys.TERMINOLOGY__UPDATE)
+                : getText(i18nKeys.TERMINOLOGY__CREATE)
+            }
+            onClick={saveConceptSet}
+            disabled={isLoading || !isUserConceptSet}
+          />
           <Button
             variant="outlined"
             text={getText(i18nKeys.TERMINOLOGY__CLOSE)}
@@ -373,6 +372,7 @@ export const Terminology: FC<TerminologyProps> = ({
   open,
   onClose,
   selectedConceptSetId,
+  selectedConceptSetCanWrite,
   mode = "CONCEPT_SEARCH",
   selectedDatasetId,
   defaultFilters,
@@ -544,8 +544,11 @@ export const Terminology: FC<TerminologyProps> = ({
     try {
       // When creating a new concept set there is no id yet. Use "0" (a
       // never-existing id) as the exclusion sentinel: the backend route param
-      // schema rejects an empty segment ("/conceptset//exists" -> 400), and
-      // "0" still surfaces same-name duplicates across both stores.
+      // schema rejects an empty segment ("/conceptset//exists" -> 400).
+      //
+      // This check now covers the legacy store only. A duplicate in the WebAPI
+      // store is rejected by its `uq_cs_name` constraint at save time and comes
+      // back as a 409, handled in the catch below.
       const isNameUsed = await checkIfConceptSetExists(
         conceptSetId || "0",
         conceptSet.name,
@@ -574,7 +577,17 @@ export const Terminology: FC<TerminologyProps> = ({
       setCurrentConceptSet(savedConceptSet);
       setConceptSetId(updatedConceptSetId);
       return;
-    } catch {
+    } catch (err: any) {
+      // request() rejects with error.response directly, not the full axios
+      // error, so the status and body sit at the top level.
+      if (err?.status === 409 && err?.data?.error === "CONCEPT_SET_NAME_EXISTS") {
+        setErrorMsg(
+          getText(i18nKeys.TERMINOLOGY__CONCEPT_SET_NAME_USED_ERROR, [
+            `"${conceptSet.name}"`,
+          ]),
+        );
+        return;
+      }
       setErrorMsg(
         getText(i18nKeys.TERMINOLOGY__ERROR, [
           conceptSetId
@@ -635,7 +648,9 @@ export const Terminology: FC<TerminologyProps> = ({
         setCurrentConceptSet(conceptSet);
         setConceptSetShared(conceptSet.shared);
         setIsUserConceptSet(
-          !!conceptSet.hasWriteAccess || conceptSet.createdBy === userName,
+          selectedConceptSetCanWrite !== undefined
+            ? !!selectedConceptSetCanWrite
+            : !!conceptSet.hasWriteAccess || conceptSet.createdBy === userName,
         );
         setErrorMsg("");
         return;
@@ -643,7 +658,7 @@ export const Terminology: FC<TerminologyProps> = ({
         setIsConceptSetLoading(false);
       }
     },
-    [activeDatasetId, userName],
+    [activeDatasetId, userName, selectedConceptSetCanWrite],
   );
   const isDrawer = !!onClose;
 
@@ -775,10 +790,11 @@ export const Terminology: FC<TerminologyProps> = ({
 
   useEffect(() => {
     if (selectedConceptSetId) {
+      setIsUserConceptSet(selectedConceptSetCanWrite ?? true);
       setConceptSetId(selectedConceptSetId);
       getConceptSet(selectedConceptSetId);
     }
-  }, [getConceptSet, selectedConceptSetId]);
+  }, [getConceptSet, selectedConceptSetId, selectedConceptSetCanWrite]);
 
   const onClickClose = useCallback(() => {
     if (!onClose) {

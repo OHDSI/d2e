@@ -211,7 +211,6 @@ declare global {
     maxResultSize: number;
     // flags controlling the information which is returned from backend
     // Note: all flags should be set to false for productive systems
-    sqlReturnOn: boolean;
     errorDetailsReturnOn: boolean;
     errorStackTraceReturnOn: boolean;
     enableFreeText: boolean;

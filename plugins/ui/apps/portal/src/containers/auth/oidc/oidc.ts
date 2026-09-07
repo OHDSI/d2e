@@ -28,6 +28,19 @@ export const getOidcTokenPayload = async (): Promise<AccessTokenPayload | undefi
   }
 };
 
+export const refreshOidcToken = async (): Promise<string | void> => {
+  const getOidc = VanillaOidc.get;
+  const oidc = getOidc();
+
+  try {
+    await oidc.renewTokensAsync();
+    const uaaToken = await oidc.getValidTokenAsync();
+    return uaaToken?.tokens?.accessToken;
+  } catch (err) {
+    console.error("[refreshOidcToken]", err);
+  }
+};
+
 export const oidcLogout = async (): Promise<void> => {
   const getOidc = VanillaOidc.get;
   const oidc = getOidc();
