@@ -209,6 +209,9 @@ export interface DataCharacterizationFlowRunDto {
   // Whether DC should build the achilles_result_concept_count table.
   // Enabled by default; the concept record-count endpoint depends on it.
   executeConceptRecordCount?: boolean;
+  // Run against the source database instead of the trex cache. Ignored for
+  // webapi datasets, which already decide this from their dialect.
+  useSourceConnection?: boolean;
 }
 
 export interface SearchEmbeddingFlowRunDto {

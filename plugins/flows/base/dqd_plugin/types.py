@@ -15,13 +15,18 @@ class DqdOptionsType(BaseModel):
     checkNames: Optional[List[str]] = None
     cohortDatabaseSchema: Optional[str] = None
     cohortTableName: Optional[str] = "cohort"
+    # Run against the source database instead of the trex cache. The trex pgwire
+    # passthrough cannot resolve HANA schemas, so a HANA dataset routed through
+    # it fails before reaching the database and DQD had no way to opt out.
+    # Mirrors DCOptionsType.useSourceConnection.
+    useSourceConnection: Optional[bool] = False
 
     @property
     def use_trex_connection(self) -> bool:
         """
         Whether to use the TREX sql connection or direct database connection.
         """
-        return True
+        return not self.useSourceConnection
 
 
 class DqdParams(DqdOptionsType):

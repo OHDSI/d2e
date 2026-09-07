@@ -142,7 +142,11 @@ export class DataCharacterizationService {
     const { dialect, databaseCode, schemaName, vocabSchemaName } = dataset;
     const cacheId = dataset.cacheId ?? databaseCode;
 
-    const dcTarget = resolveDcTarget(dataset, overrideResultsSchema);
+    const dcTarget = resolveDcTarget(
+      dataset,
+      overrideResultsSchema,
+      dataCharacterizationFlowRunDto.useSourceConnection ?? false,
+    );
 
     let resultsSchema: string;
     if (dcTarget.resultsSchema !== null) {
