@@ -65,21 +65,34 @@ spec:
                 secretKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: POSTGRES_CONFIG_DB
+            # supabase-storage connects as POSTGRES_SUPERUSER (see
+            # STORAGE__JDBC__URL), so on a fresh install it owns storage.objects
+            # and only that role can disable RLS on it. Connecting as the config
+            # admin user failed with "must be owner of table objects" on every
+            # greenfield deploy; it worked on older installs only because their
+            # storage tables happened to have been created by the admin user.
             - name: PGUSER
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
-                  key: POSTGRES_CONFIG_ADMIN_USER
+                  key: POSTGRES_SUPERUSER
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
-                  key: POSTGRES_CONFIG_ADMIN_PASSWORD
+                  key: POSTGRES_SUPERUSER_PASSWORD
+            - name: POSTGRES_CONFIG_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: POSTGRES_CONFIG_ADMIN_USER
           command: ["/bin/sh"]
           args:
             [
               "-c",
               "echo 'Updating public.objects view to include user_metadata column...' &&
+               { psql -c \"GRANT ${POSTGRES_CONFIG_ADMIN_USER} TO CURRENT_USER;\" ||
+                 echo 'Could not join the config admin role - relying on existing membership'; } &&
                psql -c 'ALTER TABLE IF EXISTS storage.objects DISABLE ROW LEVEL SECURITY;' &&
                psql -c 'DROP VIEW IF EXISTS public.objects CASCADE;' &&
                psql -c 'CREATE VIEW public.objects AS SELECT * FROM storage.objects;' &&

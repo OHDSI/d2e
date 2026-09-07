@@ -160,7 +160,29 @@ export function buildBootstrapStatements(cfg: BootstrapConfig): string[] {
   // ── Supabase roles (PostGraphile connects as authenticator and SET ROLEs) ──
   out.push(createGroupRole("anon", "NOLOGIN INHERIT"));
   out.push(createGroupRole("authenticated", "NOLOGIN INHERIT"));
-  out.push(createGroupRole("service_role", "NOLOGIN INHERIT BYPASSRLS"));
+  // No BYPASSRLS: setting that attribute requires superuser, which managed
+  // Postgres (Azure Flexible Server included) never grants -- even to a role
+  // that already holds it. Requesting it fails the statement outright with
+  // "must be superuser to change bypassrls attribute", leaving service_role
+  // absent on every greenfield install. Reachability of storage.buckets is
+  // provided by the service_role buckets policy migration instead.
+  out.push(createGroupRole("service_role", "NOLOGIN INHERIT"));
+  // trex's V1__initial_schema creates supabase_admin WITH ... REPLICATION, which
+  // is superuser-only on managed Postgres, so V1 aborts and the whole trexdb
+  // schema is never created. V1 is checksum-verified and already applied in
+  // existing deployments, so it cannot be edited; pre-creating the role here
+  // makes V1's own IF NOT EXISTS guard skip the failing statement. No
+  // REPLICATION: V5__drop_realtime_admin drops this role and the _realtime
+  // schema a few migrations later, so nothing ever replicates as it.
+  out.push(createGroupRole("supabase_admin", "NOLOGIN"));
+  // Postgres 15 does not give a CREATEROLE creator membership in the role it
+  // just created, and bootstrap runs as the superuser that also runs V1.
+  out.push(`GRANT supabase_admin TO CURRENT_USER`);
+  // The storage post-init grants these roles access to public.objects, which is
+  // only usable with USAGE on the schema itself.
+  for (const role of ["anon", "authenticated", "service_role"]) {
+    out.push(`GRANT USAGE ON SCHEMA public TO ${role}`);
+  }
 
   for (const dbKey of Object.keys(cfg.manageConfig.databases)) {
     if (!dbKey.startsWith("+")) continue; // only creation scenarios
@@ -184,8 +206,42 @@ export function buildBootstrapStatements(cfg: BootstrapConfig): string[] {
 
     // ── Role membership: manager gets service_role, reader anon, writer authenticated ──
     if (users.manager) out.push(`GRANT service_role TO ${quoteIdent(users.manager)}`);
+    // V1 creates the _realtime schema AUTHORIZATION supabase_admin, which needs
+    // membership in that role rather than mere CREATEROLE.
+    if (users.manager) out.push(`GRANT supabase_admin TO ${quoteIdent(users.manager)}`);
     if (users.reader) out.push(`GRANT anon TO ${quoteIdent(users.reader)}`);
     if (users.writer) out.push(`GRANT authenticated TO ${quoteIdent(users.writer)}`);
+
+    // ── CREATE on schema public ──────────────────────────────────────────────
+    // Postgres 15 stopped granting CREATE on public to PUBLIC. logto's
+    // roles.sql creates public.check_role_type -- hardcoded to public, not to
+    // its own schema -- so on a greenfield database logto's seed dies with
+    // "permission denied for schema public".
+    //
+    // public is owned by the platform admin role (azure_pg_admin on Azure), so
+    // these only take effect when the bootstrap superuser is a member of it. A
+    // non-member gets "WARNING: no privileges were granted for public" and
+    // Postgres still reports success, hence the explicit check below: the
+    // failure otherwise surfaces much later as an unrelated error.
+    const publicCreators = [users.manager, users.logtoManager].filter(
+      (u): u is string => !!u,
+    );
+    for (const user of publicCreators) {
+      out.push(`GRANT USAGE, CREATE ON SCHEMA public TO ${quoteIdent(user)}`);
+    }
+    if (users.writer) out.push(`GRANT USAGE ON SCHEMA public TO ${quoteIdent(users.writer)}`);
+    for (const user of publicCreators) {
+      out.push(
+        doBlock(
+          `BEGIN IF NOT has_schema_privilege(${quoteLiteral(user)}, 'public', 'CREATE') THEN ` +
+            `RAISE WARNING ${quoteLiteral(
+              `no CREATE on schema public for ${user}; schema public is owned by the platform ` +
+                "admin role, so the bootstrap user must be a member of it (on Azure: GRANT " +
+                "azure_pg_admin TO <superuser>). logto seeding will fail without it.",
+            )}; END IF; END`,
+        ),
+      );
+    }
 
     // ── Database-level CREATE ────────────────────────────────────────────────
     // `CREATE SCHEMA IF NOT EXISTS` checks CREATE on the database before it

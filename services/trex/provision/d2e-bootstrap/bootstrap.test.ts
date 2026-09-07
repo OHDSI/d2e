@@ -70,7 +70,46 @@ Deno.test("creates the three supabase roles with the documented attributes", () 
   const stmts = buildBootstrapStatements(CFG).join("\n");
   assertEquals(stmts.includes("CREATE ROLE anon NOLOGIN INHERIT"), true);
   assertEquals(stmts.includes("CREATE ROLE authenticated NOLOGIN INHERIT"), true);
-  assertEquals(stmts.includes("CREATE ROLE service_role NOLOGIN INHERIT BYPASSRLS"), true);
+  // Without BYPASSRLS: it requires superuser, which managed Postgres does not
+  // grant, so requesting it leaves service_role uncreated.
+  assertEquals(stmts.includes("CREATE ROLE service_role NOLOGIN INHERIT"), true);
+  assertEquals(stmts.includes("BYPASSRLS"), false);
+});
+
+Deno.test("creates supabase_admin without REPLICATION so trex's V1 can be applied", () => {
+  const stmts = buildBootstrapStatements(CFG).join("\n");
+  // V1__initial_schema requests REPLICATION, which is superuser-only on managed
+  // Postgres; pre-creating the role makes V1's IF NOT EXISTS guard skip it.
+  assertEquals(stmts.includes("CREATE ROLE supabase_admin NOLOGIN"), true);
+  assertEquals(stmts.includes("REPLICATION"), false);
+  // V1 also creates the _realtime schema AUTHORIZATION supabase_admin, which
+  // needs membership -- for the manager and for the superuser running V1.
+  assertEquals(stmts.includes("GRANT supabase_admin TO CURRENT_USER"), true);
+  assertEquals(stmts.includes('GRANT supabase_admin TO "alp_pg_admin_user"'), true);
+});
+
+Deno.test("grants CREATE on schema public to the roles that create objects there", () => {
+  const stmts = buildBootstrapStatements(CFG);
+  const joined = stmts.join("\n");
+  // logto's roles.sql creates public.check_role_type, hardcoded to public.
+  assertEquals(
+    stmts.includes('GRANT USAGE, CREATE ON SCHEMA public TO "logto_postgres"'),
+    true,
+  );
+  assertEquals(
+    stmts.includes('GRANT USAGE, CREATE ON SCHEMA public TO "alp_pg_admin_user"'),
+    true,
+  );
+  // Readers of public.objects need schema USAGE, not CREATE.
+  assertEquals(stmts.includes("GRANT USAGE ON SCHEMA public TO service_role"), true);
+  assertEquals(
+    stmts.includes('GRANT USAGE ON SCHEMA public TO "alp_pg_write_user"'),
+    true,
+  );
+  // The grant is a silent no-op unless the bootstrap user owns public, so the
+  // result has to be checked rather than assumed.
+  assertStringIncludes(joined, "has_schema_privilege('logto_postgres', 'public', 'CREATE')");
+  assertStringIncludes(joined, "RAISE WARNING");
 });
 
 Deno.test("grants per-schema privileges and default privileges to reader and writer", () => {
