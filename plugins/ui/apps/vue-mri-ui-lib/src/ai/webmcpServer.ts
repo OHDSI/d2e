@@ -7,7 +7,13 @@
 // We try document first, then fall back to navigator for older builds.
 import { nextTick } from 'vue'
 import type { Store } from 'vuex'
-import { applyCohortPatch, describeCardGroups, type PatchOp } from './cohortPatch'
+import {
+  applyCohortPatch,
+  describeCardGroups,
+  describeCohortEntryExit,
+  describeTimeRelations,
+  type PatchOp,
+} from './cohortPatch'
 import { alternateQueries, rankValues, DEFAULT_VALUE_LIMIT, MAX_VALUE_LIMIT, type MatchedVia } from './valueResolution'
 
 export interface PaToolResult {
@@ -37,6 +43,32 @@ export interface PaComponentHooks {
 const textResult = (payload: unknown): PaToolResult => ({
   content: [{ type: 'text', text: JSON.stringify(payload) }],
 })
+
+// Applying a patch does NOT compute the result: it flips the fireRequest flag and
+// returns, and the count/chart are only rewritten when the mounted chart component's
+// analytics query resolves — 7-24s on a HANA/LEAF-sized dataset. The count on display
+// stays on the PREVIOUS cohort's number for that window (the UI deliberately does not
+// blank it), so reading it straight away is what handed the model a stale number as if
+// it were the new answer — the original bug. setFireRequest instead raises the store's
+// `isCurrentPatientCountStale` flag, which nothing renders, and we wait that out here.
+//
+// The ceiling is well above the worst case observed in analytics-svc logs (24s) because
+// timing out is the worse outcome: the model then has no count at all. It is bounded
+// rather than open-ended because the flag is not guaranteed to clear — nothing fires
+// the query while the builder is unmounted, so an unbounded wait would hang.
+const COHORT_RESULT_TIMEOUT_MS = 60_000
+const COHORT_RESULT_POLL_MS = 250
+
+const waitForCohortResult = async (store: Store<any>, timeoutMs = COHORT_RESULT_TIMEOUT_MS): Promise<boolean> => {
+  const deadline = Date.now() + timeoutMs
+  while (store.getters.isCurrentPatientCountStale) {
+    if (Date.now() >= deadline) {
+      return false
+    }
+    await new Promise(resolve => setTimeout(resolve, COHORT_RESULT_POLL_MS))
+  }
+  return true
+}
 
 // Query → stored-value matching lives in ./valueResolution, the browser-side
 // twin of the backend's cohortValueResolver.ts (see the note at the top of that
@@ -155,7 +187,14 @@ function describeAttributeValue(attr: any): string {
 // biggest driver of both context burn and the 413 the drawer used to hit.
 const VALUE_KIND_GUIDE: Record<string, string> = {
   numeric: 'add_constraint value:<number> with operator ("<",">","=",…).',
-  date: 'add_constraint value:{ from, to } (date range).',
+  date:
+    'add_constraint value:{ from, to } (date range) — ONLY when the user named actual calendar dates. This is ' +
+    'an absolute filter that drops every patient whose record falls outside the window, and unlike every other ' +
+    'valueKind it needs no lookup, so an invented range applies cleanly and narrows the cohort silently. A ' +
+    'DURATION ("at least a year of prior observation", "within 90 days", "followed for 6 months") is NOT a date ' +
+    'range: use set_time_relation for the gap between two interactions, or set_entry_exit for the observation ' +
+    'window. A card with no date constraint means "the patient has such a record at all" — that is a complete, ' +
+    'valid filter, so never fill in dates just to give a freshly added card a value.',
   conceptSet:
     'add_constraint value:{ conceptSetId } — build/find the concept set with the d2e-mcp concept tools. The ' +
     "attribute's `conceptDomain` (when present) is the OMOP domain its concepts must come from: a set built " +
@@ -211,7 +250,8 @@ function listFilterOptions(store: Store<any>): {
     // Per-attribute how-to lives here, keyed by valueKind — see VALUE_KIND_GUIDE.
     valueKindGuide: VALUE_KIND_GUIDE,
     note:
-      'Route each add_constraint value by `valueKind`: numeric→number+operator, date→{from,to}, ' +
+      'Route each add_constraint value by `valueKind`: numeric→number+operator, date→{from,to} but only for ' +
+      'calendar dates the user named (a duration is set_time_relation, a window is set_entry_exit), ' +
       'conceptSet→{conceptSetId} (build via d2e-mcp), catalog→resolve the exact token with ' +
       'pa_search_attribute_values first. This dataset may be non-OMOP (SAP HANA / LEAF): its coded ' +
       'condition/drug/measurement filters use source concept codes or concept sets, not OMOP standard ' +
@@ -300,11 +340,14 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
       name: 'pa_get_current_cohort',
       description:
         'Return the active cohort / bookmark definition as JSON, plus `cardGroups`: the filter cards as the ' +
-        'builder groups them. Cards in the SAME group are OR-ed; the groups are AND-ed. Read cardGroups before ' +
-        'editing — it gives you the real filterCardIds to target and tells you whether the cohort currently ' +
-        'means "A and B" or "A or B".',
+        'builder groups them (cards in the SAME group are OR-ed; the groups are AND-ed), `timeRelations`: ' +
+        'the temporal (Advanced Time) relations between cards, and `cohortEntryExit`: the observation window ' +
+        '(the Entry/Exit buttons). Read them before editing — they give you the real filterCardIds to target ' +
+        'and tell you whether the cohort currently means "A and B", "A or B", or "A then B within N days", and ' +
+        'over what window it is measured.',
       inputSchema: { type: 'object', properties: {} },
       async execute() {
+        const cohortEntryExit = describeCohortEntryExit(store)
         return textResult({
           bookmarkData: store.getters.getBookmarksData,
           ifr: store.getters.getBookmarkFromIFR,
@@ -313,6 +356,20 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
             'Cards within one group are OR-ed; groups are AND-ed. To add an OR alternative use ' +
             'add_card with orWith:"<an existing filterCardId in that group>"; to change how two cards already ' +
             'on the cohort combine use set_card_join on the LATER card.',
+          timeRelations: describeTimeRelations(store),
+          timeRelationsNote:
+            'Temporal relations between cards. An EMPTY list means the cohort has no timing at all — AND-ed ' +
+            'cards only require that both interactions happened at some point ("ever diagnosed and ever ' +
+            'prescribed"), never that one followed the other. Add timing with set_time_relation.',
+          cohortEntryExit,
+          cohortEntryExitNote: cohortEntryExit.supported
+            ? "The observation window the cohort is measured over: it runs from the `entry` card's interaction " +
+              "START to the `exit` card's interaction END. Both null means the window is the patient's full " +
+              'observation period. Set them with set_entry_exit — it is NOT the same as set_time_relation, ' +
+              'which constrains the gap between two interactions instead of re-anchoring the window.'
+            : 'This dataset does not support an entry/exit window (panelOptions.cohortEntryExit is off, so the ' +
+              'builder hides the buttons and the query ignores the flags). set_entry_exit will be rejected — ' +
+              'do not offer to anchor the cohort to an entry or exit event here.',
         })
       },
     },
@@ -394,11 +451,19 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
       description:
         'Edit the live cohort. Preferred (and the ONLY way to add/remove a filter): pass `patchOps` — typed intent ' +
         'applied deterministically in-place (add_card / add_constraint / remove_card / remove_constraint / ' +
-        'set_card_join). Discover valid paths with pa_list_filter_options. AND/OR: cards are AND-ed by default; ' +
-        'to express "A OR B" add the second card with orWith:"<the other card>" (or regroup existing cards with ' +
-        'set_card_join). The result reports `cardGroups` — the grouping that actually landed. Legacy `bookmark`: ' +
-        'a full tree, accepted ONLY from a trusted builder — a hand-authored tree is validated and rejected (it ' +
-        'silently loads the wrong cohort). Never hand-author one.',
+        'set_card_join / set_time_relation / clear_time_relation / set_entry_exit / clear_entry_exit). Discover ' +
+        'valid paths with pa_list_filter_options. AND/OR: cards are AND-ed by default; to express "A OR B" add ' +
+        'the second card with orWith:"<the other card>" (or regroup existing cards with set_card_join). TIMING IS ' +
+        'SEPARATE FROM AND/OR: AND-ed cards mean "both happened, ever" — any "within N days", "followed by", ' +
+        '"after", "before", "during" wording needs a set_time_relation op as well, or the cohort silently answers ' +
+        'a wider question. "Observed FROM event A UNTIL event B" is a third, different thing — the observation ' +
+        'window — and needs set_entry_exit. NEVER invent a date range to give a card a value: adding a card with ' +
+        'no constraint already means "the patient has such a record", and a fabricated { from, to } silently ' +
+        'drops every patient outside it. The result reports `cardGroups` (the grouping that landed), ' +
+        '`timeRelations` (the timing that landed), `cohortEntryExit` (the window that landed) and `warnings` ' +
+        '(date ranges that landed — act on each one) — report from those. Legacy `bookmark`: a full tree, ' +
+        'accepted ONLY from a trusted builder — a hand-authored tree is validated and rejected (it silently ' +
+        'loads the wrong cohort). Never hand-author one.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -409,16 +474,30 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
               '{ op:"add_card", cardConfigPath, exclude?, ref?, orWith? } | ' +
               '{ op:"add_constraint", card, attributePath, value, operator? } | ' +
               '{ op:"remove_card", card } | { op:"remove_constraint", card, attributePath } | ' +
-              '{ op:"set_card_join", card, join }. ' +
+              '{ op:"set_card_join", card, join } | ' +
+              '{ op:"set_time_relation", card, relativeTo, mode?, days?, minDays?, maxDays?, direction?, ' +
+              'fromDate?, toDate? } | { op:"clear_time_relation", card, relativeTo? } | ' +
+              '{ op:"set_entry_exit", card, role } | { op:"clear_entry_exit", role? }. ' +
               'The Basic Data card ("patient") always exists — constrain it directly, never add_card it. ' +
               'Separate filter cards are AND-ed; two cards are OR-ed by putting them in the same group ' +
-              '(add_card orWith, or set_card_join).',
+              '(add_card orWith, or set_card_join). Neither AND nor OR carries any timing — use ' +
+              'set_time_relation for that, and set_entry_exit for the observation window.',
             items: {
               type: 'object',
               properties: {
                 op: {
                   type: 'string',
-                  enum: ['add_card', 'add_constraint', 'remove_card', 'remove_constraint', 'set_card_join'],
+                  enum: [
+                    'add_card',
+                    'add_constraint',
+                    'remove_card',
+                    'remove_constraint',
+                    'set_card_join',
+                    'set_time_relation',
+                    'clear_time_relation',
+                    'set_entry_exit',
+                    'clear_entry_exit',
+                  ],
                 },
                 cardConfigPath: {
                   type: 'string',
@@ -437,8 +516,71 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
                 card: {
                   type: 'string',
                   description:
-                    'add_constraint / remove_* / set_card_join: a filterCardId ("patient", ' +
-                    '"…conditionoccurrence.1") or an add_card `ref` from earlier in this same patch.',
+                    'add_constraint / remove_* / set_card_join / *_time_relation / set_entry_exit: a filterCardId ' +
+                    '("patient", "…conditionoccurrence.1") or an add_card `ref` from earlier in this same patch. ' +
+                    'For set_time_relation this is the LATER interaction — the one whose timing is constrained. ' +
+                    'For set_entry_exit it is the card whose interaction dates the window (clear_entry_exit takes ' +
+                    'no card — each role is cohort-wide).',
+                },
+                role: {
+                  type: 'string',
+                  enum: ['entry', 'exit'],
+                  description:
+                    'set_entry_exit: which end of the observation window `card` anchors — "entry" uses its ' +
+                    'interaction START date, "exit" uses its interaction END date. REQUIRED. On ' +
+                    'clear_entry_exit it is optional: omit it to clear both ends and fall back to the ' +
+                    "patient's full observation period.",
+                },
+                relativeTo: {
+                  type: 'string',
+                  description:
+                    'set_time_relation: the card `card` is timed against (a filterCardId or an earlier `ref`) — ' +
+                    'the index/anchor interaction. It must be alone in its own AND-group; you cannot time ' +
+                    'against an OR group. clear_time_relation: omit to drop every relation on `card`.',
+                },
+                mode: {
+                  type: 'string',
+                  enum: ['within', 'exactly', 'at_least', 'at_most', 'between', 'overlaps'],
+                  description:
+                    'set_time_relation, default "within" — but the default is only right for an UPPER bound, so ' +
+                    "read the user's words and pass `mode` explicitly. Each mode names the day-range expression " +
+                    'written into the builder, and that expression is the mode\'s real meaning: "within" = ' +
+                    '[0-N], the CLOSED window 0..N, i.e. at most N days apart ("within 90 days" / "in the 90 ' +
+                    'days following" / "no later than 90 days"); "at_least" = >=N, a FLOOR with no ceiling ' +
+                    '("at least 90 days", "≥90 days", "90 days or more", "no sooner than 90 days", "90 days ' +
+                    'apart", "after 90 days"); "at_most" = <=N; "between" = [minDays-maxDays], a floor AND a ' +
+                    'ceiling; "exactly" = the Nth day ONLY, almost never what a clinical question asks for; ' +
+                    '"overlaps" = the two interactions overlap in time (days and direction are ignored). ' +
+                    '[0-N] and >=N PARTITION the timeline at N days — no patient satisfies both — so choosing ' +
+                    'the wrong one does not widen the cohort, it swaps it for the complement. "90 days" in the ' +
+                    'request tells you nothing about the mode; the bounding word next to it does.',
+                },
+                days: {
+                  type: 'number',
+                  description:
+                    'set_time_relation: whole number of days for within / exactly / at_least / at_most.',
+                },
+                minDays: { type: 'number', description: 'set_time_relation mode:"between": lower bound in days.' },
+                maxDays: { type: 'number', description: 'set_time_relation mode:"between": upper bound in days.' },
+                direction: {
+                  type: 'string',
+                  enum: ['after', 'before'],
+                  description:
+                    'set_time_relation, default "after": whether `card` happens after or before `relativeTo`. ' +
+                    '"an initial diagnosis THEN a prescription within 90 days" = the prescription card, ' +
+                    'relativeTo the diagnosis card, direction "after".',
+                },
+                fromDate: {
+                  type: 'string',
+                  enum: ['start', 'end'],
+                  description: 'set_time_relation, default "start": which date of `card` is compared.',
+                },
+                toDate: {
+                  type: 'string',
+                  enum: ['start', 'end'],
+                  description:
+                    'set_time_relation, default "start": which date of `relativeTo` it is compared to. Use ' +
+                    '"end" for "within 90 days of finishing …".',
                 },
                 join: {
                   type: 'string',
@@ -456,7 +598,9 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
                   description:
                     'add_constraint: REQUIRED, and the concept-set id goes HERE, not beside it. ' +
                     'numeric -> a number (with `operator`); catalog/text -> the exact stored string; ' +
-                    'date -> { from, to }; conceptSet -> { conceptSetId, includeDescendants? } where ' +
+                    'date -> { from, to }, and ONLY when the user named those calendar dates — a duration or a ' +
+                    'prior-observation requirement is set_time_relation, and an observation window is ' +
+                    'set_entry_exit; conceptSet -> { conceptSetId, includeDescendants? } where ' +
                     'conceptSetId came from create_concept_set / list_concept_sets. An empty or missing ' +
                     'value is rejected — use remove_constraint to clear a filter.',
                 },
@@ -749,9 +893,16 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
         'Return the LIVE computed RESULT of the current cohort: matched patient count, total, active chart type, ' +
         'and the binned chart data (categories, measures, per-bin patient counts). Use this to verify what actually ' +
         'rendered after building/editing — pa_get_current_cohort returns only the definition, not the result. ' +
-        'Requires the builder to be open (pa_new_cohort / pa_open_cohort switch to it) so the chart query has run.',
+        'Requires the builder to be open (pa_new_cohort / pa_open_cohort switch to it) so the chart query has run. ' +
+        'An edit does not compute its own result, so this BLOCKS until the recompute lands (tens of seconds on a ' +
+        'large dataset) — that wait is the point, do not skip the call or race it. If it returns `pending:true` the ' +
+        'result never arrived: the counts in that response are NOT an answer, so report the cohort as not yet ' +
+        'computed rather than quoting them.',
       inputSchema: { type: 'object', properties: {} },
       async execute() {
+        // Blocks while the store flags the count as stale — i.e. an edit fired a new
+        // query and the numbers on screen are still the previous cohort's.
+        const settled = await waitForCohortResult(store)
         const g = store.getters
         // getResponse is a getter that returns a function; call it for the raw response.
         const resp = typeof g.getResponse === 'function' ? g.getResponse() : g.getResponse
@@ -773,6 +924,20 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
           totalPatientCount: g.getDisplayTotalGuardedPatientCount ? g.getTotalPatientListCount : g.getTotalPatientCount,
           chartType: g.getActiveChart,
           chart,
+          // Timed out with the query still in flight. Say so as loudly as the failed-query
+          // case: the counts below are the PREVIOUS cohort's, not this one's, and
+          // reporting them as a result is the exact bug this wait exists to prevent.
+          ...(settled
+            ? {}
+            : {
+                pending: true,
+                error:
+                  `The cohort is still computing after ${Math.round(COHORT_RESULT_TIMEOUT_MS / 1000)}s, so there is ` +
+                  'no count to report yet — the counts in this response are the PREVIOUS cohort\'s, so do NOT ' +
+                  'read them as a result. The chart query ' +
+                  'only runs while the builder is on screen: check it is open (pa_new_cohort / pa_open_cohort), ' +
+                  'then call pa_get_cohort_result again.',
+              }),
           ...(chartData?.error
             ? {
                 error: `The last chart query failed, so the count is not a real result: ${chartData.error}`,
@@ -884,6 +1049,12 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
   ]
 }
 
+// Where the live registration parks its teardown, on the browser's own registry
+// object rather than in module state: the registry outlives PA (and outlives this
+// module, which a re-imported bundle would re-instantiate), so the handle has to
+// live with the thing it releases.
+const REGISTRATION_KEY = '__d2ePaToolRegistration'
+
 export function registerPaTools(store: Store<any>, hooks: PaComponentHooks = {}): () => void {
   const mc = (document as any).modelContext ?? (navigator as any).modelContext
   if (!mc) {
@@ -891,8 +1062,43 @@ export function registerPaTools(store: Store<any>, hooks: PaComponentHooks = {})
     return () => {}
   }
 
-  const regs: Array<{ unregister?: () => void }> = createPaTools(store, hooks).map(tool => mc.registerTool(tool))
+  // Release whatever a previous mount left behind before claiming the names again.
+  // PA mounts, unmounts and mounts again without a page load (single-spa
+  // re-registers the app each time the user returns to the cohort route), and a
+  // browser that hands back no unregister handle — or a teardown that never ran —
+  // leaves the names taken, which makes the *second* registerTool call throw.
+  try {
+    ;(mc[REGISTRATION_KEY] as (() => void) | undefined)?.()
+  } catch (err) {
+    console.warn('[WebMCP] Failed to release the previous tool registration', err)
+  }
 
-  // Return a cleanup function for beforeUnmount
-  return () => regs.forEach(r => r?.unregister?.())
+  const regs: Array<{ unregister?: () => void }> = []
+  for (const tool of createPaTools(store, hooks)) {
+    try {
+      regs.push(mc.registerTool(tool))
+    } catch (err) {
+      // One rejected tool must cost neither the other eight nor the caller: this
+      // runs from PatientAnalytics.vue's mounted(), where a throw skips the rest
+      // of the hook — including the in-page registry the assistant drawer reads.
+      console.warn(`[WebMCP] Failed to register ${tool.name}`, err)
+    }
+  }
+
+  // Cleanup for beforeUnmount.
+  const teardown = () => {
+    // Only disown the slot if it is still ours; a remount may already have
+    // claimed it (its registration is the live one and must survive this call).
+    if (mc[REGISTRATION_KEY] === teardown) delete mc[REGISTRATION_KEY]
+    regs.forEach(r => {
+      try {
+        r?.unregister?.()
+      } catch (err) {
+        console.warn('[WebMCP] Failed to unregister a tool', err)
+      }
+    })
+  }
+
+  mc[REGISTRATION_KEY] = teardown
+  return teardown
 }

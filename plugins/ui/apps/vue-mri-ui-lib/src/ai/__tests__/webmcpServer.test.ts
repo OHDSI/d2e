@@ -66,6 +66,43 @@ describe('createPaTools', () => {
       })
       expect(store.dispatch).not.toHaveBeenCalled()
     })
+
+    // The observation window (CohortEntryExit.vue's Entry/Exit buttons) is invisible
+    // in the constraint list, so it has to be reported explicitly or the caller
+    // describes a cohort measured over a window it never mentions.
+    it('reports the entry/exit window and how to read it', async () => {
+      const store = makeStore()
+      const dx = 'patient.interactions.conditionoccurrence.1'
+      const cards = {
+        patient: { props: { name: 'Basic Data' } },
+        [dx]: { props: { name: 'Diagnosis', isEntry: true } },
+      }
+      store.getters.getFilterCards = () => cards
+      store.getters.getFilterCard = (id: string) => cards[id]
+      store.getters.getMriFrontendConfig = { _internalConfig: { panelOptions: { cohortEntryExit: true } } }
+
+      const parsed = parse(await byName(createPaTools(store), 'pa_get_current_cohort').execute())
+
+      expect(parsed.cohortEntryExit).toEqual({
+        supported: true,
+        entry: { filterCardId: dx, name: 'Diagnosis' },
+        exit: null,
+      })
+      expect(parsed.cohortEntryExitNote).toMatch(/interaction START.*interaction END/s)
+    })
+
+    // Every seeded D2E config ships the gate off, so this is the note the model
+    // will actually read — it has to stop it offering a window it cannot build.
+    it('says entry/exit is unavailable when the dataset gate is off', async () => {
+      const store = makeStore()
+      store.getters.getMriFrontendConfig = { _internalConfig: { panelOptions: { cohortEntryExit: false } } }
+
+      const parsed = parse(await byName(createPaTools(store), 'pa_get_current_cohort').execute())
+
+      expect(parsed.cohortEntryExit).toEqual({ supported: false, entry: null, exit: null })
+      expect(parsed.cohortEntryExitNote).toMatch(/does not support an entry\/exit window/)
+      expect(parsed.cohortEntryExitNote).toMatch(/set_entry_exit will be rejected/)
+    })
   })
 
   describe('pa_list_cohorts', () => {
@@ -218,6 +255,37 @@ describe('createPaTools', () => {
         // cohort carries no timing at all.
         timeRelations: [],
       })
+    })
+
+    it('declares the entry/exit ops and their role argument in the patchOps schema', async () => {
+      const schema = byName(createPaTools(makeStore()), 'pa_apply_cohort_patch').inputSchema as any
+      const opProps = schema.properties.patchOps.items.properties
+
+      // A model can only emit an op the schema admits.
+      expect(opProps.op.enum).toContain('set_entry_exit')
+      expect(opProps.op.enum).toContain('clear_entry_exit')
+      expect(opProps.role.enum).toEqual(['entry', 'exit'])
+    })
+
+    // The gate lives in the applier; this asserts the refusal survives the tool
+    // boundary as a readable error rather than a thrown promise or a bare false.
+    it('surfaces the applier refusal when the dataset has no entry/exit support', async () => {
+      const store = makeStore()
+      const dx = 'patient.interactions.conditionoccurrence.1'
+      const cards = { [dx]: { props: { name: 'Diagnosis' } } }
+      store.getters.getFilterCards = () => cards
+      store.getters.getFilterCard = (id: string) => cards[id]
+      store.getters.getMriFrontendConfig = { _internalConfig: { panelOptions: { cohortEntryExit: false } } }
+
+      const parsed = parse(
+        await byName(createPaTools(store), 'pa_apply_cohort_patch').execute({
+          patchOps: [{ op: 'set_entry_exit', card: dx, role: 'entry' }],
+        })
+      )
+
+      expect(parsed.applied).toBe(false)
+      expect(parsed.error).toMatch(/does not support cohort entry\/exit/)
+      expect(store.dispatch).not.toHaveBeenCalledWith('updateCohortEntryExit', expect.anything())
     })
 
     it('returns applied:false with an error when neither patchOps nor bookmark is given', async () => {
@@ -1104,6 +1172,76 @@ describe('createPaTools', () => {
       expect(parsed.error).toContain('not a real result')
       expect(parsed.error).toContain('Request failed with status code 500')
     })
+
+    // An edit does not compute its own result: setFireRequest raises the store's
+    // staleness flag and the analytics query rewrites the count 7-24s later. The
+    // displayed count is NOT blanked, so during that window the store still holds a
+    // perfectly plausible number — the previous cohort's. Returning it is what handed
+    // the model a stale count as if it were the new one.
+    describe('while a recompute is in flight', () => {
+      const pendingStore = () => {
+        const store = makeStore()
+        Object.assign(store.getters, {
+          // The stale value that is still on screen while the new query runs.
+          getCurrentPatientCount: 4102,
+          isCurrentPatientCountStale: true,
+          getTotalPatientCount: 2694,
+          getTotalPatientListCount: 0,
+          getDisplayTotalGuardedPatientCount: false,
+          getActiveChart: 'vb',
+          getResponse: () => ({}),
+        })
+        return store
+      }
+
+      beforeEach(() => vi.useFakeTimers())
+      afterEach(() => vi.useRealTimers())
+
+      it('blocks until the query lands, then reports the new count', async () => {
+        const store = pendingStore()
+        let settled = false
+
+        const result = byName(createPaTools(store), 'pa_get_cohort_result')
+          .execute()
+          .then(res => {
+            settled = true
+            return res
+          })
+
+        await vi.advanceTimersByTimeAsync(5_000)
+        expect(settled).toBe(false)
+
+        // What the chart component does when its request resolves: writing the count
+        // clears the flag (SET_CURRENT_PATIENT_COUNT in the query module).
+        store.getters.getCurrentPatientCount = 1275
+        store.getters.isCurrentPatientCountStale = false
+        store.getters.getResponse = () => ({ data: { totalPatientCount: 1275 } })
+        await vi.advanceTimersByTimeAsync(500)
+
+        const parsed = parse(await result)
+        expect(parsed.currentPatientCount).toBe(1275)
+        expect(parsed.chart.totalPatientCount).toBe(1275)
+        expect(parsed.pending).toBeUndefined()
+      })
+
+      // The flag is not guaranteed to clear — nothing fires the query while the
+      // builder is unmounted — so the wait is bounded and says why it gave up.
+      it('reports pending rather than passing the stale count off as a result', async () => {
+        const result = byName(createPaTools(pendingStore()), 'pa_get_cohort_result').execute()
+
+        await vi.advanceTimersByTimeAsync(61_000)
+
+        const parsed = parse(await result)
+        expect(parsed.pending).toBe(true)
+        expect(parsed.error).toContain('still computing')
+        expect(parsed.error).toContain('builder')
+        // The number rides along (it is what the store holds) but is explicitly
+        // disowned: it is the previous cohort's, which is exactly why `pending` and
+        // the error text have to be unmissable.
+        expect(parsed.currentPatientCount).toBe(4102)
+        expect(parsed.error).toContain("PREVIOUS cohort's")
+      })
+    })
   })
 })
 
@@ -1149,5 +1287,64 @@ describe('registerPaTools', () => {
     registerPaTools(store)
 
     expect(registerTool).toHaveBeenCalledTimes(createPaTools(store).length)
+  })
+
+  it('releases a previous registration before claiming the tool names again', () => {
+    const unregister = vi.fn()
+    const registerTool = vi.fn((_tool: PaTool) => ({ unregister }))
+    ;(document as any).modelContext = { registerTool }
+    const store = makeStore()
+    const toolCount = createPaTools(store).length
+
+    // A mount whose teardown never ran (a hook that threw before beforeUnmount
+    // reached it, say), then a remount.
+    registerPaTools(store)
+    const cleanup = registerPaTools(store)
+
+    expect(unregister).toHaveBeenCalledTimes(toolCount)
+    expect(registerTool).toHaveBeenCalledTimes(toolCount * 2)
+
+    // The live registration is the second one, and it is still tearable down.
+    unregister.mockClear()
+    cleanup()
+    expect(unregister).toHaveBeenCalledTimes(toolCount)
+  })
+
+  it('never throws when the browser rejects a name a previous mount could not release', () => {
+    // Chrome builds that hand back no unregister handle leave the names taken for
+    // the rest of the page's life, so the second mount's registerTool throws.
+    // PatientAnalytics.vue publishes the drawer's registry from the same hook, so
+    // this must stay contained.
+    const taken = new Set<string>()
+    const registerTool = vi.fn((tool: PaTool) => {
+      if (taken.has(tool.name)) throw new Error(`Tool "${tool.name}" is already registered`)
+      taken.add(tool.name)
+      return undefined
+    })
+    ;(document as any).modelContext = { registerTool }
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const store = makeStore()
+    const toolCount = createPaTools(store).length
+
+    expect(() => registerPaTools(store)()).not.toThrow()
+
+    registerTool.mockClear()
+    expect(() => registerPaTools(store)).not.toThrow()
+    // Every tool was still attempted — one rejection does not abort the rest.
+    expect(registerTool).toHaveBeenCalledTimes(toolCount)
+  })
+
+  it('keeps the remount registration alive when a stale teardown runs late', () => {
+    const registerTool = vi.fn((_tool: PaTool) => ({ unregister: vi.fn() }))
+    ;(document as any).modelContext = { registerTool }
+    const store = makeStore()
+
+    const stale = registerPaTools(store)
+    const live = registerPaTools(store)
+    stale()
+
+    // The slot still belongs to the live registration, so the next mount releases
+    // that one rather than finding nothing to clean up.
+    expect((document as any).modelContext.__d2ePaToolRegistration).toBe(live)
   })
 })
