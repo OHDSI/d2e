@@ -977,7 +977,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install
+        # --legacy-peer-deps: @trex/notebook (reached through the nested file:
+        # link chain atlas -> notebook-plugin -> notebook) pulls webr, which
+        # pulls react-data-grid@^7.0.0-beta.44. That floats to a beta whose
+        # peers moved to react@^19.2, conflicting with the react@^18.2.0 pinned
+        # here. Resolving that conflict across the link chain crashes npm 10.8.2
+        # with "Cannot read properties of null (reading 'edgesOut')". Skipping
+        # peer resolution avoids the code path entirely. Same flag, same reason
+        # as the patient-analytics install above.
+        run: npm install --legacy-peer-deps
 
       - name: Patch seed config for e2e tests
         run: node ./scripts/patch-seed-for-e2e.js
