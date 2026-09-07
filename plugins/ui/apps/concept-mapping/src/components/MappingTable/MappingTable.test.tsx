@@ -35,6 +35,8 @@ const suggestion = (overrides: Partial<SuggestionDto>): SuggestionDto => ({
   domainId: "",
   vocabularyId: "",
   suggestedBy: "user-1",
+  suggestedByName: null,
+  approvedByName: null,
   createdAt: "2026-01-01T00:00:00Z",
   isApproved: false,
   ...overrides,
@@ -220,13 +222,45 @@ describe("MappingTable", () => {
     });
   });
 
-  test("clicking a row does not open the terminology search", async () => {
-    const { dispatch } = renderWithProviders(<MappingTable selectedDatasetId="ds-1" />, { state });
-    await screen.findByText("A1");
+  test("clicking anywhere in a row opens the concept popup for that row", async () => {
+    const { dispatch } = renderWithProviders(
+      <MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />,
+      { state }
+    );
+    await waitFor(() => expect(getSuggestions).toHaveBeenCalledTimes(1));
 
-    rowFor("A1").click();
+    within(rowFor("A1")).getByText("Aspirin").click();
 
-    expect(dispatch).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SET_SELECTED_DATA",
+      payload: expect.objectContaining({ sourceRowId: "r1", code: "A1", name: "Aspirin" }),
+    });
+  });
+
+  test("clicking the row-selection checkbox selects the row instead of opening the popup", async () => {
+    const { dispatch } = renderWithProviders(
+      <MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />,
+      { state }
+    );
+    await waitFor(() => expect(getSuggestions).toHaveBeenCalledTimes(1));
+
+    within(rowFor("A1")).getByRole("checkbox").click();
+
+    expect(await screen.findByText(/selected/)).toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SET_SELECTED_DATA" }));
+  });
+
+  test("clicking a per-row action icon does not also open the popup", async () => {
+    const { dispatch } = renderWithProviders(
+      <MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />,
+      { state }
+    );
+    await waitFor(() => expect(getSuggestions).toHaveBeenCalledTimes(1));
+
+    within(rowFor("A1")).getByLabelText("Flag").click();
+
+    await waitFor(() => expect(setRowFlag).toHaveBeenCalledWith("df-1", "node-1", "r1", true));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SET_SELECTED_DATA" }));
   });
 
   test("renders the dataset reference label with the dataset name", async () => {
@@ -295,6 +329,55 @@ describe("MappingTable", () => {
     await waitFor(() => expect(getSuggestions).toHaveBeenCalledTimes(2));
   });
 
+  test("Checked by shows the suggester on a suggested row and the approver on an approved row", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({
+        sourceRowId: "r2",
+        suggestions: [suggestion({ id: "s1", isApproved: false, suggestedByName: "alice" })],
+      }),
+      backendRow({
+        sourceRowId: "r3",
+        suggestions: [
+          suggestion({ id: "s2", isApproved: true, suggestedByName: "alice", approvedByName: "bob" }),
+        ],
+      }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+
+    await waitFor(() => expect(within(rowFor("B2")).getByText("alice")).toBeInTheDocument());
+    expect(within(rowFor("C3")).getByText("bob")).toBeInTheDocument();
+    expect(within(rowFor("C3")).queryByText("alice")).not.toBeInTheDocument();
+  });
+
+  test("Checked by names each suggestion's own submitter on a branched row", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({
+        sourceRowId: "r2",
+        suggestions: [
+          suggestion({ id: "s1", conceptId: 111, suggestedByName: "alice" }),
+          suggestion({ id: "s2", conceptId: 222, suggestedByName: "bob" }),
+        ],
+      }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+
+    await waitFor(() => expect(within(rowFor("B2")).getByText("alice")).toBeInTheDocument());
+    expect(within(rowFor("B2")).getByText("bob")).toBeInTheDocument();
+  });
+
+  test("Checked by falls back to a dash for a suggestion recorded before names were stored", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({ sourceRowId: "r2", suggestions: [suggestion({ id: "s1", suggestedByName: null })] }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+
+    await waitFor(() => expect(within(rowFor("B2")).getByText("Suggested (1)")).toBeInTheDocument());
+    expect(within(rowFor("B2")).getByText("\u2014")).toBeInTheDocument();
+  });
+
   test("selecting rows shows the bulk toolbar; bulk Flag flags every selected row then refetches", async () => {
     renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
     await waitFor(() => expect(getSuggestions).toHaveBeenCalledTimes(1));
@@ -310,17 +393,116 @@ describe("MappingTable", () => {
     await waitFor(() => expect(getSuggestions).toHaveBeenCalledTimes(2));
   });
 
-  test("bulk Approve is disabled when a selected row has more than one suggestion", async () => {
+  test("bulk Approve stays enabled when only some selected rows have competing suggestions", async () => {
     getSuggestions.mockResolvedValue([
-      backendRow({ sourceRowId: "r2", suggestions: [suggestion({ id: "s1" }), suggestion({ id: "s2" })] }),
+      backendRow({ sourceRowId: "r2", suggestions: [suggestion({ id: "s1", conceptId: 111 })] }),
+      backendRow({
+        sourceRowId: "r3",
+        suggestions: [suggestion({ id: "s2", conceptId: 222 }), suggestion({ id: "s3", conceptId: 333 })],
+      }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+    await waitFor(() => expect(within(rowFor("C3")).getByText("Suggested (2)")).toBeInTheDocument());
+
+    within(rowFor("B2")).getByRole("checkbox").click();
+    within(rowFor("C3")).getByRole("checkbox").click();
+
+    const toolbar = (await screen.findByText(/selected/)).parentElement as HTMLElement;
+    expect(within(toolbar).getByText("Approve").closest("button")).toBeEnabled();
+  });
+
+  test("bulk Approve skips rows with competing suggestions and approves the unambiguous ones", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({ sourceRowId: "r2", suggestions: [suggestion({ id: "s1", conceptId: 111 })] }),
+      backendRow({
+        sourceRowId: "r3",
+        suggestions: [suggestion({ id: "s2", conceptId: 222 }), suggestion({ id: "s3", conceptId: 333 })],
+      }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+    await waitFor(() => expect(within(rowFor("C3")).getByText("Suggested (2)")).toBeInTheDocument());
+
+    within(rowFor("B2")).getByRole("checkbox").click();
+    within(rowFor("C3")).getByRole("checkbox").click();
+
+    const toolbar = (await screen.findByText(/selected/)).parentElement as HTMLElement;
+    within(toolbar).getByText("Approve").closest("button")!.click();
+
+    await waitFor(() => expect(approve).toHaveBeenCalledWith("s1"));
+    // The ambiguous row is left for the user to resolve, so neither of its concepts wins.
+    expect(approve).not.toHaveBeenCalledWith("s2");
+    expect(approve).not.toHaveBeenCalledWith("s3");
+  });
+
+  test("bulk Approve is disabled when every selected row has competing suggestions, since nothing would change", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({
+        sourceRowId: "r2",
+        suggestions: [suggestion({ id: "s1", conceptId: 111 }), suggestion({ id: "s2", conceptId: 222 })],
+      }),
     ]);
 
     renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
     await waitFor(() => expect(within(rowFor("B2")).getByText("Suggested (2)")).toBeInTheDocument());
 
-    screen.getAllByRole("checkbox")[0].click();
+    within(rowFor("B2")).getByRole("checkbox").click();
 
     const toolbar = (await screen.findByText(/selected/)).parentElement as HTMLElement;
     expect(within(toolbar).getByText("Approve").closest("button")).toBeDisabled();
+  });
+
+  // Bulk Approve only makes sense when every selected row has exactly one suggestion waiting
+  // on a decision. Selecting the toolbar's Approve otherwise would either silently skip rows
+  // (unchecked ones have nothing to approve) or do nothing at all (all already approved).
+  const selectRow = (code: string) => within(rowFor(code)).getByRole("checkbox").click();
+  const bulkApproveButton = async () => {
+    const toolbar = (await screen.findByText(/selected/)).parentElement as HTMLElement;
+    return within(toolbar).getByText("Approve").closest("button");
+  };
+
+  test("bulk Approve is disabled when any selected row is unchecked", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({ sourceRowId: "r3", suggestions: [suggestion({ id: "s1", isApproved: false })] }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+    await waitFor(() => expect(within(rowFor("C3")).getByText("Suggested (1)")).toBeInTheDocument());
+
+    selectRow("C3");
+    selectRow("A1"); // unchecked - nothing to approve
+
+    expect(await bulkApproveButton()).toBeDisabled();
+  });
+
+  test("bulk Approve is disabled when every selected row is already approved", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({ sourceRowId: "r2", suggestions: [suggestion({ id: "s1", isApproved: true })] }),
+      backendRow({ sourceRowId: "r3", suggestions: [suggestion({ id: "s2", isApproved: true })] }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+    await waitFor(() => expect(within(rowFor("B2")).getByText("Approved")).toBeInTheDocument());
+
+    selectRow("B2");
+    selectRow("C3");
+
+    expect(await bulkApproveButton()).toBeDisabled();
+  });
+
+  test("bulk Approve stays enabled for suggested rows, even alongside an approved one", async () => {
+    getSuggestions.mockResolvedValue([
+      backendRow({ sourceRowId: "r2", suggestions: [suggestion({ id: "s1", isApproved: false })] }),
+      backendRow({ sourceRowId: "r3", suggestions: [suggestion({ id: "s2", isApproved: true })] }),
+    ]);
+
+    renderWithProviders(<MappingTable selectedDatasetId="ds-1" dataflowId="df-1" nodeId="node-1" />, { state });
+    await waitFor(() => expect(within(rowFor("B2")).getByText("Suggested (1)")).toBeInTheDocument());
+
+    selectRow("B2");
+    selectRow("C3");
+
+    expect(await bulkApproveButton()).toBeEnabled();
   });
 });

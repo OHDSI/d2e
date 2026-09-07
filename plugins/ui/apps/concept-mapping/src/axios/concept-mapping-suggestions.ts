@@ -18,6 +18,10 @@ export interface SuggestionDto {
   domainId: string;
   vocabularyId: string;
   suggestedBy: string;
+  // Display names behind the table's "Checked by" column: who suggested this concept, and -
+  // once approved - who approved it. Null on suggestions written before these were recorded.
+  suggestedByName: string | null;
+  approvedByName: string | null;
   createdAt: string;
   isApproved: boolean;
 }

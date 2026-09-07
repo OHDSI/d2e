@@ -28,6 +28,9 @@ export class ConceptMappingSuggestionController {
 
   // Extracts the authenticated user's `sub` claim from the bearer token,
   // same idiom as AnalysisController: decode(token.replace(/bearer /i, "")).
+  // The display name that goes with it is `req.username`, resolved once per
+  // request by the `extractUsernameFromJwt` middleware jobplugins applies to
+  // every route (see index.ts) - no extra lookup needed here.
   private getSub(req: Request): string {
     const authHeader = req.headers["authorization"];
     if (!authHeader) {
@@ -91,6 +94,7 @@ export class ConceptMappingSuggestionController {
         sourceRowId,
         { conceptId, conceptName, conceptCode, domainId, vocabularyId },
         sub,
+        req.username,
       );
       return res.status(201).send(result);
     } catch (error) {
@@ -102,7 +106,7 @@ export class ConceptMappingSuggestionController {
     try {
       const { id } = req.params;
       const sub = this.getSub(req);
-      await this.service.approve(id, sub);
+      await this.service.approve(id, sub, req.username);
       return res.status(204).send();
     } catch (error) {
       return this.handleError(error, res);

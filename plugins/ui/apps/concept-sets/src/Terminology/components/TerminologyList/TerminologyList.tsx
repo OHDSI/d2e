@@ -1196,6 +1196,15 @@ const TerminologyList: FC<TerminologyListProps> = ({
           }
           const terminology = row.original;
           onConceptClick(terminology.conceptId);
+          // CONCEPT_MAPPING: the row IS the picker, so clicking anywhere in it selects that
+          // concept - the same thing its radio does. Elsewhere a row click only opens the
+          // concept details panel and selection stays an explicit add/remove action, so this
+          // is deliberately scoped to CONCEPT_MAPPING. (In CONCEPT_MAPPING the details panel
+          // is suppressed anyway - see the showDetails effect in Terminology.tsx - which is
+          // why a row click used to do nothing but tint the row.)
+          if (mode === "CONCEPT_MAPPING") {
+            onClickAddRemoveButton(terminology);
+          }
         },
         sx: {
           cursor: isAtlas ? "auto" : "pointer", //you might want to change the cursor too when adding an onClick
