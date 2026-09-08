@@ -632,7 +632,7 @@ const AddStudyDialog: FC<AddStudyDialogProps> = ({ open, onClose, loading, setLo
             fullWidth
             variant="standard"
             multiline
-            rows={8}
+            rows={4}
             label={getText(i18nKeys.ADD_STUDY_DIALOG__DATASET_SUMMARY)}
             value={formData.summary}
             onChange={(event) => handleFormDataChange({ summary: event.target.value })}
