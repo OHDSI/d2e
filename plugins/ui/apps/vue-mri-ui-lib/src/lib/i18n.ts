@@ -441,6 +441,7 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_SELECT: 'Select exploration',
     MRI_PA_EXPLORATIONS_SELECT_ALL: 'Select all',
     MRI_PA_EXPLORATIONS_N_SELECTED: '{0} selected',
+    MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED: 'These explorations were not deleted:',
     MRI_PA_EXPLORATIONS_EMPTY: 'No explorations yet',
     MRI_PA_EXPLORATIONS_EMPTY_BODY: 'Your saved data exploration will appear here.',
     MRI_PA_EXPLORATIONS_EMPTY_SEARCH_TITLE: 'No matching explorations',
@@ -1548,6 +1549,8 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_SELECT_ALL: 'Alle auswählen',
     // TODO(i18n): needs native review.
     MRI_PA_EXPLORATIONS_N_SELECTED: '{0} ausgewählt',
+    // TODO(i18n): needs native review.
+    MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED: 'Diese Explorationen wurden nicht gelöscht:',
     MRI_PA_EXPLORATIONS_EMPTY: 'Noch keine Explorationen',
     MRI_PA_EXPLORATIONS_LOAD_ERROR: 'Explorationen konnten nicht geladen werden.',
     MRI_PA_BUTTON_NEW_EXPLORATION: 'Neue Exploration starten',
@@ -2629,6 +2632,8 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_SELECT_ALL: '全选',
     // TODO(i18n): needs native review.
     MRI_PA_EXPLORATIONS_N_SELECTED: '已选择 {0} 项',
+    // TODO(i18n): needs native review.
+    MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED: '以下探索未被删除：',
     MRI_PA_EXPLORATIONS_EMPTY: '暂无探索',
     MRI_PA_EXPLORATIONS_LOAD_ERROR: '无法加载探索。',
     MRI_PA_BUTTON_NEW_EXPLORATION: '开始新探索',

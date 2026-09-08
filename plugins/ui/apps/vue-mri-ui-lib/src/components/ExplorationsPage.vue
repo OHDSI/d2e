@@ -318,6 +318,47 @@
     <RenameExplorationDialog v-model="renameOpen" :bookmark-display="actionTarget" />
     <DeleteExplorationDialog v-model="deleteOpen" :bookmark-display="actionTarget" />
 
+    <!-- Mounted once, outside the grid, as Bookmarks.vue:153-158 does.
+         `compareOpen` is a trigger the dialog watches, not its own visibility
+         state, so it is reset only in `closeEv` (blueprint pr10/02 section 3b). -->
+    <CohortComparisonDialog
+      :bookmark-list="comparableBookmarks"
+      :open-compare-dialog="compareOpen"
+      @close-ev="compareOpen = false"
+    />
+
+    <!-- The bulk-delete confirmation. Same copy as the single-delete dialog,
+         built on the same D2eDialog primitive rather than reusing the
+         DeleteExplorationDialog.vue component instance — see the comment by
+         `confirmBulkDelete` and DECISIONS.md. -->
+    <D2eDialog
+      v-model="bulkDeleteOpen"
+      :busy="bulkDeleting"
+      :title="getText('MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE')"
+      data-testid="explorations-bulk-delete-modal"
+      @close="closeBulkDelete"
+    >
+      <p>{{ getText('MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT') }}</p>
+      <template #actions>
+        <D2eButton
+          variant="secondary"
+          :disabled="bulkDeleting"
+          data-testid="explorations-bulk-delete-cancel-btn"
+          @click="closeBulkDelete"
+        >
+          {{ getText('MRI_PA_BUTTON_CANCEL') }}
+        </D2eButton>
+        <D2eButton
+          variant="danger"
+          :disabled="bulkDeleting"
+          data-testid="explorations-bulk-delete-confirm-btn"
+          @click="confirmBulkDelete"
+        >
+          {{ getText('MRI_PA_BUTTON_YES_DELETE') }}
+        </D2eButton>
+      </template>
+    </D2eDialog>
+
     <Transition name="slide-in-right">
       <div
         v-if="filterSummaryOpen"
@@ -338,7 +379,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
-import { D2eButton, D2eCheckbox, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
+import { D2eButton, D2eCheckbox, D2eDialog, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
@@ -354,6 +395,8 @@ import { allSelected, someSelected } from './helpers/explorationSelection'
 import { applyFilters, authorOptions, emptyFilters, isEmpty, type ExplorationFilters } from './helpers/explorationFilters'
 import { PAGE_SIZES, clampPage, pageSlice } from './helpers/explorationPaging'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
+import { deleteExploration, type DeleteExplorationDeps } from './helpers/deleteExploration'
+import { runBulkDelete } from './helpers/bulkDeleteExplorations'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
 import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
 import ExplorationDataQualityIcon from './icons/ExplorationDataQualityIcon.vue'
@@ -370,6 +413,7 @@ import FilterCardSummary from './FilterCardSummary.vue'
 import DashboardFlowModals from './DashboardFlowModals.vue'
 import ExplorationPagination from './ExplorationPagination.vue'
 import ExplorationEmptyState from './ExplorationEmptyState.vue'
+import CohortComparisonDialog from './CohortComparisonDialog.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -585,10 +629,110 @@ const matchedIds = computed(() => matchedCards.value.map(toCardId))
 const allPageSelected = computed(() => allSelected(pageIds.value, explorations.selectedBookmarkIds))
 const somePageSelected = computed(() => someSelected(pageIds.value, explorations.selectedBookmarkIds))
 const selectedCountLabel = computed(() => getText('MRI_PA_EXPLORATIONS_N_SELECTED', String(explorations.selectedCount)))
-// Stubs in this subphase. Subphase 2 wires Compare and Delete.
-const canCompare = computed(() => explorations.selectedCount >= 2)
-const openCompare = (): void => {}
-const openBulkDelete = (): void => {}
+
+/** Every filtered record, keyed by its namespaced card id. Selection is
+    resolved against `matchedCards`, never `cards` — the selection spans
+    pages, and a record on another page must still be actionable. */
+const recordsById = computed(() => {
+  const map = new Map<string, BookmarkDisplay>()
+  for (const record of matchedCards.value) map.set(toCardId(record), record)
+  return map
+})
+
+/** The selected ids, mapped back to their records. `.filter(Boolean)` is load
+    bearing, not padding: `retain` runs on a watcher, so a selected id can
+    outlive its record for one tick after a filter/search/sort change. */
+const selectedRecords = computed(() =>
+  explorations.selectedBookmarkIds
+    .map(id => recordsById.value.get(id))
+    .filter((r): r is BookmarkDisplay => Boolean(r)),
+)
+
+/* ---- Compare ------------------------------------------------------------
+   Reuses CohortComparisonDialog whole; its own ten-item cap and warning are
+   untouched (blueprint pr10/02 section 3b). */
+
+/** Only a record with a `bookmark` can be compared — CohortComparisonDialog
+    forwards raw Bookmark objects to cohortComparisonContainer. */
+const comparableBookmarks = computed(() => selectedRecords.value.map(r => r.bookmark).filter(Boolean))
+/** More than one, not "any": two Atlas-only records must leave Compare
+    disabled rather than opening an empty comparison. */
+const canCompare = computed(() => comparableBookmarks.value.length > 1)
+/** A trigger CohortComparisonDialog watches, not a v-model. Reset only in
+    `closeEv` — an early reset would leave the dialog unable to reopen. */
+const compareOpen = ref(false)
+const openCompare = (): void => {
+  compareOpen.value = true
+}
+
+/* ---- Bulk delete ----------------------------------------------------------
+   The confirmation reuses the same D2eDialog primitive and the same three
+   i18n strings as the single-delete dialog (unchanged copy, per
+   pr10/00-figma-spec.md section 7). It is not the DeleteExplorationDialog.vue
+   *component* instance: that component's confirm() is wired to one
+   `bookmarkDisplay` prop and has no seam to substitute the bulk loop below
+   without changing single-delete behaviour, which is out of scope here. See
+   DECISIONS.md. */
+
+const bulkDeleteOpen = ref(false)
+const bulkDeleting = ref(false)
+const openBulkDelete = (): void => {
+  bulkDeleteOpen.value = true
+}
+const closeBulkDelete = (): void => {
+  if (bulkDeleting.value) return
+  bulkDeleteOpen.value = false
+}
+
+const deleteDeps: DeleteExplorationDeps = {
+  fireBookmarkQuery: payload => store.dispatch('fireBookmarkQuery', payload),
+  fireDeleteMaterializedCohortQuery: id => store.dispatch('fireDeleteMaterializedCohortQuery', id),
+  fireDeleteAtlasCohortDefinitionQuery: id => store.dispatch('fireDeleteAtlasCohortDefinitionQuery', id),
+}
+
+/**
+ * Mirrors `DeleteExplorationDialog.confirm()`'s own active-bookmark check,
+ * for every successfully-deleted target rather than one. A record in
+ * `failedNames` was never actually deleted, so it cannot be the reason to
+ * clear the active bookmark.
+ */
+const clearActiveBookmarkIfDeleted = async (targets: BookmarkDisplay[], failedNames: string[]): Promise<void> => {
+  const activeBookmark = store.getters.getActiveBookmark
+  if (!activeBookmark) return
+  const failed = new Set(failedNames)
+  const clearedTheActiveOne = targets.some(record => {
+    if (failed.has(record.displayName)) return false
+    if (getBookmarkType(record) === 'M') return false
+    return activeBookmark.bookmarkname === record.bookmark?.name
+  })
+  if (!clearedTheActiveOne) return
+  store.commit(types.SET_ACTIVE_BOOKMARK, null)
+  await store.dispatch('resetChart')
+}
+
+const notifyBulkDeleteFailure = (failedNames: string[]): void => {
+  notifications.setAlertMessage({
+    message: `${getText('MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED')} ${failedNames.join(', ')}`,
+    messageType: 'error',
+  })
+}
+
+const confirmBulkDelete = async (): Promise<void> => {
+  if (bulkDeleting.value) return
+  bulkDeleting.value = true
+  try {
+    await runBulkDelete(selectedRecords.value, {
+      deleteOne: record => deleteExploration(record, deleteDeps),
+      reload: () => store.dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } }),
+      clearSelection: () => explorations.clear(),
+      clearActiveBookmarkIfDeleted,
+      notifyFailure: notifyBulkDeleteFailure,
+    })
+  } finally {
+    bulkDeleting.value = false
+    bulkDeleteOpen.value = false
+  }
+}
 
 // A change to the search, a filter or the sort can drop cards out of the
 // matched set; a selected card that leaves it must leave the selection too.
