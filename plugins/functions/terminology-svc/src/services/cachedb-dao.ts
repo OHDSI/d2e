@@ -616,6 +616,7 @@ export class CachedbDAO {
         concept_with_scores as (
           select
             ${columnsToSelect}${columns.length === 0 ? ", " : ""}
+            c.concept_bm25,
             -- Exact match scoring (highest priority)
             CASE
               WHEN c.concept_name_lower = LOWER($1) THEN ${this.scoreConceptNameEquals}
@@ -631,7 +632,12 @@ export class CachedbDAO {
           from (
             select
               ${columnsToSelect}${columns.length === 0 ? ", " : ""}
-              LOWER(concept_name) as concept_name_lower
+              LOWER(concept_name) as concept_name_lower,
+              -- Kept from the candidate scan rather than recomputed by a
+              -- second CTE over the whole vocabulary: this scan already
+              -- evaluates match_bm25, so retaining the score removes a full
+              -- pass over all ~9.3M concept rows.
+              ${this.fts_concept_identifier}.match_bm25(c.concept_id, $1) as concept_bm25
             from ${this.vocabSchemaName}.concept c
             where ${this.fts_concept_identifier}.match_bm25(c.concept_id, $1) IS NOT NULL
                or c.concept_id in (select concept_id from synonym_scores)
@@ -678,17 +684,11 @@ export class CachedbDAO {
         `;
         queryParams = [searchText, escapedSearchText, textEmbedding];
       } else {
-        // FTS-only: raw concept BM25 here; synonym BM25 is merged in the final
-        // select via getBestBm25Score, and syn_exact_score via LEFT JOIN.
-        searchScores = `
-          search_scores as (
-            select
-              ${columnsToSelect}${columns.length === 0 ? ", " : ""}
-              ${this.fts_concept_identifier}.match_bm25(concept_id, $1) as concept_bm25
-            from
-              ${this.vocabSchemaName}.concept c
-          )
-        `;
+        // FTS-only: the concept BM25 score already comes from
+        // concept_with_scores, so no second pass over the vocabulary is needed.
+        // Synonym BM25 is merged in the final select via getBestBm25Score, and
+        // syn_exact_score via LEFT JOIN.
+        searchScores = "";
         queryParams = [searchText, escapedSearchText];
       }
 
@@ -720,7 +720,7 @@ export class CachedbDAO {
           *,
           (
             COALESCE(${this.getBestBm25Score(
-              "ss.concept_bm25",
+              "c.concept_bm25",
               "sy.syn_bm25",
             )}, 0)
             + c.exact_match_score
@@ -729,12 +729,10 @@ export class CachedbDAO {
           ) as score
         from
           concept_with_scores c
-        join search_scores ss
-          on ss.concept_id = c.concept_id
         left join synonym_scores sy
           on sy.concept_id = c.concept_id
         WHERE (
-          ss.concept_bm25 IS NOT NULL
+          c.concept_bm25 IS NOT NULL
           OR sy.syn_bm25 IS NOT NULL
           OR c.exact_match_score > 0
           OR sy.syn_exact_score > 0
