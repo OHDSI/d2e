@@ -98,7 +98,13 @@ function createWriter() {
         writer: {
             append(fileName: string, event: Record<string, unknown>) {
                 assert.equal(fileName, "cdm-sql-access.ndjson");
-                events.push(event);
+                // Every event carries the routing fields at the top level and the
+                // payload under `message`; assert the envelope once here and hand
+                // the payload to the assertions below.
+                assert.equal(event["log-type"], "audit");
+                assert.equal(event["audit-log-type"], "access");
+                assert.equal(event["service-name"], "analytics-svc");
+                events.push(event.message as Record<string, unknown>);
                 return Promise.resolve();
             },
         },
