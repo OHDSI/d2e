@@ -3,11 +3,14 @@
        rule (docs/projects/vue-mri-ui/pr12/01-pagination.md). -->
   <div class="exploration-pagination" data-testid="explorations-pagination">
     <div class="exploration-pagination__left">
-      <span class="exploration-pagination__label">{{ getText('MRI_PA_EXPLORATIONS_ROWS_PER_PAGE') }}</span>
+      <span id="exploration-pagination-size-label" class="exploration-pagination__label">
+        {{ getText('MRI_PA_EXPLORATIONS_ROWS_PER_PAGE') }}
+      </span>
       <div class="exploration-pagination__size">
         <select
           class="exploration-pagination__size-input"
           :value="pageSize"
+          aria-labelledby="exploration-pagination-size-label"
           data-testid="explorations-page-size"
           @change="onPageSizeChange($event)"
         >

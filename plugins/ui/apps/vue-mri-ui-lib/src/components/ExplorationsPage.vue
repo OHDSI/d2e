@@ -251,9 +251,11 @@
 
     <ExplorationPagination
       v-if="!loading && !loadError && matchedCards.length > 0"
-      v-model:page="page"
-      v-model:page-size="pageSize"
+      :page="currentPage"
+      :page-size="pageSize"
       :total="matchedCards.length"
+      @update:page="page = $event"
+      @update:page-size="pageSize = $event"
     />
 
     </div>
@@ -480,10 +482,16 @@ const emptyState = computed(() => {
   }
 })
 
+// Clamped, not `page` itself: the reset-on-change watcher only sees
+// searchQuery/filters/sortKey, so a list that shrinks through any other path
+// (e.g. deleting the last card on a page) leaves `page` stale. Both the grid
+// and the pagination bar read this, or the bar would show a stranded page's
+// nonsensical range and backwards disabled state even though the grid itself
+// was showing the correctly-clamped page underneath it.
+const currentPage = computed(() => clampPage(page.value, matchedCards.value.length, pageSize.value))
+
 const cards = computed(() => {
-  // A clampPage on read is the belt to the reset-on-change watcher's braces.
-  const currentPage = clampPage(page.value, matchedCards.value.length, pageSize.value)
-  return pageSlice(matchedCards.value, currentPage, pageSize.value).map((card: BookmarkDisplay) => {
+  return pageSlice(matchedCards.value, currentPage.value, pageSize.value).map((card: BookmarkDisplay) => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
