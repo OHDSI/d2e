@@ -258,9 +258,9 @@
       duration of the flow, so the two never overlap.
     -->
     <DashboardFlowModals
-      v-if="explorations.analyzeInProgress || dashboardFlowModalOpen"
+      v-if="dashboardFlowModalOpen"
       :flow="dashboardFlow"
-      :dataset-id="store.getters.getSelectedDataset?.id ?? portalContext.datasetId"
+      :dataset-id="store.getters.getSelectedDataset?.id || ''"
       :cohort-id="(dashboardFlow.savedCohortId ?? store.getters.getActiveCohortMaterializedId)?.toString() || ''"
     />
 
@@ -304,6 +304,7 @@ import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useDashboardFlow } from '../composables/useDashboardFlow'
+import * as types from '../store/mutation-types'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
@@ -371,6 +372,8 @@ const summaryBusy = ref(false)
 const filterSummaryName = ref('')
 /** Its bookmark id, so reopening the same one is a no-op. */
 const filterSummaryBmkId = ref<string | null>(null)
+/** True across the Analyze bookmark load, to reject overlapping opens. */
+const analyzeLoading = ref(false)
 /**
  * A snapshot of the live filter state the panel is about to overwrite, so
  * closing can put it back exactly — including edits that were never saved.
@@ -669,20 +672,44 @@ const openAnalyze = async (card: { source: BookmarkDisplay }): Promise<void> => 
   // only reads `source.bookmark?.id`.
   const bmkId = card.source.bookmark?.id
   if (!bmkId) return
+  // `loadbookmarkToState` is a multi-second network and parse. Two overlapping
+  // opens would interleave over the same shared bookmark state and both call
+  // `openDashboardModal`, the second resetting the modal the first opened.
+  if (analyzeLoading.value) return
+  analyzeLoading.value = true
+
+  // Suppressed only across the dispatch. That is the whole window the watcher
+  // cares about — it fires on the unset-to-set transition, which happens
+  // inside `loadbookmarkToState`, and the bookmark stays set afterwards, so no
+  // later transition occurs. Keeping the flag raised for the whole flow made
+  // it possible to strand it true, after which the watcher never switched
+  // again and the deep-link path stopped working.
   explorations.analyzeInProgress = true
   try {
     await store.dispatch('loadbookmarkToState', { bmkId, chartType: card.source.bookmark?.chartType })
-    dashboardFlow.openDashboardModal()
   } catch (error) {
-    explorations.analyzeInProgress = false
-    // Mirrors PatientAnalytics.loadExploration's own catch: the saved filter
-    // does not fit the active config.
+    // `loadbookmarkToState` commits SET_ACTIVE_BOOKMARK before the IFR
+    // conversion can reject, so the bookmark is left active on a failure and
+    // PatientAnalytics would show its nav tab for a half-restored cohort.
+    store.commit(types.SET_ACTIVE_BOOKMARK, null)
     notifications.setAlertMessage({
       message: getText('MRI_PA_BMK_COMPATIBLE_ERROR'),
       messageType: 'error',
       title: getText('MRI_PA_NOTIFICATION_ERROR'),
     })
     console.error('[ExplorationsPage] Analyze could not load the exploration', error)
+    return
+  } finally {
+    explorations.analyzeInProgress = false
+    analyzeLoading.value = false
+  }
+
+  try {
+    // Awaited: `openDashboardModal` is async, and an unawaited rejection would
+    // escape this handler entirely.
+    await dashboardFlow.openDashboardModal()
+  } catch (error) {
+    console.error('[ExplorationsPage] Analyze could not open the wizard', error)
   }
 }
 
@@ -699,14 +726,28 @@ const dashboardFlowModalOpen = computed(
     dashboardFlow.showSaveCohortModal,
 )
 
-watch(dashboardFlowModalOpen, (isOpen, wasOpen) => {
+watch(dashboardFlowModalOpen, async (isOpen, wasOpen) => {
   if (isOpen || !wasOpen) return
   // Resetting mid-flow (e.g. between the selection modal closing and the next
   // one opening) breaks the wizard; ChartToolbar.vue guards its own reset the
   // same way.
   if (dashboardFlow.isProcessingDashboardFlow()) return
   dashboardFlow.resetDashboardFlowState()
-  explorations.analyzeInProgress = false
+
+  // The flow mutates Vuex the cohort builder shares: it sets the active
+  // bookmark and can dispatch addFilterCard for fields the wizard needed.
+  // `resetDashboardFlowState` drops its record of those cards without
+  // reverting them, so without this the builder opens carrying a filter the
+  // user never added and `useUnsavedChanges` reports a dirty state — which
+  // also blocks closing the browser tab. Required by `pr9/01-analyze-action`
+  // section 2c.
+  store.commit(types.SET_ACTIVE_BOOKMARK, null)
+  try {
+    await store.dispatch('queryReset')
+    await store.dispatch('resetChart')
+  } catch (error) {
+    console.error('[ExplorationsPage] could not reset the shared filter state', error)
+  }
 })
 
 // Mirrors Bookmarks.addCohort: a D2E record materialises its bookmark, an Atlas
