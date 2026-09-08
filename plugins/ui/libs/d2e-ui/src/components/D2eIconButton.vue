@@ -26,16 +26,16 @@ import { computed } from "vue";
 interface Props {
   category?: D2eIconButtonCategory;
   size?: D2eIconButtonSize;
-  icon?: string;
-  ariaLabel?: string;
+  /** No content slot backs this button, so an icon is mandatory. */
+  icon: string;
+  /** No visible label backs this button, so an accessible name is mandatory. */
+  ariaLabel: string;
   disabled?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   category: "no-stroke",
   size: "md",
-  icon: undefined,
-  ariaLabel: undefined,
   disabled: false,
 });
 

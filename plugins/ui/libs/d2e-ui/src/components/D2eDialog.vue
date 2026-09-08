@@ -182,7 +182,10 @@ function closeFromButton() {
 <style scoped lang="scss">
 .d2e-dialog {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  max-height: 90vh;
   overflow: hidden !important;
   border-radius: 16px !important;
   background: var(--d2e-color-white);
@@ -191,6 +194,7 @@ function closeFromButton() {
 
   &__header {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
@@ -214,6 +218,9 @@ function closeFromButton() {
 
   &__body {
     position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     padding: 16px 24px 24px;
     font-size: var(--d2e-font-body1-size);
     line-height: var(--d2e-font-body1-line-height);
@@ -222,6 +229,7 @@ function closeFromButton() {
 
   &__actions {
     display: flex;
+    flex-shrink: 0;
     gap: 16px;
     padding: 16px 24px;
 
