@@ -305,6 +305,11 @@ import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useDashboardFlow } from '../composables/useDashboardFlow'
 import * as types from '../store/mutation-types'
+import {
+  analyzeBookmarkId,
+  isDashboardFlowOpen,
+  shouldResetDashboardFlow,
+} from './helpers/explorationAnalyze'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
 import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
@@ -670,7 +675,7 @@ const openAnalyze = async (card: { source: BookmarkDisplay }): Promise<void> => 
   // Only a bookmark id: a cohort-definition or Atlas id comes from a different
   // table and can collide with one, the same reason `openFilterSummary` above
   // only reads `source.bookmark?.id`.
-  const bmkId = card.source.bookmark?.id
+  const bmkId = analyzeBookmarkId(card)
   if (!bmkId) return
   // `loadbookmarkToState` is a multi-second network and parse. Two overlapping
   // opens would interleave over the same shared bookmark state and both call
@@ -717,21 +722,14 @@ const openAnalyze = async (card: { source: BookmarkDisplay }): Promise<void> => 
 // closing (finishing or cancelling) can clean up the shared Vuex state the
 // flow mutated — otherwise the cohort builder opens next carrying filters
 // the user never chose there.
-const dashboardFlowModalOpen = computed(
-  () =>
-    dashboardFlow.showDashboardSelectionModal ||
-    dashboardFlow.showRequiredFiltersModal ||
-    dashboardFlow.showTable1ConfigModal ||
-    dashboardFlow.showDashboardModal ||
-    dashboardFlow.showSaveCohortModal,
-)
+const dashboardFlowModalOpen = computed(() => isDashboardFlowOpen(dashboardFlow))
 
 watch(dashboardFlowModalOpen, async (isOpen, wasOpen) => {
-  if (isOpen || !wasOpen) return
   // Resetting mid-flow (e.g. between the selection modal closing and the next
   // one opening) breaks the wizard; ChartToolbar.vue guards its own reset the
   // same way.
-  if (dashboardFlow.isProcessingDashboardFlow()) return
+  const isProcessing = dashboardFlow.isProcessingDashboardFlow()
+  if (!shouldResetDashboardFlow({ isOpen, wasOpen: Boolean(wasOpen), isProcessing })) return
   dashboardFlow.resetDashboardFlowState()
 
   // The flow mutates Vuex the cohort builder shares: it sets the active
