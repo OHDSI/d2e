@@ -84,8 +84,12 @@ test(TEST_NAME, async ({ page }) => {
   await expect(page.getByRole('columnheader', { name: 'Total' }).first()).toBeVisible()
   await expect(page.getByText('passed checks are not applicable, due to empty tables or fields')).toBeVisible()
 
-  // Expect to see Results
-  await expect(page.getByText('Results')).toBeVisible()
+  // Expect to see Results. The table streams in behind a "Loading DQD results"
+  // spinner, and that text contains "Results" too, so an inexact match resolves to
+  // two elements and trips strict mode for as long as the spinner is up. Wait for
+  // it to clear, then match the heading exactly.
+  await expect(page.getByText('Loading DQD results')).toBeHidden({ timeout: MINUTE_10 })
+  await expect(page.getByText('Results', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Download CSV' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Download JSON' })).toBeVisible()
   await expect(page.getByText('Rows per page')).toBeVisible() // Check that table footer has rendered
