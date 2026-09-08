@@ -439,6 +439,8 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_DATASOURCE: 'Data source',
     MRI_PA_EXPLORATIONS_SEARCH: 'Search',
     MRI_PA_EXPLORATIONS_SELECT: 'Select exploration',
+    MRI_PA_EXPLORATIONS_SELECT_ALL: 'Select all',
+    MRI_PA_EXPLORATIONS_N_SELECTED: '{0} selected',
     MRI_PA_EXPLORATIONS_EMPTY: 'No explorations yet',
     MRI_PA_EXPLORATIONS_EMPTY_BODY: 'Your saved data exploration will appear here.',
     MRI_PA_EXPLORATIONS_EMPTY_SEARCH_TITLE: 'No matching explorations',
@@ -1542,6 +1544,10 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_DATASOURCE: 'Datenquelle',
     MRI_PA_EXPLORATIONS_SEARCH: 'Suchen',
     MRI_PA_EXPLORATIONS_SELECT: 'Exploration auswählen',
+    // TODO(i18n): needs native review.
+    MRI_PA_EXPLORATIONS_SELECT_ALL: 'Alle auswählen',
+    // TODO(i18n): needs native review.
+    MRI_PA_EXPLORATIONS_N_SELECTED: '{0} ausgewählt',
     MRI_PA_EXPLORATIONS_EMPTY: 'Noch keine Explorationen',
     MRI_PA_EXPLORATIONS_LOAD_ERROR: 'Explorationen konnten nicht geladen werden.',
     MRI_PA_BUTTON_NEW_EXPLORATION: 'Neue Exploration starten',
@@ -2619,6 +2625,10 @@ export const i18n = {
     MRI_PA_EXPLORATIONS_DATASOURCE: '数据源',
     MRI_PA_EXPLORATIONS_SEARCH: '搜索',
     MRI_PA_EXPLORATIONS_SELECT: '选择探索',
+    // TODO(i18n): needs native review.
+    MRI_PA_EXPLORATIONS_SELECT_ALL: '全选',
+    // TODO(i18n): needs native review.
+    MRI_PA_EXPLORATIONS_N_SELECTED: '已选择 {0} 项',
     MRI_PA_EXPLORATIONS_EMPTY: '暂无探索',
     MRI_PA_EXPLORATIONS_LOAD_ERROR: '无法加载探索。',
     MRI_PA_BUTTON_NEW_EXPLORATION: '开始新探索',

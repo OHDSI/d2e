@@ -25,7 +25,33 @@
       />
     </header>
 
-    <div class="explorations-page__toolbar">
+    <div v-if="explorations.hasSelection" class="explorations-page__bulk" data-testid="explorations-bulk-bar">
+      <D2eCheckbox
+        size="sm"
+        :model-value="allPageSelected"
+        :indeterminate="somePageSelected"
+        :aria-label="getText('MRI_PA_EXPLORATIONS_SELECT_ALL')"
+        data-testid="explorations-select-all"
+        @update:model-value="explorations.setPageSelection(pageIds, $event)"
+      />
+      <span class="explorations-page__bulk-count" data-testid="explorations-bulk-count">
+        {{ selectedCountLabel }}
+      </span>
+      <div class="explorations-page__bulk-actions">
+        <D2eButton
+          variant="primary"
+          :disabled="!canCompare"
+          data-testid="explorations-bulk-compare"
+          @click="openCompare"
+        >
+          {{ getText('MRI_PA_COMPARE_D2E_COHORT_TEXT') }}
+        </D2eButton>
+        <D2eButton variant="danger" data-testid="explorations-bulk-delete" @click="openBulkDelete">
+          {{ getText('MRI_PA_BUTTON_DELETE') }}
+        </D2eButton>
+      </div>
+    </div>
+    <div v-else class="explorations-page__toolbar">
       <div class="explorations-page__toolbar-left">
         <D2eTextField
           v-model="searchQuery"
@@ -312,7 +338,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
-import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
+import { D2eButton, D2eCheckbox, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
@@ -323,7 +349,8 @@ import {
   isDashboardFlowOpen,
   shouldResetDashboardFlow,
 } from './helpers/explorationAnalyze'
-import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
+import { filterAndSort, toCardId, type ExplorationSortKey } from './helpers/explorationList'
+import { allSelected, someSelected } from './helpers/explorationSelection'
 import { applyFilters, authorOptions, emptyFilters, isEmpty, type ExplorationFilters } from './helpers/explorationFilters'
 import { PAGE_SIZES, clampPage, pageSlice } from './helpers/explorationPaging'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
@@ -416,9 +443,9 @@ const isWizardEnabled = computed(
 )
 const canAnalyze = computed(() => Boolean(store.getters.getCanDatasetMaterializeCohorts) && isWizardEnabled.value)
 
-const getText = (key: string): string => {
+const getText = (key: string, param?: string | string[]): string => {
   const resolver = store.getters.getText
-  return typeof resolver === 'function' ? resolver(key) : key
+  return typeof resolver === 'function' ? resolver(key, param) : key
 }
 
 const load = (): void => {
@@ -495,16 +522,7 @@ const cards = computed(() => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
-    // Namespaced: a bookmark id and a cohort-definition id come from different
-    // tables and can collide, and two never-materialized records can share a
-    // displayName. Either collision makes one checkbox select two cards.
-    const id = bookmark?.id
-      ? `bookmark:${bookmark.id}`
-      : cohortDefinition?.id
-        ? `cohort:${cohortDefinition.id}`
-        : atlas?.id
-          ? `atlas:${atlas.id}`
-          : `name:${card.displayName}`
+    const id = toCardId(card)
     // An Atlas record is a cohort; a D2E bookmark is an exploration.
     const idLabel = ['A', 'A+M'].includes(getBookmarkType(card))
       ? getText('MRI_PA_EXPLORATIONS_COHORT_ID_LABEL')
@@ -554,6 +572,31 @@ const cards = computed(() => {
       ],
     }
   })
+})
+
+/* ---- bulk selection --------------------------------------------------- */
+
+/** The ids on the current page only. Select-all acts on these. */
+const pageIds = computed(() => cards.value.map(c => c.id))
+/** Every id in the filtered set, across every page. `retain` reads this, never
+    `pageIds` — a watcher on the page would drop the user's selection on every
+    page change. */
+const matchedIds = computed(() => matchedCards.value.map(toCardId))
+const allPageSelected = computed(() => allSelected(pageIds.value, explorations.selectedBookmarkIds))
+const somePageSelected = computed(() => someSelected(pageIds.value, explorations.selectedBookmarkIds))
+const selectedCountLabel = computed(() => getText('MRI_PA_EXPLORATIONS_N_SELECTED', String(explorations.selectedCount)))
+// Stubs in this subphase. Subphase 2 wires Compare and Delete.
+const canCompare = computed(() => explorations.selectedCount >= 2)
+const openCompare = (): void => {}
+const openBulkDelete = (): void => {}
+
+// A change to the search, a filter or the sort can drop cards out of the
+// matched set; a selected card that leaves it must leave the selection too.
+// Watching `matchedIds` (not `pageIds`) is deliberate: `matchedIds` covers
+// every page, so turning the page — which changes `pageIds` but not
+// `matchedIds` — never fires this and never drops the user's selection.
+watch(matchedIds, ids => {
+  explorations.retain(ids)
 })
 
 /**
@@ -997,6 +1040,46 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  /* Replaces the toolbar row while a selection is live (Figma 1821:433737,
+     "Frame 7"). Same 60px height as the row it replaces.
+
+     The frame nests the two buttons in their own group (`Frame 2147226911`),
+     so the row carries 16px between groups and the group carries 8px between
+     the buttons. Mirroring that nesting keeps both gaps declarative — a flat
+     row cannot express two gaps without per-child margins. */
+  &__bulk {
+    display: flex;
+    align-items: center;
+    gap: var(--d2e-spacing-s);
+    flex-shrink: 0;
+    height: 60px;
+    padding: var(--d2e-spacing-xs-s) var(--d2e-spacing-s);
+    background: var(--d2e-color-neutral-lightest);
+    border-top: var(--d2e-border-width-sm) solid var(--d2e-color-neutral-lighter);
+    border-bottom: var(--d2e-border-width-sm) solid var(--d2e-color-neutral-lighter);
+
+    // D2eButton has no height/padding/shadow prop; its own border-radius
+    // already defaults to --d2e-radius-md (8px), which matches the frame.
+    :deep(.d2e-button) {
+      height: 36px;
+      padding: var(--d2e-spacing-xs) 22px;
+      box-shadow: var(--d2e-elevation-e2);
+    }
+  }
+
+  &__bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--d2e-spacing-xs);
+  }
+
+  &__bulk-count {
+    font-size: var(--d2e-font-body2-size);
+    font-weight: var(--d2e-font-body2-weight);
+    line-height: var(--d2e-font-body2-line-height);
+    color: var(--d2e-color-primary);
   }
 
   /* Search is 466x44 with a 1px #ACABA8 border and a 4px radius

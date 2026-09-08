@@ -15,6 +15,24 @@ const SCORE_NONE = 0
 
 export type ExplorationSortKey = 'lastUpdated' | 'nameAsc' | 'nameDesc'
 
+/**
+ * The namespaced card id: `bookmark:<id>`, `cohort:<id>`, `atlas:<id>` or
+ * `name:<displayName>`. A bookmark id and a cohort-definition id come from
+ * different tables and can collide, and two never-materialized records can
+ * share a displayName — either collision would make one checkbox select two
+ * cards. Shared by the page's card view model and its bulk-selection
+ * `matchedIds`, so the two never drift apart.
+ */
+export function toCardId(card): string {
+  const bookmark = card?.bookmark
+  const cohortDefinition = card?.cohortDefinition
+  const atlas = card?.atlasCohortDefinition
+  if (bookmark?.id) return `bookmark:${bookmark.id}`
+  if (cohortDefinition?.id) return `cohort:${cohortDefinition.id}`
+  if (atlas?.id) return `atlas:${atlas.id}`
+  return `name:${card?.displayName}`
+}
+
 const includes = (value: unknown, query: string): boolean =>
   typeof value === 'string' || typeof value === 'number'
     ? String(value).toLowerCase().includes(query)
