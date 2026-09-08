@@ -479,10 +479,7 @@ export class CdmSqlAuditLogger implements CdmSqlAuditRecorder {
                 execution.sql,
                 execution.parameters
             );
-            const event: Record<string, unknown> = {
-                "log-type": "audit",
-                "audit-log-type": "access",
-                "service-name": "analytics-svc",
+            const message: Record<string, unknown> = {
                 schemaVersion: 1,
                 eventType: "cdm.sql",
                 occurredAt: new Date().toISOString(),
@@ -511,17 +508,25 @@ export class CdmSqlAuditLogger implements CdmSqlAuditRecorder {
                 durationMs: execution.durationMs,
             };
             if (this.context.datasetId) {
-                event.datasetId = this.context.datasetId;
+                message.datasetId = this.context.datasetId;
             }
             if (this.context.configs) {
-                event.configs = this.context.configs;
+                message.configs = this.context.configs;
             }
             const error = getErrorDetails(execution.error);
             if (error) {
-                event.error = error;
+                message.error = error;
             }
 
-            await this.writer.append(CDM_SQL_AUDIT_FILE, event);
+            // The routing fields stay at the top level; everything that describes
+            // the event itself lives under `message`, so a collector can route on
+            // the former without walking the payload.
+            await this.writer.append(CDM_SQL_AUDIT_FILE, {
+                "log-type": "audit",
+                "audit-log-type": "access",
+                "service-name": "analytics-svc",
+                message,
+            });
         } catch (_error) {
             // Audit persistence is fail-open. Never echo SQL, parameters,
             // errors, or request/user data into operational container logs.

@@ -73,12 +73,16 @@ for (const destination of ["console", "file"]) {
                     "log-type": logType,
                     "audit-log-type": auditLogType,
                     "service-name": serviceName,
-                    occurredAt,
-                    ...payload
+                    message,
+                    ...rest
                 } = JSON.parse(line);
                 assert.equal(logType, "audit");
                 assert.equal(auditLogType, "access");
                 assert.equal(serviceName, "analytics-svc");
+                // The routing fields are the only top-level keys; the event
+                // payload is carried entirely under `message`.
+                assert.deepEqual(rest, {});
+                const { occurredAt, ...payload } = message;
                 assert.equal(new Date(occurredAt).toISOString(), occurredAt);
                 return payload;
             });

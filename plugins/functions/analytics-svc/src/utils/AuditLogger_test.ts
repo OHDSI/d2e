@@ -427,7 +427,12 @@ Deno.test(
                 .split("\n");
             assert.equal(lines.length, 1);
 
-            const event = JSON.parse(lines[0]);
+            const record = JSON.parse(lines[0]);
+            assert.equal(record["log-type"], "audit");
+            assert.equal(record["audit-log-type"], "access");
+            assert.equal(record["service-name"], "analytics-svc");
+            // Routing fields at the top level, event payload under `message`.
+            const event = record.message;
             assert.equal(event.schemaVersion, 1);
             assert.equal(event.eventType, "patient.access");
             assertIsoTimestamp(event.occurredAt);

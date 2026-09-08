@@ -1,15 +1,18 @@
 # Audit logs
 
-Patient-access and CDM SQL audit events include these top-level routing fields:
+Patient-access and CDM SQL audit events carry these top-level routing fields, and
+nothing else at the top level. The event itself is nested under `message`:
 
 ```json
-{"log-type":"audit","audit-log-type":"access","service-name":"analytics-svc"}
+{"log-type":"audit","audit-log-type":"access","service-name":"analytics-svc","message":{"schemaVersion":1,"eventType":"patient.access","...":"..."}}
 ```
 
 Each event is serialized as one JSON line, including SQL containing newlines.
-The existing event details (`eventType`, `actor`, `occurredAt`, patient attributes,
-SQL, request/database metadata, success status, and errors) retain their names,
-values, and structure. Both loggers use `access`, including failed SQL executions.
+The event details (`eventType`, `actor`, `occurredAt`, patient attributes, SQL,
+request/database metadata, success status, and errors) retain their names, values,
+and structure -- they simply live under `message` rather than at the top level, so a
+collector can route on the three fields above without walking the payload. Both
+loggers use `access`, including failed SQL executions.
 
 The enablement flags and output destinations are unchanged:
 
