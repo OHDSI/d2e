@@ -207,13 +207,24 @@ function updateDropdownPosition() {
   if (!input) return
 
   const rect = input.getBoundingClientRect()
+  // The dropdown is teleported to body, so the modal's overflow cannot clip it.
+  // Position within the visible form rather than the entire browser viewport.
+  const boundary = input.closest('.required-filters-modal')?.getBoundingClientRect()
+  const top = Math.max(0, boundary?.top ?? 0)
+  const bottom = Math.min(window.innerHeight, boundary?.bottom ?? window.innerHeight)
+  const left = Math.max(0, boundary?.left ?? 0)
+  const right = Math.min(window.innerWidth, boundary?.right ?? window.innerWidth)
+  if (rect.top < top || rect.bottom > bottom || rect.left < left || rect.right > right) {
+    dropdownStyle.value = { display: 'none' }
+    return
+  }
+
   const MAX_HEIGHT = 200 // keep in sync with .concept-typeahead-dropdown max-height
   const GAP = 8
-  const spaceBelow = window.innerHeight - rect.bottom
-  const spaceAbove = rect.top
+  const spaceBelow = bottom - rect.bottom
+  const spaceAbove = rect.top - top
 
-  // Flip above the field when there isn't room below (e.g. fields low in the
-  // modal), so the dropdown never spills past the viewport / behind the footer.
+  // Flip above the field when there isn't room below within the form.
   const openUp = spaceBelow < Math.min(MAX_HEIGHT, 160) && spaceAbove > spaceBelow
 
   const style: Record<string, string> = {
