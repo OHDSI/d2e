@@ -5,6 +5,12 @@ import { defineStore } from 'pinia'
 export const useExplorationsStore = defineStore('explorations', {
   state: () => ({
     selectedBookmarkIds: [] as string[],
+    // True while the Analyze action's own loadbookmarkToState dispatch is
+    // filling the active bookmark. PatientAnalytics.vue's getActiveBookmark
+    // watcher auto-switches to the cohort builder whenever a bookmark goes
+    // from unset to set; Analyze needs the active bookmark set (dashboardContext
+    // reads it) without that switch firing and unmounting this page mid-click.
+    analyzeInProgress: false,
   }),
   getters: {
     isSelected: state => (id: string) => state.selectedBookmarkIds.includes(id),
