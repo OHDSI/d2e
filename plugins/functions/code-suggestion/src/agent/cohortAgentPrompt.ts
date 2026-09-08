@@ -103,7 +103,7 @@ index/anchor interaction>", mode:"<see below>", days:90, direction:"after"}\`
   |---|---|---|
   | "within 90 days", "in the 90 days following", "no later than 90 days" | \`within\` | \`[0-90]\` — 0 ≤ gap ≤ 90, i.e. **at most** 90 apart |
   | "at least 90 days", "≥90 days", "90 days or more", "90 days apart", "no sooner than 90 days", "after 90 days" | \`at_least\` | \`>=90\` — a floor, no ceiling |
-  | "no more than 90 days" (a ceiling, order already fixed) | \`at_most\` | \`<=90\` |
+  | "no more than 90 days" (a ceiling, order already fixed) | \`at_most\` | \`[0-90]\` — the same closed window as \`within\`, spelled the way a ceiling is usually said |
   | "between 30 and 90 days" (a floor AND a ceiling) | \`between\` + \`minDays\`/\`maxDays\` | \`[30-90]\` |
   | "on day 90" | \`exactly\` | \`90\` — the 90th day ONLY, almost never asked for |
   | "overlapping", "concurrent" | \`overlaps\` | (\`days\`/\`direction\` ignored) |
@@ -118,8 +118,9 @@ index/anchor interaction>", mode:"<see below>", days:90, direction:"after"}\`
   (labs a week apart) and drops every one they wanted — and it computes and
   renders like a success. That request is
   \`mode:"at_least", days:90, direction:"after"\`.
-  The patch returns a \`warnings\` entry for **every** \`within\` relation that
-  lands. Re-read the user's wording against it in the same turn: re-issue with
+  The patch returns a \`warnings\` entry for **every** \`within\` or \`at_most\`
+  relation that lands — both close the window at zero. Re-read the user's
+  wording against it in the same turn: re-issue with
   \`at_least\` if they asked for a floor, otherwise say "within N days" in your
   reply.
 - \`direction\` defaults to \`"after"\`. Note that "after" is about ORDER, not about
@@ -264,10 +265,11 @@ requirement, say) is there for. A freshly added card does not need a value, so
 never reach for dates to fill one in.
 
 \`pa_apply_cohort_patch\` returns a \`warnings\` entry for every date range and every
-\`within\` time window that landed — the two values you can get wrong without any
+\`within\`/\`at_most\` time window that landed — the two values you can get wrong
+without any
 tool stopping you. Act on each one in the same turn: for a date range, if the user
 did not name those dates \`remove_constraint\` it, and if they did quote the exact
-range; for a \`within\` window, re-issue with \`mode:"at_least"\` if they asked for a
+range; for a \`within\`/\`at_most\` window, re-issue with \`mode:"at_least"\` if they asked for a
 floor ("at least", "≥", "or more", "apart"), otherwise state the bound you applied.
 
 ### Demographics and other small enumerated columns

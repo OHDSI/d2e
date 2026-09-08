@@ -1,6 +1,5 @@
 import { vi } from 'vitest'
 import { createPaTools, registerPaTools, PaTool } from '../webmcpServer'
-import { PENDING_PATIENT_COUNT } from '../../utils/NumberUtils'
 
 // A minimal Vuex-store stand-in. Only the surface the handlers touch is mocked:
 // a few getters and dispatch. This is verification "layer B" — handler ↔ Vuex
@@ -1174,14 +1173,18 @@ describe('createPaTools', () => {
       expect(parsed.error).toContain('Request failed with status code 500')
     })
 
-    // An edit does not compute its own result: setFireRequest blanks the count and
-    // the analytics query rewrites it 7-24s later. Returning during that window is
-    // what handed the model the PREVIOUS cohort's count as if it were the new one.
+    // An edit does not compute its own result: setFireRequest raises the store's
+    // staleness flag and the analytics query rewrites the count 7-24s later. The
+    // displayed count is NOT blanked, so during that window the store still holds a
+    // perfectly plausible number — the previous cohort's. Returning it is what handed
+    // the model a stale count as if it were the new one.
     describe('while a recompute is in flight', () => {
       const pendingStore = () => {
         const store = makeStore()
         Object.assign(store.getters, {
-          getCurrentPatientCount: PENDING_PATIENT_COUNT,
+          // The stale value that is still on screen while the new query runs.
+          getCurrentPatientCount: 4102,
+          isCurrentPatientCountStale: true,
           getTotalPatientCount: 2694,
           getTotalPatientListCount: 0,
           getDisplayTotalGuardedPatientCount: false,
@@ -1208,8 +1211,10 @@ describe('createPaTools', () => {
         await vi.advanceTimersByTimeAsync(5_000)
         expect(settled).toBe(false)
 
-        // What the chart component does when its request resolves.
+        // What the chart component does when its request resolves: writing the count
+        // clears the flag (SET_CURRENT_PATIENT_COUNT in the query module).
         store.getters.getCurrentPatientCount = 1275
+        store.getters.isCurrentPatientCountStale = false
         store.getters.getResponse = () => ({ data: { totalPatientCount: 1275 } })
         await vi.advanceTimersByTimeAsync(500)
 
@@ -1219,9 +1224,9 @@ describe('createPaTools', () => {
         expect(parsed.pending).toBeUndefined()
       })
 
-      // The sentinel is not guaranteed to clear — nothing fires the query while the
+      // The flag is not guaranteed to clear — nothing fires the query while the
       // builder is unmounted — so the wait is bounded and says why it gave up.
-      it('reports pending rather than passing the sentinel off as a count', async () => {
+      it('reports pending rather than passing the stale count off as a result', async () => {
         const result = byName(createPaTools(pendingStore()), 'pa_get_cohort_result').execute()
 
         await vi.advanceTimersByTimeAsync(61_000)
@@ -1230,7 +1235,34 @@ describe('createPaTools', () => {
         expect(parsed.pending).toBe(true)
         expect(parsed.error).toContain('still computing')
         expect(parsed.error).toContain('builder')
-        expect(parsed.currentPatientCount).toBe(PENDING_PATIENT_COUNT)
+        // The number rides along (it is what the store holds) but is explicitly
+        // disowned: it is the previous cohort's, which is exactly why `pending` and
+        // the error text have to be unmissable.
+        expect(parsed.currentPatientCount).toBe(4102)
+        expect(parsed.error).toContain("PREVIOUS cohort's")
+      })
+
+      // A failed query leaves its `error` in the store response, and it survives there
+      // until the NEXT query resolves. So a failure followed by an edit that times out
+      // has both conditions true at once, and the two messages say opposite things:
+      // "the last query failed" points at a settled result, "still computing" says
+      // there is no result yet. Only the second one is true here, and it carries the
+      // retry guidance. The cause stays visible on `chart.error`.
+      it('keeps the pending guidance when the previous response also carried an error', async () => {
+        const store = pendingStore()
+        store.getters.getResponse = () => ({
+          data: { totalPatientCount: 4102, error: 'Request failed with status code 500' },
+        })
+
+        const result = byName(createPaTools(store), 'pa_get_cohort_result').execute()
+
+        await vi.advanceTimersByTimeAsync(61_000)
+
+        const parsed = parse(await result)
+        expect(parsed.pending).toBe(true)
+        expect(parsed.error).toContain('still computing')
+        expect(parsed.error).not.toContain('The last chart query failed')
+        expect(parsed.chart.error).toBe('Request failed with status code 500')
       })
     })
   })

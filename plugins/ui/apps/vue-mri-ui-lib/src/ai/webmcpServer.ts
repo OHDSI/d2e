@@ -15,7 +15,6 @@ import {
   type PatchOp,
 } from './cohortPatch'
 import { alternateQueries, rankValues, DEFAULT_VALUE_LIMIT, MAX_VALUE_LIMIT, type MatchedVia } from './valueResolution'
-import { PENDING_PATIENT_COUNT } from '../utils/NumberUtils'
 
 export interface PaToolResult {
   content: Array<{ type: 'text'; text: string }>
@@ -47,21 +46,22 @@ const textResult = (payload: unknown): PaToolResult => ({
 
 // Applying a patch does NOT compute the result: it flips the fireRequest flag and
 // returns, and the count/chart are only rewritten when the mounted chart component's
-// analytics query resolves — 7-24s on a HANA/LEAF-sized dataset. setFireRequest
-// blanks the count to PENDING_PATIENT_COUNT for that window, so pa_get_cohort_result
-// waits it out here rather than handing back either a stale number (the original bug)
-// or a sentinel every caller would have to know how to poll on.
+// analytics query resolves — 7-24s on a HANA/LEAF-sized dataset. The count on display
+// stays on the PREVIOUS cohort's number for that window (the UI deliberately does not
+// blank it), so reading it straight away is what handed the model a stale number as if
+// it were the new answer — the original bug. setFireRequest instead raises the store's
+// `isCurrentPatientCountStale` flag, which nothing renders, and we wait that out here.
 //
 // The ceiling is well above the worst case observed in analytics-svc logs (24s) because
 // timing out is the worse outcome: the model then has no count at all. It is bounded
-// rather than open-ended because the sentinel is not guaranteed to clear — nothing
-// fires the query while the builder is unmounted, so an unbounded wait would hang.
+// rather than open-ended because the flag is not guaranteed to clear — nothing fires
+// the query while the builder is unmounted, so an unbounded wait would hang.
 const COHORT_RESULT_TIMEOUT_MS = 60_000
 const COHORT_RESULT_POLL_MS = 250
 
 const waitForCohortResult = async (store: Store<any>, timeoutMs = COHORT_RESULT_TIMEOUT_MS): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs
-  while (store.getters.getCurrentPatientCount === PENDING_PATIENT_COUNT) {
+  while (store.getters.isCurrentPatientCountStale) {
     if (Date.now() >= deadline) {
       return false
     }
@@ -548,7 +548,8 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
                     '[0-N], the CLOSED window 0..N, i.e. at most N days apart ("within 90 days" / "in the 90 ' +
                     'days following" / "no later than 90 days"); "at_least" = >=N, a FLOOR with no ceiling ' +
                     '("at least 90 days", "≥90 days", "90 days or more", "no sooner than 90 days", "90 days ' +
-                    'apart", "after 90 days"); "at_most" = <=N; "between" = [minDays-maxDays], a floor AND a ' +
+                    'apart", "after 90 days"); "at_most" = the same closed [0-N] window as "within", spelled the ' +
+                    'way a ceiling is usually said; "between" = [minDays-maxDays], a floor AND a ' +
                     'ceiling; "exactly" = the Nth day ONLY, almost never what a clinical question asks for; ' +
                     '"overlaps" = the two interactions overlap in time (days and direction are ignored). ' +
                     '[0-N] and >=N PARTITION the timeline at N days — no patient satisfies both — so choosing ' +
@@ -900,8 +901,8 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
         'computed rather than quoting them.',
       inputSchema: { type: 'object', properties: {} },
       async execute() {
-        // Blocks while the count reads PENDING_PATIENT_COUNT — i.e. an edit fired a
-        // new query and the previous cohort's numbers have been invalidated.
+        // Blocks while the store flags the count as stale — i.e. an edit fired a new
+        // query and the numbers on screen are still the previous cohort's.
         const settled = await waitForCohortResult(store)
         const g = store.getters
         // getResponse is a getter that returns a function; call it for the raw response.
@@ -925,7 +926,7 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
           chartType: g.getActiveChart,
           chart,
           // Timed out with the query still in flight. Say so as loudly as the failed-query
-          // case: the counts below are the pending sentinel, not a small cohort, and
+          // case: the counts below are the PREVIOUS cohort's, not this one's, and
           // reporting them as a result is the exact bug this wait exists to prevent.
           ...(settled
             ? {}
@@ -933,11 +934,18 @@ export function createPaTools(store: Store<any>, hooks: PaComponentHooks = {}): 
                 pending: true,
                 error:
                   `The cohort is still computing after ${Math.round(COHORT_RESULT_TIMEOUT_MS / 1000)}s, so there is ` +
-                  'no count to report yet — do NOT read the counts in this response as a result. The chart query ' +
+                  'no count to report yet — the counts in this response are the PREVIOUS cohort\'s, so do NOT ' +
+                  'read them as a result. The chart query ' +
                   'only runs while the builder is on screen: check it is open (pa_new_cohort / pa_open_cohort), ' +
                   'then call pa_get_cohort_result again.',
               }),
-          ...(chartData?.error
+          // Only once the recompute has SETTLED. The response keeps the previous
+          // query's error until the next one resolves, so on a timeout both this and
+          // the pending branch above are true — and they contradict each other: this
+          // one describes a finished result, `pending` says there is none yet. The
+          // pending guidance is the true one and the one that says what to do next;
+          // the cause is still on `chart.error` either way.
+          ...(settled && chartData?.error
             ? {
                 error: `The last chart query failed, so the count is not a real result: ${chartData.error}`,
               }

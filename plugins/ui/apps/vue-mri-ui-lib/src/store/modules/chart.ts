@@ -3,7 +3,6 @@ import axios from 'axios'
 import Constants from '../../utils/Constants'
 import * as types from '../mutation-types'
 import QueryString from '../../utils/QueryString'
-import { PENDING_PATIENT_COUNT } from '../../utils/NumberUtils'
 
 const CancelToken = axios.CancelToken
 const csvEndpoints = {
@@ -356,18 +355,16 @@ const actions = {
     if (state.fireRequestHeld) {
       return
     }
-    // Invalidate the previous cohort's result before the new query goes out. The
+    // Flag the previous cohort's count as stale before the new query goes out. The
     // count and chart are only rewritten when a chart component's request resolves
-    // (7-24s on some datasets — see StackBarChart.getFireRequest), and nothing else
-    // marks the gap, so a reader landing mid-flight — the AI assistant's
-    // pa_get_cohort_result, or a user glancing at the header — would otherwise see
-    // the OLD cohort's number and have no way to know it is stale.
+    // and nothing else marks the gap, so a reader landing mid-flight would otherwise
+    // see the OLD cohort's number with no way to know it is not the answer.
     //
+    // Deliberately a side-channel flag rather than a sentinel written INTO the count.
     // Skipped when there is nothing to query: the chart components bail out in that
-    // case too, so no response would ever come back to clear the sentinel.
+    // case too, so no response would ever come back to clear the flag.
     if (Object.keys(rootGetters.getBookmarksData ?? {}).length > 0) {
-      dispatch('clearResponse')
-      dispatch('setCurrentPatientCount', { currentPatientCount: PENDING_PATIENT_COUNT })
+      dispatch('invalidateCurrentPatientCount')
     }
     commit(types.CHART_SET_FIRE_REQUEST)
   },

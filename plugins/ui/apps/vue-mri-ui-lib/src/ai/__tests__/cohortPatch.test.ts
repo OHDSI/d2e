@@ -1069,7 +1069,26 @@ describe('applyCohortPatch', () => {
       ])
     })
 
-    it('supports end anchors, at_least/at_most/between and overlaps', async () => {
+    // `<=N` is ONE inequality, and getRequest flips it to `>=-N` for an "after"
+    // relation — a floor with no ceiling on the other side of the anchor, so every
+    // patient whose card came BEFORE the target matched too, by any amount. The mode
+    // is named for a direction, and the readback says "at most N days after", so the
+    // window has to be closed on both sides like `within`.
+    it('mode "at_most" bounds both sides of the anchor, not just one', async () => {
+      const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
+
+      await applyCohortPatch(store, [
+        { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'at_most', days: 7, direction: 'after' },
+      ])
+
+      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '[0-7]', targetSelection: 'after_startdate' })
+      const bounds = AdvancedTimeFilterModel.getRequest(cards[RX].props.layout.advancedTimeLayout)[0].and[0].filter[0]
+        .and
+      // Stringified so the sign of the flipped zero does not decide the assertion.
+      expect(bounds.map(b => `${b.op} ${b.value}`)).toEqual(['<= 0', '>= -7'])
+    })
+
+    it('supports end anchors, at_least/between and overlaps', async () => {
       const { store, cards } = makeStore({ existingCards: ['patient', DX, RX] })
       await applyCohortPatch(store, [
         {
@@ -1088,9 +1107,6 @@ describe('applyCohortPatch', () => {
         { op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'at_least', days: 7, fromDate: 'end' },
       ])
       expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '>=7', originSelection: 'enddate' })
-
-      await applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'at_most', days: 7 }])
-      expect(timeFiltersOn(cards, RX)[0]).toMatchObject({ days: '<=7' })
 
       await applyCohortPatch(store, [{ op: 'set_time_relation', card: RX, relativeTo: DX, mode: 'overlaps' }])
       expect(timeFiltersOn(cards, RX)[0]).toEqual({

@@ -255,8 +255,7 @@ export default {
     // in the store without a click — the AI assistant's set_time_relation patch
     // op, or a cohort loaded while this card was already mounted. mounted()
     // above only reads the count once, so without this the relation would be in
-    // the query (getIFR reads the store) while the card still showed nothing:
-    // the user sees two unrelated filters and an unexplained patient count.
+    // the query (getIFR reads the store) while the card still showed nothing.
     storedTimeFilterCount: {
       handler(count) {
         if (count > 0) {

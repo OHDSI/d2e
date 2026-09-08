@@ -1,4 +1,4 @@
-import { formatNumber, PENDING_PATIENT_COUNT } from '../NumberUtils'
+import { formatNumber } from '../NumberUtils'
 
 describe('formatNumber', () => {
   it('formats zero as "0"', () => {
@@ -46,12 +46,5 @@ describe('formatNumber', () => {
   it('formats numeric strings with comma separator', () => {
     expect(formatNumber('1000')).toBe('1,000')
     expect(formatNumber('1234567')).toBe('1,234,567')
-  })
-
-  // The count reads "… / 2,694" while a query is in flight — rendering the raw
-  // sentinel would leak the untranslated word "loading" into the header.
-  it('renders the in-flight sentinel as an ellipsis, not the raw value', () => {
-    expect(formatNumber(PENDING_PATIENT_COUNT)).toBe('…')
-    expect(formatNumber(PENDING_PATIENT_COUNT)).not.toBe(PENDING_PATIENT_COUNT)
   })
 })
