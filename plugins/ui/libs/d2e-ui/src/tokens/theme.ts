@@ -48,11 +48,11 @@ export function buildD2eVuetifyOptions(): Pick<VuetifyOptions, "theme"> {
             "on-secondary": tokens.color.white,
             "on-background": tokens.color.primary,
             "on-surface": tokens.color.primary,
-            // Additional custom colors
-            brand: tokens.color.primary,
-            "brand-hover": "#007eba", // no design token yet
-            "brand-info": "#007cc0", // no design token yet
-            "brand-contrast": tokens.color.primary,
+            // Primary hover and info shades. Literals until design supplies
+            // tokens; vue-mri's --color-mri-brand-hover holds the same #007eba
+            // and should alias onto this later.
+            "primary-hover": "#007eba", // no design token yet
+            "primary-info": "#007cc0", // no design token yet
             // Border colors (Bootstrap gray scale, not design tokens)
             "border-color": "#dee2e6",
             "border-light": "#dddddd",

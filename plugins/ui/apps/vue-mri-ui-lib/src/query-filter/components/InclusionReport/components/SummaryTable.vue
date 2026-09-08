@@ -35,7 +35,7 @@ h4 {
   margin: 0;
   font-size: 1rem;
   font-weight: 500;
-  color: var(--color-primary);
+  color: var(--d2e-color-primary, #000080);
 }
 .summary-data {
   display: flex;

@@ -132,7 +132,7 @@ watch(
     font-size: 18px;
     line-height: 1.2;
     letter-spacing: 0;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
   }
 
   &__body {
@@ -164,13 +164,13 @@ watch(
   }
 
   &__btn--leave {
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
     border: 1px solid var(--color-neutral-lighter, #cccfe5);
   }
 
   &__btn--stay {
     color: var(--color-neutral-extra-lightest, #faf8f8);
-    background-color: var(--color-primary, #000080);
+    background-color: var(--d2e-color-primary, #000080);
     box-shadow:
       0 1px 5px 0 rgba(0, 0, 0, 0.12),
       0 2px 2px 0 rgba(0, 0, 0, 0.14),

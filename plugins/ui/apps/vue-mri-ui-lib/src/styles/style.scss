@@ -1,5 +1,5 @@
 @use './fonts';
-@use './mri-bootstrap-variables' as *;
+@use './app-variables' as *;
 @use './mixins' as *;
 @import 'vue-multiselect/dist/vue-multiselect.min.css';
 
@@ -9,7 +9,7 @@
 }
 
 .mri-app-vue-container {
-  @import './mri-bootstrap';
+  @import './bootstrap-shim';
   @include mriBaseStyle;
   height: 100%;
   width: 100%;
@@ -20,17 +20,10 @@
   // For alignment of the loading splash screen within PA wrapper
   position: relative;
 
-  // Bootstrap sets .text-primary to its default primary blue (#007bff).
-  // Override it so Vuetify and other theme-aware components use the app's
-  // current theme primary color instead.
-  .text-primary {
-    color: var(--color-primary, #000080) !important;
-  }
-
   /*
-    copied styles from the html and body portion of bootstrap's reboot.scss file
-    since loading bootstrap inside the #app selector, the html and body portions are useless.
-    This is done so we can use sapui5 together with bootstrap
+    html/body-level resets, scoped to the container because the app mounts
+    inside #app and must coexist with sapui5. Originally copied from the
+    html/body portion of Bootstrap's reboot.scss; the shim now owns the rest.
   */
   -webkit-text-size-adjust: 100%; // 4
   -ms-text-size-adjust: 100%; // 4

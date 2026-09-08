@@ -72,18 +72,18 @@ const attributeType = computed(() => {
 .attribute-container {
   display: flex;
   border-radius: 6px;
-  border: 1px solid var(--color-primary, #000080);
+  border: 1px solid var(--d2e-color-primary, #000080);
 
   .attribute-title {
     display: flex;
     padding: 15px;
     flex: 1;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
     background: #ebf2fa;
     font-size: 15px;
     border-top-left-radius: 6px;
     border-bottom-left-radius: 6px;
-    border-right: 1px solid var(--color-primary, #000080);
+    border-right: 1px solid var(--d2e-color-primary, #000080);
     padding: 15px;
     flex: 2;
 
@@ -96,10 +96,10 @@ const attributeType = computed(() => {
   .attribute-input {
     padding: 5px 15px;
     flex: 2;
-    border-right: 1px solid var(--color-primary, #000080);
+    border-right: 1px solid var(--d2e-color-primary, #000080);
     display: flex;
     align-items: center;
-    color: var(--color-primary, #000080);
+    color: var(--d2e-color-primary, #000080);
   }
 
   .attribute-btn-container {
@@ -116,7 +116,7 @@ const attributeType = computed(() => {
       border-bottom-right-radius: 6px;
 
       &:hover {
-        color: var(--color-primary, #000080);
+        color: var(--d2e-color-primary, #000080);
         background: #f2f0f1;
       }
     }

@@ -157,7 +157,7 @@
     cursor: pointer;
     &:checked {
       accent-color: var(--color-primary-light);
-      border-color: var(--color-primary);
+      border-color: var(--d2e-color-primary, #000080);
     }
   }
 
@@ -195,7 +195,7 @@
   }
 
   &__close-btn {
-    background: var(--color-primary);
+    background: var(--d2e-color-primary, #000080);
     color: white;
     border: none;
     border-radius: 4px;

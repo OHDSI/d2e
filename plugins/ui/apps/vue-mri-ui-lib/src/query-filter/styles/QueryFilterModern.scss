@@ -236,7 +236,7 @@
       transition: all 0.2s ease;
 
       &.btn-primary {
-        background-color: var(--color-primary);
+        background-color: var(--d2e-color-primary, #000080);
         color: #fff;
 
         &:hover:not(:disabled) {
@@ -458,10 +458,10 @@
     }
   }
   .cohort-actions-btn {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
+    color: var(--d2e-color-primary, #000080);
+    border-color: var(--d2e-color-primary, #000080);
     &:hover {
-      border-color: var(--color-primary);
+      border-color: var(--d2e-color-primary, #000080);
     }
   }
 }

@@ -26,7 +26,7 @@ const { type, size } = defineProps<{
         <g id="0.-Icons/Play_Round-Copy-13" transform="translate(349, 123)">
           <rect
             id="Rectangle-Copy"
-            fill="var(--color-primary, #000080)"
+            fill="var(--d2e-color-primary, #000080)"
             x="1"
             y="1"
             :width="`${size}px`"

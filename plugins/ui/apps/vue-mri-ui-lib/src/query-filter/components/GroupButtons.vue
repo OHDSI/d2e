@@ -120,15 +120,15 @@ watch(selectedOption, (newValue: string) => {
 }
 
 .button-outline-primary {
-  color: var(--color-primary, #000080);
-  border-color: var(--color-primary, #000080);
+  color: var(--d2e-color-primary, #000080);
+  border-color: var(--d2e-color-primary, #000080);
   background-color: transparent;
 }
 
 .button-outline-primary:hover {
   color: #fff;
-  background-color: var(--color-primary, #000080);
-  border-color: var(--color-primary, #000080);
+  background-color: var(--d2e-color-primary, #000080);
+  border-color: var(--d2e-color-primary, #000080);
 }
 
 .button-outline-primary:focus {
@@ -137,8 +137,8 @@ watch(selectedOption, (newValue: string) => {
 
 .button-outline-primary.active {
   color: #fff;
-  background-color: var(--color-primary, #000080);
-  border-color: var(--color-primary, #000080);
+  background-color: var(--d2e-color-primary, #000080);
+  border-color: var(--d2e-color-primary, #000080);
 }
 
 .group-button > .button {

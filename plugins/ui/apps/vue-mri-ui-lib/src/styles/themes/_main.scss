@@ -1,4 +1,4 @@
-@use '../mri-bootstrap-variables' as *;
+@use '../app-variables' as *;
 @import '@d4l/web-components-library/dist/d4l-ui/d4l-ui.css';
 
 // @d4l/web-components-library points --font-family-secondary at GT-America (a removed
@@ -22,114 +22,166 @@ d4l-button {
 // than behind a class that something has to remember to add. Doubled :root:root
 // specificity matches the block above and wins over d4l-ui.css's own :root.
 :root:root {
-  --color-primary: #000080;
-  --color-ui-medium-border-rgb: 204, 204, 204;
-  --color-mri-brand: var(--color-primary, #000080);
-  --color-mri-brand-selected: none;
-  --color-mri-brand-hover: #007eba;
-  --color-ui-darkest-text: var(--color-text-primary, #000080);
-  --color-ui-dark-text: var(--color-text-primary, #000080);
-  --color-ui-medium-text: #444444;
-  --color-ui-light-text: var(--color-neutral, #595757);
-  --color-ui-extra-light-text: #bbbbbb;
-  --color-mri-disabled-text: #c0c0c0;
-  --color-mri-lightest-text: #e0e0e0;
-  --color-mri-darker-border: #000080;
-  --color-ui-darkest-border: #000000;
-  --color-ui-extra-dark-border: #999999;
-  --color-ui-dark-border: #bfbfbf;
-  --color-ui-medium-border: #cccccc;
-  --color-ui-light-border: #dddddd;
-  --color-ui-lighter-border: #dedede;
-  --color-ui-extra-light-border: #e5e5e5;
-  --color-ui-lightest-border: #ffffff;
-  --color-ui-darkest-bg: #000000;
-  --color-ui-extra-dark-bg: #333333;
-  --color-ui-dark-bg: #777777;
-  --color-ui-medium-bg: #dddddd;
-  --color-ui-light-bg: #e5e5e5;
-  --color-ui-extra-light-bg: #f9f9f9;
-  --color-ui-lightest-bg: #ffffff;
-  --color-focus: #005483;
-  --color-mri-token-valid-bg: var(--color-primary, #000080);
-  --color-mri-select-token-no-data-bg-light: #d2e9f6;
-  --color-mri-select-token-valid-bg-light: #8fdbfe;
-  --color-mri-token-valid-syntax-border: #0076ad;
-  --color-mri-valid-syntax-text: #ffffff;
-  --color-mri-select-token-valid-text-light: #006c9e;
-  --color-mri-select-token-valid-text-dark: #005c87;
-  --color-mri-select-token-valid-text-bg: #1790ce;
-  --color-mri-token-invalid-bg: #e23101;
-  --color-mri-token-pending-bg: #777777;
-  --color-mri-token-valid-border: #223a80;
-  --color-mri-token-invalid-border: #333333;
-  --color-mri-token-pending-border: #494949;
-  --color-mri-info: #007cc0;
-  --color-mri-error: #c00000;
-  --color-mri-warning: #f9a429;
-  --color-mri-success-bg: #e1fff6;
-  --color-mri-contrast: var(--color-primary, #000080);
-  --color-mri-select-list-item-hoverable-light: #f0f0f0;
-  --color-mri-dropdown-list-item-selected: #ebf2f9;
-  --color-mri-dropdown-label-dark-text: #000000;
-  --color-mri-dropdown-border-light: #c0c0c0;
-  --color-mri-box-shadow: #000000;
-  --color-mri-box-shadow-glow: 0.85;
-  --color-ui-highlight: #ebf2f9;
-  --color-mri-light-hover-bg: #bababa;
-  --color-link-text: #00679e;
-  --color-checkbox: #000080;
-  --color-segmented-button-text: #00679e;
-  --color-segmented-button-select-text: #ffffff;
-  --color-mri-button-border: none;
-  --color-mri-button-hover: var(--color-primary, #000080);
-  --color-mri-button-hover-dark: var(--color-primary, #000080);
-  --color-table-col-grip-hover: #e6f2f9;
+  /* Aliased to the design system. Change the token, not these lines.
+   * 15 are within delta 12 of their token rather than exact; the shift is
+   * sub-perceptual and the old value is noted inline. */
+  --color-cardinality-exactly: var(--d2e-color-neutral-black);
+  --color-checkbox: var(--d2e-color-primary);
+  --color-date-hover: var(--d2e-color-neutral-lighter); // was #d8d8d8
+  --color-dialog-box-footer-btn-text-light: var(--d2e-color-white);
+  --color-feedback-error: var(--d2e-color-danger);
+  --color-footer-border: var(--d2e-color-primary-xtra-lightest); // was #ebebeb
+  --color-footer-button-text-light: var(--d2e-color-white);
+  --color-mri-card-header-bg: var(--d2e-color-support-blue-lightest); // was #ebf2f9
+  --color-mri-darker-border: var(--d2e-color-primary);
+  --color-mri-dropdown-label-dark-text: var(--d2e-color-neutral-black);
+  --color-mri-dropdown-list-item-selected: var(--d2e-color-support-blue-lightest); // was #ebf2f9
+  --color-mri-footer-container-bg: var(--d2e-color-support-blue-lightest); // was #edf2fa
+  --color-mri-header-bg: var(--d2e-color-support-blue-light);
+  --color-mri-lightest-text: var(--d2e-color-neutral-lighter); // was #e0e0e0
+  --color-mri-select-list-item-hoverable-light: var(--d2e-color-neutral-lightest); // was #f0f0f0
+  --color-mri-success-bg: var(--d2e-color-success-light);
+  --color-mri-valid-syntax-text: var(--d2e-color-white);
+  --color-segmented-button-select-text: var(--d2e-color-white);
+  --color-table-col-grip-hover: var(--d2e-color-support-blue-lightest); // was #e6f2f9
+  --color-table-row-bg: var(--d2e-color-neutral-xtra-lightest); // was #f9f9f9
+  --color-table-row-border: var(--d2e-color-primary-xtra-lightest); // was #e7e7e7
+  --color-ui-darkest-border: var(--d2e-color-neutral-black);
+  --color-ui-extra-light-bg: var(--d2e-color-neutral-xtra-lightest); // was #f9f9f9
+  --color-ui-highlight: var(--d2e-color-support-blue-lightest); // was #ebf2f9
+  --color-ui-light-border: var(--d2e-color-neutral-lighter); // was #dddddd
+  --color-ui-lighter-border: var(--d2e-color-neutral-lighter); // was #dedede
+  --color-ui-lightest-bg: var(--d2e-color-white);
+  --color-ui-lightest-border: var(--d2e-color-white);
+  --color-ui-medium-bg: var(--d2e-color-neutral-lighter); // was #dddddd
+
+  /* Indirect. Thirteen now point straight at the token, because the two
+   * primitive synonyms they used to chain through (--color-primary and
+   * --color-text-primary) were rewritten at their call sites and dropped.
+   * The remaining five chain to names d4l defines; subphase 05 takes those
+   * over. Note --color-mri-header-text-dark used to carry a #1f425a fallback
+   * that never applied, since the target was always defined; its fallback is
+   * now the real value. */
+  --color-cardinality-all: var(--d2e-color-primary, #000080);
+  --color-dialog-box-footer-bg: var(--d2e-color-primary, #000080);
+  --color-footer-hover-button-background-color: var(--d2e-color-primary, #000080);
+  --color-mri-brand: var(--d2e-color-primary, #000080);
+  --color-mri-button-hover: var(--d2e-color-primary, #000080);
+  --color-mri-button-hover-dark: var(--d2e-color-primary, #000080);
   --color-mri-chart-button-hover: var(--color-neutral-lightest, #f2f0f1);
-
-  --color-mri-card-header-bg: #ebf2f9;
-  --color-mri-card-header-border: #d9e6f0;
-  --color-mri-header-text-dark: var(--color-primary, #1f425a);
-  --color-mri-header-text-light: #4d6f8c;
-  --color-mri-nav-tab: var(--color-primary, #000080);
-  --color-mri-footer-bg: var(--color-primary, #1f425a);
-  --color-mri-header-bg: #ccdef1;
-  --color-mri-footer-container-bg: #edf2fa;
-  --color-footer-button-text-light: #ffffff;
-  --color-footer-hover-button-background-color: var(--color-primary, #000080);
-  --color-footer-active-button-background-color: #91c8f6;
-  --color-footer-active-button-text-color: #2f3c48;
-  --color-footer-border: #ebebeb;
-
-  --color-dialog-box-footer-bg: var(--color-primary, #000080);
-  --color-dialog-box-footer-shadow: #4f667a;
-  --color-dialog-box-footer-btn-emphasized-bg-color: #5496cd;
-  --color-dialog-box-footer-btn-transparent-bg-color: none;
-  --color-dialog-box-footer-btn-accept-bg-color: #96dc95;
-  --color-dialog-box-footer-btn-decline-bg-color: #ff5350;
-  --color-dialog-box-footer-btn-text-light: #ffffff;
-  --color-dialog-box-footer-btn-text-dark: #2f3c48;
-  --color-dialog-box-footer-border: #418ac7;
-
-  --color-table-header-row-bg: var(--color-neutral-lightest, #f2f0f1);
-  --color-table-row-bg: #f9f9f9;
-  --color-table-row-border: #e7e7e7;
+  --color-mri-contrast: var(--d2e-color-primary, #000080);
+  --color-mri-header-text-dark: var(--d2e-color-primary, #000080);
+  --color-mri-nav-tab: var(--d2e-color-primary, #000080);
+  --color-mri-token-valid-bg: var(--d2e-color-primary, #000080);
   --color-table-body-color: var(--color-neutral, #595757);
-
-  --color-tab-bar-header-bg: #bbd1ed;
-
+  --color-table-header-row-bg: var(--color-neutral-lightest, #f2f0f1);
+  --color-toggle-button-dark-bg: var(--d2e-color-primary, #000080);
   --color-toggle-button-light-bg: var(--color-secondary-lighter, #ffd0ce);
-  --color-toggle-button-dark-bg: var(--color-primary, #000080);
-  --color-selected-date-border: #ab218e;
-  --color-date-hover: #d8d8d8;
+  --color-ui-dark-text: var(--d2e-color-primary, #000080);
+  --color-ui-darkest-text: var(--d2e-color-primary, #000080);
+  --color-ui-light-text: var(--color-neutral, #595757);
 
-  --color-filtercard-new-state: #115693;
-  --color-date-error-text-bg: #ffc0cb;
-  --color-hover-border: #427cac;
+  /* Not colours. */
+  --color-mri-button-border: none;
+  --color-ui-medium-border-rgb: 204, 204, 204;
 
-  --color-cardinality-all: var(--color-primary);
+  /* ---------------------------------------------------------------------
+   * LEGACY - no design token exists for these 40 values.
+   * Measured 2026-09-02: the nearest token is up to delta 117 away in RGB,
+   * so these are a different palette, not drift. Do not invent a token for
+   * them, and do not snap them to the nearest one; either is a visible
+   * recolour that needs design input. Distances are in
+   * pr2/data/palette-map.tsv. Delete each line as its screen migrates.
+   * --------------------------------------------------------------------- */
   --color-cardinality-any: #e75248;
   --color-cardinality-at-least: #2686eb;
   --color-cardinality-at-most: #fa9087;
-  --color-cardinality-exactly: #000000;
+  --color-dialog-box-footer-shadow: #4f667a;
+  --color-filtercard-new-state: #115693;
+  --color-focus: #005483;
+  --color-footer-active-button-background-color: #91c8f6;
+  --color-footer-active-button-text-color: #2f3c48;
+  --color-hover-border: #427cac;
+  --color-link-text: #00679e;
+  --color-mri-brand-hover: #007eba;
+  --color-mri-card-header-border: #d9e6f0;
+  --color-mri-disabled-text: #c0c0c0;
+  --color-mri-dropdown-border-light: #c0c0c0;
+  --color-mri-error: #c00000;
+  --color-mri-header-text-light: #4d6f8c;
+  --color-mri-info: #007cc0;
+  --color-mri-light-hover-bg: #bababa;
+  --color-mri-select-token-no-data-bg-light: #d2e9f6;
+  --color-mri-select-token-valid-bg-light: #8fdbfe;
+  --color-mri-select-token-valid-text-dark: #005c87;
+  --color-mri-select-token-valid-text-light: #006c9e;
+  --color-mri-token-invalid-bg: #e23101;
+  --color-mri-token-invalid-border: #333333;
+  --color-mri-token-pending-bg: #777777;
+  --color-mri-token-pending-border: #494949;
+  --color-mri-token-valid-border: #223a80;
+  --color-mri-token-valid-syntax-border: #0076ad;
+  --color-mri-warning: #f9a429;
+  --color-segmented-button-text: #00679e;
+  --color-selected-date-border: #ab218e;
+  --color-tab-bar-header-bg: #bbd1ed;
+  --color-ui-dark-bg: #777777;
+  --color-ui-dark-border: #bfbfbf;
+  --color-ui-extra-dark-border: #999999;
+  --color-ui-extra-light-border: #e5e5e5;
+  --color-ui-extra-light-text: #bbbbbb;
+  --color-ui-light-bg: #e5e5e5;
+  --color-ui-medium-border: #cccccc;
+  --color-ui-medium-text: #444444;
+
+  /* ---------------------------------------------------------------------
+   * Names d4l-ui.css also defines. We re-declare them so our stylesheets
+   * depend on our tokens, not on a vendor file that shares our namespace.
+   * d4l keeps its own copies for its shadow-DOM components; ours win in the
+   * page because :root:root outranks its :root. Values verified identical to
+   * d4l's on 2026-09-02 - see pr2/data/d4l-map.tsv.
+   * --------------------------------------------------------------------- */
+  --color-feedback-alarm: var(--d2e-color-alarm);
+  --color-feedback-success: var(--d2e-color-success);
+  --color-neutral: var(--d2e-color-neutral);
+  --color-neutral-extra-lightest: var(--d2e-color-neutral-xtra-lightest);
+  --color-neutral-light: var(--d2e-color-neutral-light);
+  --color-neutral-lighter: var(--d2e-color-neutral-lighter);
+  --color-neutral-lightest: var(--d2e-color-neutral-lightest);
+  --color-primary-extra-lightest: var(--d2e-color-primary-xtra-lightest);
+  --color-primary-light: var(--d2e-color-primary-light);
+  --color-primary-lightest: var(--d2e-color-primary-lightest);
+  --color-secondary: var(--d2e-color-secondary);
+  --color-text-button-primary-active: var(--d2e-color-white);
+  --color-text-button-primary-default: var(--d2e-color-white);
+  --color-text-button-primary-disabled: var(--d2e-color-white);
+  --color-text-button-primary-hover: var(--d2e-color-white);
+
+  /* Button families. These chain through the names above, so the chain now
+   * ends in a --d2e-* token instead of in d4l's stylesheet. */
+  --color-background-button-primary-active: var(--color-primary-light);
+  --color-background-button-primary-default: var(--d2e-color-primary, #000080);
+  --color-background-button-primary-disabled: var(--color-primary-extra-lightest);
+  --color-background-button-primary-hover: var(--color-primary-light);
+  --color-background-button-secondary-active: var(--color-neutral-lightest);
+  --color-background-button-secondary-disabled: var(--color-primary-extra-lightest);
+  --color-background-button-secondary-hover: var(--color-neutral-lightest);
+  --color-border-button-primary-active: var(--color-primary-light);
+  --color-border-button-primary-default: var(--d2e-color-primary, #000080);
+  --color-border-button-primary-disabled: var(--color-primary-extra-lightest);
+  --color-border-button-primary-hover: var(--color-primary-light);
+  --color-border-button-secondary-active: var(--d2e-color-primary, #000080);
+  --color-border-button-secondary-default: var(--d2e-color-primary, #000080);
+  --color-border-button-secondary-disabled: var(--d2e-color-primary, #000080);
+  --color-border-button-secondary-hover: var(--d2e-color-primary, #000080);
+  --color-text-button-secondary-active: var(--d2e-color-primary, #000080);
+  --color-text-button-secondary-default: var(--d2e-color-primary, #000080);
+  --color-text-button-secondary-disabled: var(--d2e-color-primary, #000080);
+  --color-text-button-secondary-hover: var(--d2e-color-primary, #000080);
+  --color-background-button-secondary-default: transparent;
+
+  /* No design token; values copied verbatim from d4l. */
+  --color-secondary-lighter: #ffd0ce; // nearest --d2e-color-neutral-lighter delta 37.1
+  --color-support-blue: #bdd4f0; // nearest --d2e-color-support-blue-light delta 18.1
+  --color-support-yellow: #ffebaa; // nearest --d2e-color-warning-light delta 57.5
 }

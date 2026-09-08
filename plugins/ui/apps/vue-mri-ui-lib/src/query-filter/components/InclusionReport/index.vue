@@ -386,7 +386,7 @@ onUnmounted(() => {
       .app-listItem {
         width: 100%;
         background-color: transparent !important;
-        color: var(--color-primary) !important;
+        color: var(--d2e-color-primary, #000080) !important;
         font-size: 16px !important;
         // font-weight: bold;
         &.app-listItemSelected {
@@ -430,7 +430,7 @@ onUnmounted(() => {
 h4 {
   margin: 0;
   font-size: 1rem;
-  color: var(--color-primary);
+  color: var(--d2e-color-primary, #000080);
   font-weight: 500;
 }
 

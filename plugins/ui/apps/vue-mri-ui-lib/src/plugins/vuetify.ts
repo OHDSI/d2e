@@ -9,7 +9,7 @@ import '@d2e/ui/tokens.css'
 /**
  * Vuetify Plugin Configuration
  * - Color palette aligned with CSS custom properties in src/styles/themes/_main.scss
- * - Typography matching Bootstrap variables in src/styles/_mri-bootstrap-variables.scss
+ * - Typography matching the app font variables in src/styles/_app-variables.scss
  * - Component defaults matching existing component styles
  */
 export default createVuetify({

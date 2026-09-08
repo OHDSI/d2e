@@ -311,6 +311,6 @@ export default {
 }
 
 .filter-card-badge {
-  color: var(--color-primary, #000080) !important;
+  color: var(--d2e-color-primary, #000080) !important;
 }
 </style>
