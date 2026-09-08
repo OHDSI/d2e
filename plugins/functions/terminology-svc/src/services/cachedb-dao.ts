@@ -741,10 +741,18 @@ export class CachedbDAO {
         order by score desc
       `;
 
+      // conceptWithScores ends with a trailing comma so a following CTE can be
+      // appended. The FTS-only path has no following CTE, so the comma has to
+      // go -- otherwise the query reads `... ), select *` and DuckDB fails with
+      // `Parser Error: syntax error at or near "select"`.
+      const cteBlocks = [
+        conceptWithScores.trim().replace(/,$/, ""),
+        searchScores.trim(),
+      ].filter((block) => block.length > 0);
+
       const finalQuery = `
         with fts as (
-          ${conceptWithScores}
-          ${searchScores}
+          ${cteBlocks.join(",\n")}
           ${finalScores}
         )
       `;
