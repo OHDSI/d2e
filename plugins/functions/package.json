@@ -803,6 +803,7 @@
           "portal.filterScope.read",
           "portal.dataset.release.list.read",
           "portal.config.read",
+          "portal.audit.log",
           "codesuggestion.tenantview.read",
           "mcpchat.tenantview.read",
           "d2e.webapi.public",
@@ -1397,6 +1398,15 @@
           "httpMethods": [
             "POST",
             "GET"
+          ]
+        },
+        {
+          "path": "^/system-portal/audit/log$",
+          "scopes": [
+            "portal.audit.log"
+          ],
+          "httpMethods": [
+            "POST"
           ]
         },
         {
