@@ -12,7 +12,11 @@ import {
   DataCharacterizationOptions,
 } from "../types.ts";
 import { parseCdmVersionForOhdsi } from "../utils/OhdsiParser.ts";
-import { resolveDcTarget } from "./dcTarget.ts";
+import {
+  DC_DIRECT_DIALECTS_USE_TREX_VARIABLE,
+  isTruthyVariable,
+  resolveDcTarget,
+} from "./dcTarget.ts";
 
 export class DataCharacterizationService {
   private flowRunNamePrefix: string = "DC";
@@ -142,10 +146,14 @@ export class DataCharacterizationService {
     const { dialect, databaseCode, schemaName, vocabSchemaName } = dataset;
     const cacheId = dataset.cacheId ?? databaseCode;
 
+    const directDialectsUseTrex = isTruthyVariable(
+      await prefectApi.getVariableValue(DC_DIRECT_DIALECTS_USE_TREX_VARIABLE),
+    );
     const dcTarget = resolveDcTarget(
       dataset,
       overrideResultsSchema,
-      dataCharacterizationFlowRunDto.useSourceConnection ?? false,
+      dataCharacterizationFlowRunDto.useSourceConnection,
+      directDialectsUseTrex,
     );
 
     let resultsSchema: string;

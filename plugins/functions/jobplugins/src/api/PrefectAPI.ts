@@ -70,6 +70,41 @@ export class PrefectAPI {
     return jsonResponse;
   }
 
+  /**
+   * The value of a Prefect variable, or undefined when it is not set.
+   *
+   * Used for operational switches that have to be changeable without a
+   * redeploy. A missing variable is not an error -- callers fall back to their
+   * own default.
+   */
+  async getVariableValue(name: string): Promise<string | undefined> {
+    try {
+      const options = {
+        method: "GET",
+        headers: {
+          Authorization: this.token,
+          "Content-Type": "application/json",
+        },
+      };
+      const result = await fetch(
+        `${this.baseURL}/variables/name/${encodeURIComponent(name)}`,
+        options,
+      );
+      if (!result.ok) {
+        // 404 simply means the switch was never set.
+        return undefined;
+      }
+      const jsonResponse = await result.json();
+      const value = jsonResponse?.value;
+      return value === undefined || value === null ? undefined : String(value);
+    } catch (error) {
+      // An unreachable variables endpoint must not stop a flow run from being
+      // created; the caller's default applies.
+      console.error(`Error while reading prefect variable ${name}: ${error}`);
+      return undefined;
+    }
+  }
+
   async getDeployment(deploymentName: string, flowName: string) {
     const errorMessage = "Error while getting prefect deployment";
     try {
