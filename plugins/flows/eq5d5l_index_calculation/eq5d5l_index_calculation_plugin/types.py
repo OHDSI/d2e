@@ -33,7 +33,7 @@ EQ5D5L_TYPE_CONCEPT_ID = 32862
 class Eq5d5lCalculateConfig(BaseModel):
     schema_name: str  # OMOP CDM schema for the dataset being scored
     database_code: str
-    cache_id: Optional[str] = None
+    omop_dataset_id: str
     country_code: str  # required, single value per run - selects the EuroQol value set
 
     # Raw answer code (value_source_value, e.g. "1" or "no-problems") -> level 1-5.

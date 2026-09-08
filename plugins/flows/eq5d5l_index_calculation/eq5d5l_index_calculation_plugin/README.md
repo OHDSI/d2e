@@ -244,7 +244,7 @@ index.
     "config": {
       "schema_name": "cdmdefault",          # Required: OMOP CDM schema of the dataset being scored
       "database_code": "alpdev_pg",          # Required: CDM database code
-      "cache_id": null,                       # Optional: defaults to database_code
+      "omop_dataset_id": "alpdev_pg",          # Required: OMOP dataset id passed through to DBDao as cache_id
       "country_code": "AU",                   # Required: selects the EuroQol value set; single country per run
       "answer_code_level_map": null,          # Optional: non-numeric answer code -> level 1-5, e.g. {"no-problems": 1}
       "measurement_concept_id": null,         # Optional: override the "EQ-5D-5L index value" concept (default 42537273)

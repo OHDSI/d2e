@@ -34,7 +34,7 @@ def calculate_eq5d5l_index(config: Eq5d5lCalculateConfig):
     value_set = load_value_set(config.country_code)
     logger.info(f"Loaded EuroQol value set for country_code='{config.country_code}'")
 
-    dbdao = DBDao(database_code=config.database_code, cache_id=config.cache_id)
+    dbdao = DBDao(database_code=config.database_code, cache_id=config.omop_dataset_id)
 
     dimension_concept_id_map = DIMENSION_CONCEPT_ID_MAP
 

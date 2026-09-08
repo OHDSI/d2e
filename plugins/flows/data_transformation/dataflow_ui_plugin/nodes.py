@@ -38,6 +38,13 @@ from _shared_flow_utils.types import SupportedDatabaseDialects
 from _shared_flow_utils.api.SupabaseStorageAPI import SupabaseStorageAPI
 from subprocess import Popen, PIPE
 
+# Resolved relative to this module rather than hardcoded to /app/flows/... -
+# run-flow.sh stages each plugin under a per-run directory (e.g.
+# /var/lib/d2e-flows/data-transformation-flow/<sha>/flows/dataflow_ui_plugin),
+# not a fixed /app/flows path (/app only holds the worker's own scripts).
+_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
 class Node:
     def __init__(self, name, node):
         self.id = node["id"]
@@ -468,12 +475,12 @@ class TransformFhirDataNode(Node):
             raise Exception(f"OMOP table mapping not found for target structure definition url: {target_structure_definition_url}")
 
         source_resource_name = source_structure_definition_url.rstrip("/").split("/")[-1]
-        folder = "/app/flows/dataflow_ui_plugin/fhirutils/fhir_structureDefinition"
+        folder = os.path.join(_PLUGIN_DIR, "fhirutils", "fhir_structureDefinition")
         source_structure_definition = self.get_fhir_structure_definition(folder, source_resource_name)
         if not source_structure_definition:
             raise Exception(f"Source Structure Definition not found for url: {source_structure_definition_url}")
 
-        folder = "/app/flows/dataflow_ui_plugin/fhirutils/omop_structureDefinition"
+        folder = os.path.join(_PLUGIN_DIR, "fhirutils", "omop_structureDefinition")
         target_structure_definition = self.get_omop_structure_definition_by_url(folder, target_structure_definition_url)
 
         fhir_resource = None
@@ -482,7 +489,7 @@ class TransformFhirDataNode(Node):
             fhir_resource = content_list if content_list else None
 
         transformed_omop = []
-        script_path = '/app/flows/dataflow_ui_plugin/fhirutils/fhir_transform.js'
+        script_path = os.path.join(_PLUGIN_DIR, "fhirutils", "fhir_transform.js")
 
         print("Starting FHIR Transform...")
         if fhir_resource:
@@ -606,21 +613,29 @@ class DbWriter(Node):
     def task(self, _input: dict[str, Result], task_run_context):
         try:
             upstream = _input.get(self.dataframe)
-            if upstream is None or upstream.result is None or len(upstream.result) == 0:
-                return Result(True, f"No input data: the incoming dataframe from '{self.dataframe}' is empty", self, task_run_context)
+            if upstream is None:
+                return Result(True, f"No input data: upstream node '{self.dataframe}' did not run", self, task_run_context)
             if upstream.error:
                 return Result(True, f"No input data: upstream node '{self.dataframe}' failed, fix that node first", self, task_run_context)
-            if not isinstance(upstream.result, pd.DataFrame):
+            if upstream.result is not None and not isinstance(upstream.result, pd.DataFrame):
                 return Result(True, f"No input data: result from '{self.dataframe}' is not a dataframe", self, task_run_context)
-            df_to_write = upstream.result
 
             dbutils = DBDao(database_code=self.database)
             if dbutils.dialect == SupportedDatabaseDialects.TREX.value:
                 return Result(True, f"Writing to a trex database ('{self.database}') is not supported by the DB writer node", self, task_run_context)
             dbconn = dbutils.engine
 
+            # Truncate whenever the upstream ran validly, even with zero rows - it's a
+            # full-refresh semantics (empty source this run should mean an empty table,
+            # not a stale one left over from a previous run), distinct from an upstream
+            # that errored or never ran, which is left untouched above.
             if self.truncate:
                 self._truncate_table(dbconn, dbutils.dialect)
+
+            df_to_write = upstream.result
+            if df_to_write is None or len(df_to_write) == 0:
+                note = "Table truncated; " if self.truncate else ""
+                return Result(False, f"{note}no rows to write: the incoming dataframe from '{self.dataframe}' is empty", self, task_run_context)
 
             result = df_to_write.to_sql(
                 self.table_name,
@@ -1057,6 +1072,30 @@ class FhirMappingNode(Node):
                 omop_dao.engine,
             )
             omop_rows = list(omop_rows_df.itertuples(index=False, name=None))
+
+            # Reconcile rather than upsert-only: existing lineage rows for this
+            # (omop_table_name, fhir_resource_type) were written against whatever
+            # omop_id values the OMOP table had at that time. If the upstream
+            # DbWriter truncated and re-inserted that table since, the old omop_id
+            # values may no longer exist or may now belong to a different row -
+            # ON CONFLICT DO NOTHING on the insert below would never catch that,
+            # since a freshly-assigned omop_id doesn't collide with the stale one.
+            # Clearing unconditionally (before the empty-check, so a truncate-to-
+            # nothing run still clears out the now-orphaned old rows) keeps the
+            # mapping in sync with current OMOP contents whether this run's write
+            # was a full refresh or incremental.
+            mapping_escaped_schema = mapping_schema.replace('"', '""')
+            escaped_resource_type = self.fhir_resource_type.replace("'", "''")
+            escaped_omop_table_name = self.omop_table_name.replace("'", "''")
+            mapping_dao.execute_sql(f"""
+                DELETE FROM "{mapping_escaped_schema}".data_source
+                WHERE omop_table_name = '{escaped_omop_table_name}' AND fhir_resource_type = '{escaped_resource_type}'
+            """)
+            if self.write_key_map:
+                mapping_dao.execute_sql(f"""
+                    DELETE FROM "{mapping_escaped_schema}".fhir_omop_key_map
+                    WHERE omop_table_name = '{escaped_omop_table_name}' AND fhir_resource_type = '{escaped_resource_type}'
+                """)
 
             if not omop_rows:
                 return Result(False, {"inserted": 0, "updated": 0}, self, task_run_context)
