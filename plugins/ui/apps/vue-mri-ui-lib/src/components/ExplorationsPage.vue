@@ -95,9 +95,13 @@
       </D2eButton>
     </div>
 
-    <div v-else-if="cards.length === 0" class="explorations-page__status" data-testid="explorations-empty">
-      {{ getText('MRI_PA_EXPLORATIONS_EMPTY') }}
-    </div>
+    <ExplorationEmptyState
+      v-else-if="matchedCards.length === 0"
+      :title="emptyState.title"
+      :body="emptyState.body"
+      class="explorations-page__status"
+      data-testid="explorations-empty"
+    />
 
     <div v-else class="explorations-page__grid" data-testid="explorations-grid">
       <D2eExplorationCard
@@ -245,6 +249,13 @@
       </D2eExplorationCard>
     </div>
 
+    <ExplorationPagination
+      v-if="!loading && !loadError && matchedCards.length > 0"
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="matchedCards.length"
+    />
+
     </div>
 
     <!--
@@ -311,7 +322,8 @@ import {
   shouldResetDashboardFlow,
 } from './helpers/explorationAnalyze'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
-import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
+import { applyFilters, authorOptions, emptyFilters, isEmpty, type ExplorationFilters } from './helpers/explorationFilters'
+import { PAGE_SIZES, clampPage, pageSlice } from './helpers/explorationPaging'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
 import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
@@ -327,6 +339,8 @@ import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
 import ExplorationFiltersPanel from './ExplorationFiltersPanel.vue'
 import FilterCardSummary from './FilterCardSummary.vue'
 import DashboardFlowModals from './DashboardFlowModals.vue'
+import ExplorationPagination from './ExplorationPagination.vue'
+import ExplorationEmptyState from './ExplorationEmptyState.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -370,6 +384,8 @@ const searchQuery = ref('')
 const sortKey = ref<ExplorationSortKey>('lastUpdated')
 const filters = ref<ExplorationFilters>(emptyFilters())
 const filtersOpen = ref(false)
+const page = ref(1)
+const pageSize = ref<number>(PAGE_SIZES[0])
 const filterSummaryOpen = ref(false)
 /** True while the panel's SQL query is in flight; feeds its `chartBusy` prop. */
 const summaryBusy = ref(false)
@@ -430,11 +446,44 @@ const allCards = computed(() => store.getters.getDisplayBookmarks(false, portalC
     cannot be widened again. */
 const authorNames = computed<string[]>(() => authorOptions(allCards.value))
 
-const cards = computed(() => {
+/** After filter, search and sort, before paging. The pagination bar's count
+    and the empty-state choice are both taken from here, never from `cards`. */
+const matchedCards = computed(() => {
   // Filter, then search, then sort. Searching inside a filtered set is what
   // the user expects, and it is cheaper.
   const filtered = applyFilters(allCards.value, filters.value)
-  return filterAndSort(filtered, searchQuery.value, sortKey.value).map((card: BookmarkDisplay) => {
+  return filterAndSort(filtered, searchQuery.value, sortKey.value)
+})
+
+// Reset to page 1 whenever the result set changes underneath it. Without
+// this, filtering from 43 rows to 5 while on page 3 would show an empty grid
+// that looks like a bug.
+watch([searchQuery, filters, sortKey], () => {
+  page.value = 1
+})
+
+const emptyState = computed(() => {
+  if (allCards.value.length === 0) {
+    return { title: getText('MRI_PA_EXPLORATIONS_EMPTY'), body: getText('MRI_PA_EXPLORATIONS_EMPTY_BODY') }
+  }
+  // Filter takes precedence over search when both are active — it names the
+  // control furthest from the user's attention.
+  if (!isEmpty(filters.value)) {
+    return {
+      title: getText('MRI_PA_EXPLORATIONS_EMPTY_FILTER_TITLE'),
+      body: getText('MRI_PA_EXPLORATIONS_EMPTY_FILTER_BODY'),
+    }
+  }
+  return {
+    title: getText('MRI_PA_EXPLORATIONS_EMPTY_SEARCH_TITLE'),
+    body: getText('MRI_PA_EXPLORATIONS_EMPTY_SEARCH_BODY'),
+  }
+})
+
+const cards = computed(() => {
+  // A clampPage on read is the belt to the reset-on-change watcher's braces.
+  const currentPage = clampPage(page.value, matchedCards.value.length, pageSize.value)
+  return pageSlice(matchedCards.value, currentPage, pageSize.value).map((card: BookmarkDisplay) => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
