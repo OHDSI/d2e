@@ -1,5 +1,5 @@
 name: d2e-core
 description: A Helm Chart for d2e-core comprising database and IDP management
-version: 0.18.13
+version: 0.18.14
 apiVersion: v2
-appVersion: "0.18.8"
+appVersion: "0.18.9"
