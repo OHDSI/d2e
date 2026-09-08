@@ -58,4 +58,9 @@ describe('pageLabel', () => {
   it('renders "0 of 0" for an empty list', () => {
     expect(pageLabel(0, 1, 12)).toBe('0 of 0')
   })
+
+  it('comma-separates thousands in every number, start/end and total alike', () => {
+    expect(pageLabel(2450, 1, 1000)).toBe('1-1,000 of 2,450')
+    expect(pageLabel(2450, 3, 1000)).toBe('2,001-2,450 of 2,450')
+  })
 })

@@ -121,6 +121,7 @@ const onPageSizeChange = (event: Event): void => {
   align-items: center;
   justify-content: space-between;
   height: 48px;
+  flex-shrink: 0;
   padding: var(--d2e-spacing-xs) var(--d2e-spacing-m);
   border-top: 1px solid var(--d2e-color-neutral-lighter);
   background: var(--d2e-color-white);

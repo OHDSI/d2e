@@ -4,6 +4,7 @@
  * only slices it. Pure functions, no Vue import, so the test does not load
  * Vuetify.
  */
+import { formatNumber } from '../../utils/NumberUtils'
 
 export const PAGE_SIZES = [12, 24, 48] as const
 export type PageSize = (typeof PAGE_SIZES)[number]
@@ -24,10 +25,10 @@ export function pageSlice<T>(items: readonly T[], page: number, size: number): T
   return items.slice(start, start + size)
 }
 
-/** "1-12 of 43". Returns "0 of 0" when the list is empty. */
+/** "1-12 of 43". Every number is comma-grouped at the thousands. Returns "0 of 0" when the list is empty. */
 export function pageLabel(total: number, page: number, size: number): string {
   if (total === 0) return '0 of 0'
   const start = (page - 1) * size + 1
   const end = Math.min(page * size, total)
-  return `${start}-${end} of ${total}`
+  return `${formatNumber(start)}-${formatNumber(end)} of ${formatNumber(total)}`
 }

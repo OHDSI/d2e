@@ -95,13 +95,13 @@
       </D2eButton>
     </div>
 
-    <ExplorationEmptyState
+    <div
       v-else-if="matchedCards.length === 0"
-      :title="emptyState.title"
-      :body="emptyState.body"
       class="explorations-page__status"
       data-testid="explorations-empty"
-    />
+    >
+      <ExplorationEmptyState :title="emptyState.title" :body="emptyState.body" />
+    </div>
 
     <div v-else class="explorations-page__grid" data-testid="explorations-grid">
       <D2eExplorationCard
@@ -879,14 +879,14 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
 .explorations-page {
   height: 100%;
   padding: 24px;
-  overflow-y: auto;
   background: var(--d2e-color-neutral-xtra-lightest);
   font-family: var(--d2e-font-family);
 
   &__card {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
+    height: 100%;
+    overflow: hidden;
     background: var(--d2e-color-white);
     border-radius: var(--d2e-radius-lg);
   }
@@ -897,6 +897,11 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     justify-content: space-between;
     gap: 24px;
     padding: 24px;
+    // Never shrink: the card is now clamped to viewport height, and only
+    // __status/__grid (both `min-height: 0`) are meant to absorb a shortfall
+    // by scrolling. Without this, a very short viewport would squeeze the
+    // header instead of the content that's actually built to give way.
+    flex-shrink: 0;
   }
 
   /* 10px Medium, 1px tracking, closed by a 24x2 secondary rule
@@ -978,6 +983,7 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    flex-shrink: 0;
     padding: 8px 24px;
   }
 
@@ -1066,14 +1072,23 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     }
   }
 
+  /* The scrolling region: everything above (header, toolbar) and below
+     (the pagination bar) stays fixed, and only this area — whichever of
+     status/grid is showing — scrolls internally, clamped to the viewport. */
   &__status {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
     padding: 48px 24px;
-    flex: 1 0 auto;
-    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    // "safe": on a viewport too short for the content, fall back to
+    // flex-start instead of centering it — centered overflow in a scroll
+    // container clips symmetrically, and scrollTop can't go negative, so a
+    // plain `center` would leave the top permanently unreachable.
+    justify-content: safe center;
     color: var(--d2e-color-neutral);
   }
 
@@ -1085,10 +1100,14 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
   &__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, 324px);
+    grid-auto-rows: min-content;
     justify-content: start;
     column-gap: 16px;
     row-gap: 40px;
     padding: 24px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   &__summary-panel {
