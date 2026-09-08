@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/path@1": "1.0.8",
     "npm:knex@3.1.0": "3.1.0",
-    "npm:pg@^8.4.2": "8.22.0"
+    "npm:pg@^8.4.2": "8.22.0",
+    "npm:zod@3.20.6": "3.20.6"
   },
   "jsr": {
     "@std/path@1.0.8": {
@@ -179,13 +180,17 @@
     },
     "xtend@4.0.2": {
       "integrity": "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="
+    },
+    "zod@3.20.6": {
+      "integrity": "sha512-oyu0m54SGCtzh6EClBVqDDlAYRz4jrVtKwQ7ZnsEmMI9HnzuZFj8QFwAY1M5uniIYACdGvv0PBWPF2kO0aNofA=="
     }
   },
   "workspace": {
     "dependencies": [
       "jsr:@std/path@1",
       "npm:knex@3.1.0",
-      "npm:pg@^8.4.2"
+      "npm:pg@^8.4.2",
+      "npm:zod@3.20.6"
     ]
   }
 }

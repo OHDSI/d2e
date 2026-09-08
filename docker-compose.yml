@@ -918,6 +918,8 @@ services:
       LOW_NUMBER_SUPPRESSION_THRESHOLD: ${LOW_NUMBER_SUPPRESSION_THRESHOLD:-10}
       ROUNDING_TARGET: ${ROUNDING_TARGET:-10}
       D2E_BIGQUERY_JDBC_URL: ${D2E_BIGQUERY_JDBC_URL:-}
+      COHORT_CACHE_TTL_HOURS: ${COHORT_CACHE_TTL_HOURS:-24}
+      COHORT_CACHE_MAX_AGE_DAYS: ${COHORT_CACHE_MAX_AGE_DAYS:-30}
 
   # Needed only for future alterations of schema when version upgrades
   # alp-logto-db-post-alterations-init:

@@ -434,7 +434,8 @@
           "PG_ADMIN_USER": "${PG_ADMIN_USER:-alp_pg_admin_user}",
           "PG_PASSWORD": "${PG_WRITE_PASSWORD}",
           "PG_SCHEMA": "analytics",
-          "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}"
+          "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}",
+          "COHORT_CACHE_MAX_AGE_DAYS": "${COHORT_CACHE_MAX_AGE_DAYS:-30}"
         },
         "jobplugins-init": {
           "PG_ADMIN_PASSWORD": "${PG_ADMIN_PASSWORD}",
