@@ -264,6 +264,7 @@ function handleKeyDown(event: KeyboardEvent) {
   if (!isOpen.value) {
     if (event.key === 'ArrowDown' && options.value.length > 0) {
       isOpen.value = true
+      updateDropdownPosition()
       highlightedIndex.value = 0
       event.preventDefault()
     }
