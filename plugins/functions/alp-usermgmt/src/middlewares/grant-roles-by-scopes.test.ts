@@ -83,17 +83,19 @@ const installStubs = () => {
  * Sets the env this middleware branches on, and restores it afterwards. These
  * are properties of the exported `env` object, read at call time.
  */
-const withEnv = async (fn: () => Promise<void>) => {
+const withEnv = async (fn: () => Promise<void>, groupRoleMapping = '{}') => {
   const previous = {
     autoProvision: env.IDP_AUTO_PROVISION_USERS,
     tenantId: env.APP_TENANT_ID,
     systemName: env.ALP_SYSTEM_NAME,
-    relyingParty: env.IDP_RELYING_PARTY
+    relyingParty: env.IDP_RELYING_PARTY,
+    groupRoleMapping: env.IDP_GROUP_ROLE_MAPPING
   }
   env.IDP_AUTO_PROVISION_USERS = true
   env.APP_TENANT_ID = 'tenant-1'
   env.ALP_SYSTEM_NAME = 'alp'
   env.IDP_RELYING_PARTY = 'logto'
+  env.IDP_GROUP_ROLE_MAPPING = groupRoleMapping
   try {
     await fn()
   } finally {
@@ -101,10 +103,11 @@ const withEnv = async (fn: () => Promise<void>) => {
     env.APP_TENANT_ID = previous.tenantId
     env.ALP_SYSTEM_NAME = previous.systemName
     env.IDP_RELYING_PARTY = previous.relyingParty
+    env.IDP_GROUP_ROLE_MAPPING = previous.groupRoleMapping
   }
 }
 
-const run = async () => {
+const run = async (tokenOverrides: Record<string, unknown> = {}) => {
   const stubs = installStubs()
 
   const req: any = {
@@ -114,7 +117,8 @@ const run = async () => {
         sub: IDP_USER_ID,
         email: 'researcher@d2e.local',
         // A grant and a revoke in the same pass, so both call shapes are seen.
-        roles: [IDP_SCOPE_ROLE.SYSTEM_ADMIN]
+        roles: [IDP_SCOPE_ROLE.SYSTEM_ADMIN],
+        ...tokenOverrides
       })
     }
   }
@@ -164,4 +168,54 @@ Deno.test('the reconciliation grants and revokes according to token scopes', asy
     assertEquals(groupCalls.some(c => c.method === 'withdraw'), true)
     assertEquals(groupCalls.every(c => c.userId === USER_ID), true)
   })
+})
+
+Deno.test('idp_groups from a federated session are mapped to roles and granted', async () => {
+  const mapping = JSON.stringify({ entra: { [IDP_SCOPE_ROLE.USER_ADMIN]: 'group-guid-1' } })
+
+  await withEnv(async () => {
+    // Token carries no `roles`/`scope` claim at all here, so USER_ADMIN can only
+    // come from the idp_groups -> role mapping wired into the same scopes list.
+    const { groupCalls } = await run({ roles: undefined, idp_groups: ['group-guid-1'], idp_provider: 'entra' })
+
+    const userAdminCall = groupCalls.find(c => c.method === 'register' && c.userId === USER_ID)
+    assertEquals(userAdminCall !== undefined, true)
+  }, mapping)
+})
+
+Deno.test('idp_groups from a provider not present in the mapping grant nothing extra', async () => {
+  const mapping = JSON.stringify({ entra: { [IDP_SCOPE_ROLE.USER_ADMIN]: 'group-guid-1' } })
+
+  await withEnv(async () => {
+    // Same group id, but the token says it came from a different provider than
+    // the one configured for it, so it must not be honoured.
+    const { groupCalls } = await run({ roles: [], idp_groups: ['group-guid-1'], idp_provider: 'physionet' })
+
+    assertEquals(groupCalls.some(c => c.method === 'register'), false)
+  }, mapping)
+})
+
+Deno.test('a native login (no idp_groups/idp_provider claims) is unaffected by the mapping', async () => {
+  const mapping = JSON.stringify({ entra: { [IDP_SCOPE_ROLE.USER_ADMIN]: 'group-guid-1' } })
+
+  await withEnv(async () => {
+    // No idp_groups/idp_provider claims at all -- native password login shape.
+    const { groupCalls } = await run({ roles: [IDP_SCOPE_ROLE.SYSTEM_ADMIN] })
+
+    assertEquals(groupCalls.some(c => c.method === 'register' && c.userId === USER_ID), true)
+    // USER_ADMIN must still be revoked (not granted) since the token carried
+    // nothing that would grant it.
+    assertEquals(groupCalls.some(c => c.method === 'withdraw' && c.userId === USER_ID), true)
+  }, mapping)
+})
+
+Deno.test('a malformed IDP__GROUP_ROLE_MAPPING does not crash the request', async () => {
+  await withEnv(async () => {
+    const { groupCalls, res } = await run({ idp_groups: ['group-guid-1'], idp_provider: 'entra' })
+
+    // Bad config is treated as "no mapping" -- request handling proceeds and
+    // still reconciles the roles the token's own scopes describe.
+    assertEquals(res.statusCode, undefined)
+    assertEquals(groupCalls.length > 0, true)
+  }, '{not valid json')
 })

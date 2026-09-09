@@ -58,6 +58,11 @@ export const env = {
   USERMGMT_ENTITLEMENTS_PHYSIONET_CLIENT_SECRET: Deno.env.get("USERMGMT__ENTITLEMENTS_PHYSIONET_CLIENT_SECRET") || '',
   USERMGMT_ENTITLEMENTS_PHYSIONET_TOKEN_PATH: Deno.env.get("USERMGMT__ENTITLEMENTS_PHYSIONET_TOKEN_PATH") || '/oauth/token/',
   USERMGMT_ENTITLEMENTS_DATASET_MAPPING: Deno.env.get("USERMGMT__ENTITLEMENTS_DATASET_MAPPING") || '',
+  // Upstream idp group id -> d2e role, keyed by idp_provider. Replaces the role
+  // assignment that used to live in Logto's connector-alp-azuread and JWT
+  // customizer. Operator-supplied JSON; see `getIdpGroupRoleMapping` for how a
+  // malformed value is handled.
+  IDP_GROUP_ROLE_MAPPING: Deno.env.get("IDP__GROUP_ROLE_MAPPING") ?? '{}',
 }
 
 export const services = JSON.parse(env.SERVICE_ROUTES)
@@ -71,4 +76,28 @@ export const getAutoGrantDatasetCodes = (): string[] => {
 export const getAutoProvisionConnectors = (): string[] => {
   if (!env.USERMGMT_AUTO_PROVISION_CONNECTORS) return []
   return env.USERMGMT_AUTO_PROVISION_CONNECTORS.split(',').map(c => c.trim()).filter(c => c)
+}
+
+// `IDP__GROUP_ROLE_MAPPING` is operator-supplied JSON, so a typo must not take
+// request handling down for every user. An absent, empty, or unparseable value
+// (or one that doesn't parse to an object, e.g. an array or a string) is
+// treated as "no mapping configured" — the caller then maps nothing to no
+// roles, same as an unknown provider. Logs once per process so a bad value is
+// discoverable without spamming logs on every request.
+let hasWarnedInvalidIdpGroupRoleMapping = false
+export const getIdpGroupRoleMapping = (): Record<string, Record<string, string>> => {
+  try {
+    const parsed = JSON.parse(env.IDP_GROUP_ROLE_MAPPING || '{}')
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed
+    }
+  } catch {
+    // fall through to the warning below
+  }
+
+  if (!hasWarnedInvalidIdpGroupRoleMapping) {
+    console.warn('IDP__GROUP_ROLE_MAPPING is not a valid JSON object; treating as empty (no idp groups will be mapped to roles)')
+    hasWarnedInvalidIdpGroupRoleMapping = true
+  }
+  return {}
 }

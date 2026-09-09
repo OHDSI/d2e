@@ -10,8 +10,9 @@ import {
   EntitlementsSyncService,
   UserGroupService,
   UserService,
+  mapGroupsToRoles,
 } from '../services'
-import { env, getAutoGrantDatasetCodes } from '../env'
+import { env, getAutoGrantDatasetCodes, getIdpGroupRoleMapping } from '../env'
 import { LogtoAPI } from '../api'
 import { IDataset, ITokenUser } from '../types'
 import { UserField } from '../repositories'
@@ -49,7 +50,16 @@ export const grantRolesByScopes = async (req: Request, res: Response, next: Next
       logger.info(`Assigning roles for user with subject "${sub}"`)
     }
 
-    const { scope, roles, email } = token as { scope: string, roles: string[]; email: string }
+    const { scope, roles, email, idp_groups: idpGroups, idp_provider: idpProvider } = token as {
+      scope: string
+      roles: string[]
+      email: string
+      // Only present when the `idp_groups` scope was granted and the session
+      // came from a federated provider; absent entirely for native password
+      // logins and for M2M tokens.
+      idp_groups?: string[]
+      idp_provider?: string
+    }
     let user = await userService.getUserByIdpUserId(sub)
     let userId = user?.id
 
@@ -126,7 +136,14 @@ export const grantRolesByScopes = async (req: Request, res: Response, next: Next
         return res.status(500).send({ message: `Tenant not found` })
       }
 
-      const scopes = roles || scope?.split(" ") || []
+      // idp_groups/idp_provider are only present for a federated session that was
+      // granted the idp_groups scope; a native password login carries neither, so
+      // this yields [] and the reconciliation below behaves exactly as before.
+      const mappedRoles = Array.isArray(idpGroups) && idpProvider
+        ? mapGroupsToRoles(idpGroups, idpProvider, getIdpGroupRoleMapping())
+        : []
+
+      const scopes = [...(roles || scope?.split(" ") || []), ...mappedRoles]
       await grantOrRevokeSystemRole(userId, ROLES.ALP_SYSTEM_ADMIN, scopes.includes(IDP_SCOPE_ROLE.SYSTEM_ADMIN))
       await grantOrRevokeSystemRole(userId, ROLES.ALP_USER_ADMIN, scopes.includes(IDP_SCOPE_ROLE.USER_ADMIN))
       await grantOrRevokeSystemRole(userId, ROLES.ALP_DASHBOARD_VIEWER, scopes.includes(IDP_SCOPE_ROLE.DASHBOARD_VIEWER))
