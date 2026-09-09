@@ -25,10 +25,33 @@ export function pageSlice<T>(items: readonly T[], page: number, size: number): T
   return items.slice(start, start + size)
 }
 
-/** "1-12 of 43". Every number is comma-grouped at the thousands. Returns "0 of 0" when the list is empty. */
-export function pageLabel(total: number, page: number, size: number): string {
-  if (total === 0) return '0 of 0'
+export interface PageRangeLabel {
+  /** Comma-grouped first row number on the page. */
+  startLabel: string
+  /** Comma-grouped last row number on the page. */
+  endLabel: string
+  /** Comma-grouped total rows in the filtered set. */
+  totalLabel: string
+}
+
+/**
+ * The comma-grouped start, end and total for the pagination label.
+ *
+ * Returns three "0" labels for an empty list. The caller composes the final
+ * label from a locale string (see `ExplorationPagination.vue`), so the English
+ * word "of" — or any other language's equivalent — never lives in this helper.
+ * Keeping this pure means the composition rule stays unit-testable here.
+ */
+export function pageRange(total: number, page: number, size: number): PageRangeLabel {
+  if (total === 0) {
+    const zero = formatNumber(0)
+    return { startLabel: zero, endLabel: zero, totalLabel: zero }
+  }
   const start = (page - 1) * size + 1
   const end = Math.min(page * size, total)
-  return `${formatNumber(start)}-${formatNumber(end)} of ${formatNumber(total)}`
+  return {
+    startLabel: formatNumber(start),
+    endLabel: formatNumber(end),
+    totalLabel: formatNumber(total),
+  }
 }

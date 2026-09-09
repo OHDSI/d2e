@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampPage, pageCount, pageLabel, pageSlice } from '../explorationPaging'
+import { clampPage, pageCount, pageRange, pageSlice } from '../explorationPaging'
 
 describe('pageCount', () => {
   it('divides the total by the page size, rounding up', () => {
@@ -46,21 +46,21 @@ describe('pageSlice', () => {
   })
 })
 
-describe('pageLabel', () => {
+describe('pageRange', () => {
   it('renders the first page', () => {
-    expect(pageLabel(43, 1, 12)).toBe('1-12 of 43')
+    expect(pageRange(43, 1, 12)).toEqual({ startLabel: '1', endLabel: '12', totalLabel: '43' })
   })
 
   it('renders the last, partial page', () => {
-    expect(pageLabel(43, 4, 12)).toBe('37-43 of 43')
+    expect(pageRange(43, 4, 12)).toEqual({ startLabel: '37', endLabel: '43', totalLabel: '43' })
   })
 
-  it('renders "0 of 0" for an empty list', () => {
-    expect(pageLabel(0, 1, 12)).toBe('0 of 0')
+  it('returns three zeros for an empty list', () => {
+    expect(pageRange(0, 1, 12)).toEqual({ startLabel: '0', endLabel: '0', totalLabel: '0' })
   })
 
   it('comma-separates thousands in every number, start/end and total alike', () => {
-    expect(pageLabel(2450, 1, 1000)).toBe('1-1,000 of 2,450')
-    expect(pageLabel(2450, 3, 1000)).toBe('2,001-2,450 of 2,450')
+    expect(pageRange(2450, 1, 1000)).toEqual({ startLabel: '1', endLabel: '1,000', totalLabel: '2,450' })
+    expect(pageRange(2450, 3, 1000)).toEqual({ startLabel: '2,001', endLabel: '2,450', totalLabel: '2,450' })
   })
 })

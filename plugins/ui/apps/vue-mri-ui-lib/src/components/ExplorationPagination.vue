@@ -21,7 +21,7 @@
     </div>
 
     <div class="exploration-pagination__right">
-      <span class="exploration-pagination__count">{{ pageLabel(total, page, pageSize) }}</span>
+      <span class="exploration-pagination__count">{{ pageLabelText }}</span>
 
       <D2eIconButton
         category="no-stroke"
@@ -74,7 +74,7 @@
 import { computed } from 'vue'
 import { useStore } from 'vuex'
 import { D2eIconButton } from '@d2e/ui'
-import { PAGE_SIZES, pageCount, pageLabel } from './helpers/explorationPaging'
+import { PAGE_SIZES, pageCount, pageRange } from './helpers/explorationPaging'
 import ExplorationPaginationFirstIcon from './icons/ExplorationPaginationFirstIcon.vue'
 import ExplorationPaginationPrevIcon from './icons/ExplorationPaginationPrevIcon.vue'
 import ExplorationPaginationNextIcon from './icons/ExplorationPaginationNextIcon.vue'
@@ -100,6 +100,17 @@ const getText = (key: string): string => {
 }
 
 const totalPages = computed(() => pageCount(props.total, props.pageSize))
+
+// The range is comma-grouped and locale-neutral; the word "of" (or its
+// translation) and the empty form both come from i18n keys, so a translator
+// controls the word order and punctuation around the counts.
+const pageLabelText = computed(() => {
+  const range = pageRange(props.total, props.page, props.pageSize)
+  if (props.total === 0) {
+    return getText('MRI_PA_EXPLORATIONS_PAGINATION_EMPTY', [range.startLabel, range.endLabel])
+  }
+  return getText('MRI_PA_EXPLORATIONS_PAGINATION_RESULT', [range.startLabel, range.endLabel, range.totalLabel])
+})
 
 const goTo = (page: number): void => {
   if (page < 1 || page > totalPages.value || page === props.page) return
