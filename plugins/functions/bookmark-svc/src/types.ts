@@ -60,8 +60,13 @@ export const duplicateBookmarkSchema = z.object({
   params: z.object({
     bookmarkId: z.string(),
   }),
+  // No `cmd` here, unlike deleteBookmarkSchema. The command is this route's own
+  // sub-path, and its handler sets `req.body.cmd` itself — but the handler runs
+  // *after* this validation, so requiring the field rejected every honest
+  // request with "body.cmd Required". Delete only gets away with it because its
+  // caller goes through the generic fireBookmarkQuery, which happens to put
+  // `cmd` in the body. Do not copy it back in.
   body: z.object({
-    cmd: z.string(),
     newName: z.string(),
     paConfigId: z.string(),
     cdmConfigId: z.string(),
