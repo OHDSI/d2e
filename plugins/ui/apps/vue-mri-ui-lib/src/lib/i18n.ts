@@ -447,6 +447,11 @@ export const i18n = {
     MRI_PA_TOOLTIP_MATERIALIZE_DISABLED:
       'Cohort materialization is not available. This may be because the dataset does not support it, or the required cohort tables are not set up in the database schema.',
     MRI_PA_BUTTON_DISPLAY_OR_GENERATE_DATA_QUALITY: 'Display or generate data quality',
+    MRI_PA_DATA_QUALITY_CHECK_STARTED:
+      'Data quality check started successfully. This may take a while. Come back again later to view results.',
+    MRI_PA_DATA_QUALITY_CHECK_IN_PROGRESS:
+      "A data quality check is already in progress for this cohort. It'll be ready to view once it finishes.",
+    MRI_PA_DATA_QUALITY_CHECK_FAILED: 'Data quality check could not be started. Please try again.',
     MRI_PA_BUTTON_VIEW_COHORT: 'View Cohort',
     MRI_PA_BUTTON_IMPORT_COHORT: 'Import Cohort',
     MRI_PA_TOOLTIP_DELETE_BOOKMARK: 'Delete Saved Filter',
@@ -1485,6 +1490,12 @@ export const i18n = {
     MRI_PA_BUTTON_COHORT_BUTTON_TOOLTIP: 'Kohorten',
     MRI_PA_BUTTON_ADD_TO_COLLECTION: 'Zu Kohorte hinzufügen',
     MRI_PA_BUTTON_DISPLAY_OR_GENERATE_DATA_QUALITY: 'Datenqualität anzeigen oder generieren',
+    MRI_PA_DATA_QUALITY_CHECK_STARTED:
+      'Datenqualitätsprüfung erfolgreich gestartet. Dies kann eine Weile dauern. Schauen Sie später wieder vorbei, um die Ergebnisse zu sehen.',
+    MRI_PA_DATA_QUALITY_CHECK_IN_PROGRESS:
+      'Für diese Kohorte läuft bereits eine Datenqualitätsprüfung. Sie kann angezeigt werden, sobald sie abgeschlossen ist.',
+    MRI_PA_DATA_QUALITY_CHECK_FAILED:
+      'Die Datenqualitätsprüfung konnte nicht gestartet werden. Bitte versuchen Sie es erneut.',
     MRI_PA_BUTTON_VIEW_COHORT: 'Kohorte anzeigen',
     MRI_PA_BUTTON_IMPORT_COHORT: 'Kohorte importieren',
     MRI_PA_TOOLTIP_DELETE_BOOKMARK: 'Gesicherten Filter löschen',
@@ -2491,6 +2502,9 @@ export const i18n = {
     MRI_PA_BUTTON_COHORT_BUTTON_TOOLTIP: '群',
     MRI_PA_BUTTON_ADD_TO_COLLECTION: '添加到群',
     MRI_PA_BUTTON_DISPLAY_OR_GENERATE_DATA_QUALITY: '显示或生成数据质量',
+    MRI_PA_DATA_QUALITY_CHECK_STARTED: '数据质量检查已成功启动。这可能需要一段时间，请稍后再回来查看结果。',
+    MRI_PA_DATA_QUALITY_CHECK_IN_PROGRESS: '该群的数据质量检查正在进行中。完成后即可查看。',
+    MRI_PA_DATA_QUALITY_CHECK_FAILED: '无法启动数据质量检查。请重试。',
     MRI_PA_BUTTON_VIEW_COHORT: '查看群',
     MRI_PA_BUTTON_IMPORT_COHORT: '导入群',
     MRI_PA_TOOLTIP_DELETE_BOOKMARK: '删除已保存的过滤器',
