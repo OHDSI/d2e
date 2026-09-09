@@ -10,9 +10,13 @@ export default {
 import bsCard from '@/lib/ui/bs-card.vue'
 import appTab from '@/lib/ui/app-tab.vue'
 import { ref, computed } from 'vue'
-import InclusionReport from './InclusionReport/index.vue'
+import { lazyComponent } from '@/utils/lazyComponent'
 import Samples from './Samples.vue'
 import { d2eWebapiService } from '@/query-filter/services/D2eWebapiService'
+
+// Loaded on demand so plotly.js stays out of the single-spa entry's static
+// dependency graph. See docs: the chart chunk was blocking mount.
+const InclusionReport = lazyComponent('InclusionReport', () => import('./InclusionReport/index.vue'))
 
 const props = defineProps<{
   cohortDefinitionId: string

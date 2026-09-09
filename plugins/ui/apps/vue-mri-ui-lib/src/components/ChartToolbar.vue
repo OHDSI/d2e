@@ -175,13 +175,17 @@ function getBookmarkKey(bookmark) {
 }
 import VButton from './vuetify/VButton.vue'
 import VDialog from './vuetify/VDialog.vue'
-import InclusionReport from '../query-filter/components/InclusionReport/index.vue'
+import { lazyComponent } from '../utils/lazyComponent'
 import type { RuleFilterCardDetails } from '../query-filter/types/InclusionReportTypes'
 import {
   getAttributeName,
   getAdvanceTimeFilterFormatted,
   getInclusionReportFilterCardDetails,
 } from '../utils/filterCardUtils'
+
+// Loaded on demand so plotly.js stays out of the single-spa entry's static
+// dependency graph. See docs: the chart chunk was blocking mount.
+const InclusionReport = lazyComponent('InclusionReport', () => import('../query-filter/components/InclusionReport/index.vue'))
 
 export default {
   name: 'chartToolbar',

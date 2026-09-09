@@ -8,8 +8,9 @@ import {
   NOT_MOUNTED,
 } from "single-spa";
 import { RegisteredApp, SingleSpaPluginConfig } from "./types";
-import { createActivityFunction, generateContainerId } from "./utils";
+import { createActivityFunction, generateContainerId, matchesBasePath } from "./utils";
 import { resolveModuleUrl } from "./overrideUtils";
+import { cancelPreload, preloadNow, preloadWhenIdle } from "./preloadScheduler";
 
 const registeredApps: Map<string, RegisteredApp> = new Map();
 const moduleCache: Map<string, Promise<any>> = new Map();
@@ -60,15 +61,21 @@ export async function registerSingleSpaApp(config: SingleSpaPluginConfig): Promi
     isActive: false,
   });
 
-  // Eagerly kick off the bundle download so the module is cached in
-  // moduleCache by the time activeWhen first fires. Fire-and-forget — if
-  // the load fails, single-spa will surface the error when it calls
-  // app() through its normal lifecycle path. This eliminates the
-  // LOADING_SOURCE_CODE race window where a portal switch can catch a
-  // heavy bundle (e.g. vue-mri) mid-download.
-  loadModule().catch(error => {
-    console.debug(`[singleSpaRegistry] ${config.id} - preload failed (will retry on activation):`, error);
-  });
+  // Kick off the bundle download so the module is cached in moduleCache by the
+  // time activeWhen first fires. This eliminates the LOADING_SOURCE_CODE race
+  // window where a portal switch can catch a heavy bundle (e.g. vue-mri)
+  // mid-download.
+  //
+  // The researcher container registers every plugin on the same tick, so
+  // preloading all of them at once put six bundles on the wire together and
+  // starved whichever one the user had actually opened. Only the plugin on the
+  // current route preloads straight away; the rest queue and download one at a
+  // time in the background. See preloadScheduler.ts.
+  if (matchesBasePath(config.basePath, window.location)) {
+    preloadNow(config.id, loadModule);
+  } else {
+    preloadWhenIdle(config.id, loadModule);
+  }
 }
 
 export function updateCustomProps(appId: string, customProps: Record<string, any>): void {
@@ -102,6 +109,12 @@ export async function unloadSingleSpaApp(appId: string): Promise<void> {
 
   const status = getAppStatus(appId);
   console.debug(`[singleSpaRegistry] ${appId} - unregistering, current status: ${status}`);
+
+  // Before anything else: if this plugin's background preload has not run yet,
+  // drop it. Nobody is waiting for the bundle now, and downloading it would
+  // compete with whatever the user moved on to. Safe even in the deferred
+  // branch below, because a re-register queues the preload again.
+  cancelPreload(appId);
 
   try {
     if (status === MOUNTED || status === NOT_MOUNTED || status === NOT_LOADED) {

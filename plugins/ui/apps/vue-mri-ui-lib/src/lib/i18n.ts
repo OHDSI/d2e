@@ -22,6 +22,7 @@ export const i18n = {
     MRI_PA_COLL_BUT_OK: 'OK',
     MRI_PA_COLL_BUT_CANCEL: 'Cancel',
     MRI_PA_COLL_BUT_RETRY: 'Retry',
+    MRI_PA_CHART_LOAD_ERROR: 'This chart could not be loaded. Reload the page and try again.',
     MRI_PA_COLL_BUT_SAVE: 'Save',
     MRI_PA_COHORT_SAVED: 'Cohort saved',
     MRI_PA_BOOKMARK_SAVED: 'Bookmark saved successfully',

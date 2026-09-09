@@ -19,7 +19,6 @@ import DateUtils from '../../utils/DateUtils'
 import QueryString from '../../utils/QueryString'
 import { VariantValidator } from '../../utils/VariantValidator'
 import * as types from '../mutation-types'
-import Plotly from '../../lib/CustomPlotly'
 import moment from 'moment'
 
 const parseDrilldownDateValue = (value: unknown): Date | null => {
@@ -1087,7 +1086,7 @@ const actions = {
   setCurrentPatientCount({ commit }, { currentPatientCount }) {
     commit(types.SET_CURRENT_PATIENT_COUNT, { currentPatientCount })
   },
-  drilldown({ rootGetters, getters, dispatch }, { aSelectedData }) {
+  async drilldown({ rootGetters, getters, dispatch }, { aSelectedData }) {
     try {
       const collectedConstraints = {}
       let collectedDateConstraints = {}
@@ -1211,6 +1210,10 @@ const actions = {
       const plotlyElement = getters.getPlotlyElement
       if (plotlyElement) {
         getters.getPlotlyElement.dispatchEvent?.(new CustomEvent('plotly_deselect'))
+        // Loaded on demand. A static import here would pull plotly.js into the
+        // store, and the store is built by lifecycles.ts, so the whole chart
+        // chunk would become a static dependency of the single-spa entry.
+        const { default: Plotly } = await import('../../lib/CustomPlotly')
         Plotly.update(plotlyElement, {}, { selections: [] })
       }
     } catch (e) {
