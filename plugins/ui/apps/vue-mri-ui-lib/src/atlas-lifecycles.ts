@@ -20,7 +20,6 @@
  * onClose, so callers are unchanged.
  */
 
-import { useNotificationStore } from './stores/notifications'
 import {
   bootstrap as portalBootstrap,
   mount as portalMount,
@@ -113,15 +112,6 @@ type MessageBus = {
   request: (type: string, payload?: unknown) => Promise<unknown>
 }
 
-/**
- * Kept out of i18n deliberately: this string only ever renders inside the Atlas
- * mount, and the app's locale bundles are shared with the portal, where the
- * condition cannot occur. Move it into i18n if the picker stays unavailable
- * long enough to matter to a translator.
- */
-const getConceptSetUnavailableMessage = (): string =>
-  'Choosing a concept set is not available inside Atlas yet. Open Patient Analytics from the portal to use it.'
-
 const OPEN_EVENT = 'alp-terminology-open'
 const CHOOSE_REQUEST = 'conceptSet:choose'
 /**
@@ -133,9 +123,10 @@ const CHOOSE_REQUEST = 'conceptSet:choose'
  * (`atlas-iframe-parcel.ts` `chooseConceptSet`), so the concept-set picker has
  * never worked inside Atlas. The native mount did not break it.
  *
- * A minute of nothing reads as a hung application. A few seconds and a message
- * reads as a feature that is not available here, which is the truth. Raise this
- * again once the host answers.
+ * A minute of nothing reads as a hung application; a few seconds reads as a
+ * control that did not do anything. Neither is good, and the short wait is
+ * only the lesser evil until the host answers — at which point raise this
+ * back, because a real chooser needs time for a human to choose.
  */
 const REQUEST_TIMEOUT_MS = 4_000
 
@@ -177,14 +168,8 @@ const onTerminologyOpen =
       if (removeTerminologyBridge !== bridgeAtRequestTime) return
       if (!choice) {
         // Dismissed, or a host that does not serve the request. Report no
-        // change so the caller closes cleanly, and say why — otherwise the
-        // control looks broken rather than unavailable, which is what a silent
-        // close looked like.
+        // change so the caller closes cleanly instead of waiting.
         props.onClose?.(undefined)
-        useNotificationStore().setAlertMessage({
-          message: getConceptSetUnavailableMessage(),
-          messageType: 'warning',
-        })
         return
       }
       props.onClose?.({ currentConceptSet: { id: String(choice.conceptSetId), name: choice.name } })
