@@ -16,10 +16,13 @@ const isAtlasNative = import.meta.env.VITE_ATLAS_NATIVE === 'true'
  * Keep this Vuetify instance's theme off the host page.
  *
  * Only relevant to the native Atlas mount, where the app shares a document
- * with Atlas3's own Vuetify. Two problems, both measured on 2026-09-09 —
- * mounting the plugin repainted the Atlas shell's navigation, headings and
- * buttons from D2E navy to Vuetify's default blue, and it stayed that way
- * after unmount:
+ * with Atlas3's own Vuetify.
+ *
+ * Measured: mounting the plugin repainted the Atlas shell's navigation,
+ * headings and buttons from D2E navy to Vuetify's default blue, and left them
+ * that way after unmount. Two causes, both of them Vuetify 3.12 behaviour — so
+ * re-check this on a major Vuetify upgrade rather than assuming it still
+ * applies:
  *
  * - `stylesheetId` defaults to `vuetify-theme-stylesheet` for everyone, and
  *   Vuetify *upserts by id*. The second instance to start therefore overwrites

@@ -60,20 +60,26 @@ const fetchFeatures = async (props: AtlasProps): Promise<unknown[]> => {
 }
 
 /**
- * `features` is deliberately passed through as given, including `undefined`.
+ * Normalize the host's props for the portal contract.
  *
- * `update()` has nothing to contribute: Atlas3 never sends a feature list, so
- * re-deriving one there would only overwrite what `mount` fetched with an empty
- * array and turn Analyze back off after a source switch. The portal-context
- * store's `applyProps` skips `undefined` values, so leaving it undefined means
- * "keep what is already there" — no state of our own to hold or clear.
+ * `features` and `releaseId` are passed through as given, including
+ * `undefined`, and only `mount` supplies defaults. The portal-context store's
+ * `applyProps` skips `undefined` values, so leaving a field undefined on
+ * `update` means "keep what is already there".
+ *
+ * That matters for both. Atlas3 never sends a feature list, so re-deriving one
+ * on update would overwrite what `mount` fetched with an empty array and turn
+ * Analyze back off after a source switch. And `releaseId` had a hard `?? ''`
+ * fallback, so any update that omitted it — a token refresh, a locale change —
+ * would clear release scoping, because `''` is not `undefined` and
+ * `applyProps` would happily write it.
  */
-const normalizeProps = (props: AtlasProps, features?: unknown[]): AtlasProps => ({
+const normalizeProps = (props: AtlasProps, defaults?: { features: unknown[]; releaseId: string }): AtlasProps => ({
   ...props,
   qeSvcUrl: window.location.origin,
-  features,
+  features: defaults?.features,
   featuresLoading: false,
-  releaseId: props.releaseId ?? '',
+  releaseId: defaults ? (props.releaseId ?? defaults.releaseId) : props.releaseId,
 })
 
 /**
@@ -143,6 +149,17 @@ const REQUEST_TIMEOUT_MS = 4_000
  */
 let removeTerminologyBridge: (() => void) | null = null
 
+/**
+ * Bumped by every `mount`, and by `unmount` so an in-flight mount is orphaned.
+ *
+ * `mount` awaits a feature fetch and then polls up to five seconds for the
+ * host's container, so it can still be running when the user navigates away.
+ * Without this, that mount would go on to stand up a Vue app, a Vuex store,
+ * watchers and a `window` listener for an app the host believes is gone — and
+ * no further `unmount` would arrive to take them down.
+ */
+let currentMountGeneration = 0
+
 const requestConceptSetChoice = (messageBus: MessageBus, title?: string): Promise<ConceptSetChoice | null> => {
   const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), REQUEST_TIMEOUT_MS))
   const request = Promise.resolve(messageBus.request(CHOOSE_REQUEST, { title }))
@@ -199,13 +216,23 @@ export const unmount = async (props: AtlasProps) => {
   // listener attached to a realm this app has left.
   removeTerminologyBridge?.()
   removeTerminologyBridge = null
+  currentMountGeneration += 1
   return (portalUnmount as (p: AtlasProps) => Promise<unknown>)(props)
 }
 
 export const mount = async (props: AtlasProps) => {
-  const normalizedProps = normalizeProps(props ?? {}, await fetchFeatures(props ?? {}))
+  const mountGeneration = ++currentMountGeneration
+  const normalizedProps = normalizeProps(props ?? {}, {
+    features: await fetchFeatures(props ?? {}),
+    releaseId: '',
+  })
   const domElement = await resolveDomElement(normalizedProps)
   if (domElement) normalizedProps.domElement = domElement
+
+  // The two awaits above can outlast the user's patience. If an unmount landed
+  // meanwhile, stop here rather than mounting an app nothing will take down.
+  if (mountGeneration !== currentMountGeneration) return undefined
+
   // portalMount runs single-spa-vue's handleInstance with these props, which
   // sets up the portal-context store; install the bridge right after, with
   // the messageBus captured from the same props.

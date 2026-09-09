@@ -393,6 +393,7 @@ import { useStore } from 'vuex'
 import { D2eButton, D2eCheckbox, D2eDialog, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useDashboardFlow } from '../composables/useDashboardFlow'
 import * as types from '../store/mutation-types'
@@ -433,6 +434,8 @@ const emit = defineEmits<{
 
 const store = useStore()
 const portalContext = usePortalContext()
+// Singleton: module-level state, so this drives the same dialog App.vue renders.
+const unsavedChanges = useUnsavedChanges()
 const explorations = useExplorationsStore()
 const notifications = useNotificationStore()
 // Wrapped in `reactive()` so its nested refs unwrap the same way ChartToolbar's
@@ -551,14 +554,22 @@ const datasetItems = computed(() =>
  * the bookmark list and the dataset cache, then re-requests the MRI config and
  * reloads the bookmarks. Doing any of that here would duplicate it and race.
  *
- * The Atlas3 host is not told. It has no handler for a source change, so its
- * own idea of the selected source can drift from ours. See
- * `docs/projects/vue-mri-ui/ROADMAP.md` section 4.12 for what a host-side fix
- * would take.
+ * **Through the unsaved-changes guard, not straight at the store.** That guard
+ * is installed on the `custom-props-changed` listener, so it only covers a
+ * switch the host initiates. This selector mutates the store from inside the
+ * app, which never reaches that listener — so without asking here, choosing a
+ * source while a bookmark had unedited changes discarded them instantly and
+ * silently, because the watcher's first act is to clear the active bookmark.
+ * `guard` runs the action immediately when nothing is dirty, so the common
+ * case is unaffected.
+ *
+ * The Atlas3 host is not told about the change. It has no handler for one, so
+ * its own idea of the selected source can drift from ours. The gaps document
+ * under `docs/projects/vue-mri-ui/atlas-native/` records what a host fix takes.
  */
 const onDataSourceSelect = (nextDatasetId: string): void => {
   if (!nextDatasetId || nextDatasetId === datasetId.value) return
-  portalContext.applyProps({ datasetId: nextDatasetId })
+  unsavedChanges.guard(() => portalContext.applyProps({ datasetId: nextDatasetId }))
 }
 
 // One fetch per mount is enough: the response is every source this user can
