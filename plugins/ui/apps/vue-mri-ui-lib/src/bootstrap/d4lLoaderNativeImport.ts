@@ -13,8 +13,7 @@
 const nativeImport = (url: string): Promise<any> =>
   (new Function('u', 'return import(u)') as (u: string) => Promise<any>)(url)
 
-const runtimeImport = (relative: string): Promise<any> =>
-  nativeImport(new URL(relative, import.meta.url).href)
+const runtimeImport = (relative: string): Promise<any> => nativeImport(new URL(relative, import.meta.url).href)
 
 export const applyPolyfills = async (): Promise<unknown> => {
   const mod = await runtimeImport('./polyfills/index.js')

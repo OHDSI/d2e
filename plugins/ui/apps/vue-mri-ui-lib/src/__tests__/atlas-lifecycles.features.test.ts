@@ -43,10 +43,7 @@ describe('atlas-lifecycles: the feature list', () => {
     mountSpy.mockClear()
     updateSpy.mockClear()
     setActivePinia(createPinia())
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: async () => FEATURES } as unknown as Response)
-    )
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => FEATURES } as unknown as Response))
   })
 
   it('fetches the feature list on mount, because the host sends none', async () => {
