@@ -20,6 +20,7 @@
  * onClose, so callers are unchanged.
  */
 
+import { useNotificationStore } from './stores/notifications'
 import {
   bootstrap as portalBootstrap,
   mount as portalMount,
@@ -29,11 +30,50 @@ import {
 
 type AtlasProps = Record<string, any>
 
-const normalizeProps = (props: AtlasProps): AtlasProps => ({
+const FEATURE_LIST_URL = '/system-portal/feature/list'
+
+/**
+ * The features fetched for the current mount.
+ *
+ * Held because `update()` re-normalizes the host's props, and the host never
+ * sends `features`. Without this a dataset switch would hand the app an empty
+ * list and silently turn Analyze back off.
+ */
+let mountedFeatures: unknown[] | null = null
+
+/**
+ * Atlas3 passes no `features`, and several things in this app are gated on
+ * them. Most visibly, Analyze needs `wizards` enabled — with an empty list the
+ * action is simply dead, which reads as a broken feature rather than a
+ * disabled one.
+ *
+ * The portal supplies the same list through customProps, from the same
+ * endpoint. Fetch it with the host's token when the host has not supplied it.
+ *
+ * A failure returns an empty list rather than throwing: the mount must not be
+ * blocked by this, and an empty list is exactly the previous behaviour.
+ */
+const fetchFeatures = async (props: AtlasProps): Promise<unknown[]> => {
+  if (Array.isArray(props.features) && props.features.length) return props.features
+  try {
+    const token = typeof props.getToken === 'function' ? await props.getToken() : null
+    const response = await fetch(FEATURE_LIST_URL, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!response.ok) throw new Error(`${response.status}`)
+    const features = await response.json()
+    return Array.isArray(features) ? features : []
+  } catch (error) {
+    console.error('[atlas-lifecycles] Could not load the feature list; feature-gated actions stay off', error)
+    return []
+  }
+}
+
+const normalizeProps = (props: AtlasProps, features?: unknown[]): AtlasProps => ({
   ...props,
   qeSvcUrl: window.location.origin,
-  features: props.features ?? [],
-  featuresLoading: props.featuresLoading ?? false,
+  features: features ?? props.features ?? [],
+  featuresLoading: false,
   releaseId: props.releaseId ?? '',
 })
 
@@ -73,9 +113,31 @@ type MessageBus = {
   request: (type: string, payload?: unknown) => Promise<unknown>
 }
 
+/**
+ * Kept out of i18n deliberately: this string only ever renders inside the Atlas
+ * mount, and the app's locale bundles are shared with the portal, where the
+ * condition cannot occur. Move it into i18n if the picker stays unavailable
+ * long enough to matter to a translator.
+ */
+const getConceptSetUnavailableMessage = (): string =>
+  'Choosing a concept set is not available inside Atlas yet. Open Patient Analytics from the portal to use it.'
+
 const OPEN_EVENT = 'alp-terminology-open'
 const CHOOSE_REQUEST = 'conceptSet:choose'
-const REQUEST_TIMEOUT_MS = 60_000
+/**
+ * Short on purpose.
+ *
+ * Atlas3 has no `conceptSet:choose` handler — its host message bus answers five
+ * types and logs everything else as unhandled — so this request does not fail,
+ * it never resolves. The iframe path ends at the same call
+ * (`atlas-iframe-parcel.ts` `chooseConceptSet`), so the concept-set picker has
+ * never worked inside Atlas. The native mount did not break it.
+ *
+ * A minute of nothing reads as a hung application. A few seconds and a message
+ * reads as a feature that is not available here, which is the truth. Raise this
+ * again once the host answers.
+ */
+const REQUEST_TIMEOUT_MS = 4_000
 
 /**
  * Removes the listener installed by the current mount, or null when none is
@@ -106,17 +168,23 @@ const onTerminologyOpen =
     // CONCEPT_MULTI_SELECT wants a concept picker, which the host chooser is not.
     if (props.mode && props.mode !== 'CONCEPT_SET') return
 
-    // The bridge this handler belongs to. The request races a 60 second
-    // timeout, so it can resolve long after the user has left the plugin;
-    // calling `onClose` then would reach into an unmounted app.
+    // The bridge this handler belongs to. The request races a timeout, so it
+    // can resolve after the user has left the plugin; calling `onClose` then
+    // would reach into an unmounted app.
     const bridgeAtRequestTime = removeTerminologyBridge
 
     void requestConceptSetChoice(messageBus, props.title).then(choice => {
       if (removeTerminologyBridge !== bridgeAtRequestTime) return
       if (!choice) {
-        // Dismissed, timed out, or errored: report no change so the caller
-        // closes cleanly instead of waiting.
+        // Dismissed, or a host that does not serve the request. Report no
+        // change so the caller closes cleanly, and say why — otherwise the
+        // control looks broken rather than unavailable, which is what a silent
+        // close looked like.
         props.onClose?.(undefined)
+        useNotificationStore().setAlertMessage({
+          message: getConceptSetUnavailableMessage(),
+          messageType: 'warning',
+        })
         return
       }
       props.onClose?.({ currentConceptSet: { id: String(choice.conceptSetId), name: choice.name } })
@@ -146,11 +214,13 @@ export const unmount = async (props: AtlasProps) => {
   // listener attached to a realm this app has left.
   removeTerminologyBridge?.()
   removeTerminologyBridge = null
+  mountedFeatures = null
   return (portalUnmount as (p: AtlasProps) => Promise<unknown>)(props)
 }
 
 export const mount = async (props: AtlasProps) => {
-  const normalizedProps = normalizeProps(props ?? {})
+  mountedFeatures = await fetchFeatures(props ?? {})
+  const normalizedProps = normalizeProps(props ?? {}, mountedFeatures)
   const domElement = await resolveDomElement(normalizedProps)
   if (domElement) normalizedProps.domElement = domElement
   // portalMount runs single-spa-vue's handleInstance with these props, which
@@ -162,4 +232,4 @@ export const mount = async (props: AtlasProps) => {
 }
 
 export const update = async (props: AtlasProps) =>
-  (portalUpdate as (p: AtlasProps) => Promise<unknown>)(normalizeProps(props ?? {}))
+  (portalUpdate as (p: AtlasProps) => Promise<unknown>)(normalizeProps(props ?? {}, mountedFeatures ?? undefined))

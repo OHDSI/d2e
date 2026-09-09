@@ -12,16 +12,20 @@
         <h1 class="explorations-page__title">{{ getText('MRI_PA_EXPLORATIONS_TITLE') }}</h1>
         <p class="explorations-page__description">{{ getText('MRI_PA_EXPLORATIONS_DESCRIPTION') }}</p>
       </div>
+      <!-- Switching is only possible in the Atlas mount. In the portal the
+           dataset arrives through customProps and there is no channel back, so
+           the select stays a read-only label until #2956 settles that. -->
       <D2eSelect
         class="explorations-page__dataset"
         size="sm"
-        disabled
+        :disabled="!canSwitchDataSource"
         :label="getText('MRI_PA_EXPLORATIONS_DATASOURCE')"
         :items="datasetItems"
-        :model-value="datasetName"
+        :model-value="datasetId"
         prepend-icon="mdi-database-outline"
         hide-details
         data-testid="explorations-datasource"
+        @update:model-value="onDataSourceSelect"
       />
     </header>
 
@@ -503,7 +507,52 @@ const datasetId = computed(() => store.getters.getSelectedDataset?.id || portalC
     falls back to the id, so this is never blank while that list is still
     loading, or if it failed. */
 const datasetName = computed(() => store.getters.getSelectedDatasetName || datasetId.value)
-const datasetItems = computed(() => [{ label: datasetName.value, value: datasetId.value }])
+
+/**
+ * Switching the source is only possible in the native Atlas mount.
+ *
+ * In the portal the dataset arrives through customProps and nothing flows
+ * back, so changing it here would desynchronise the app from the shell that
+ * owns it. #2956 covers the portal's side. In Atlas the app can move itself:
+ * the dataset-change watcher reloads config and bookmarks off
+ * `portalContext.datasetId`, so setting that is the whole switch.
+ */
+const canSwitchDataSource = computed(
+  () => import.meta.env.VITE_ATLAS_NATIVE === 'true' && dataSourceItems.value.length > 1,
+)
+
+/** Every source the user can read, for the switcher. */
+const dataSourceItems = computed(() => {
+  const sources = (store.getters.getDataSources || []) as Array<{ sourceKey: string; sourceName?: string }>
+  return sources.map(source => ({ label: source.sourceName || source.sourceKey, value: source.sourceKey }))
+})
+
+/**
+ * The select's items. Falls back to the active source alone, which is what the
+ * portal always shows and what Atlas shows until the list arrives — a select
+ * with no item matching its model value renders blank.
+ */
+const datasetItems = computed(() =>
+  canSwitchDataSource.value ? dataSourceItems.value : [{ label: datasetName.value, value: datasetId.value }],
+)
+
+/**
+ * Move the app to another data source.
+ *
+ * Only `portalContext.datasetId` is set. `installDatasetChangeWatcher`
+ * subscribes to it and owns the rest — it clears the active bookmark, resets
+ * the bookmark list and the dataset cache, then re-requests the MRI config and
+ * reloads the bookmarks. Doing any of that here would duplicate it and race.
+ *
+ * The Atlas3 host is not told. It has no handler for a source change, so its
+ * own idea of the selected source can drift from ours. See
+ * `docs/projects/vue-mri-ui/ROADMAP.md` section 4.12 for what a host-side fix
+ * would take.
+ */
+const onDataSourceSelect = (nextDatasetId: string): void => {
+  if (!nextDatasetId || nextDatasetId === datasetId.value) return
+  portalContext.applyProps({ datasetId: nextDatasetId })
+}
 
 // One fetch per mount is enough: the response is every source this user can
 // read, not something scoped to the active dataset. Nothing awaits it — the
