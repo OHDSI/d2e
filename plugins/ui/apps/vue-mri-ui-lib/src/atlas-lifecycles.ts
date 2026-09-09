@@ -77,7 +77,18 @@ const OPEN_EVENT = 'alp-terminology-open'
 const CHOOSE_REQUEST = 'conceptSet:choose'
 const REQUEST_TIMEOUT_MS = 60_000
 
-let terminologyBridgeInstalled = false
+/**
+ * Removes the listener installed by the current mount, or null when none is
+ * installed.
+ *
+ * Not a boolean. A flag only tells you a listener was installed once, and this
+ * bridge needs to be taken down: Atlas3 is a shared realm, so a listener left
+ * on `window` after unmount answers another plugin's `alp-terminology-open`
+ * from an app that is no longer mounted. A flag also pins the first mount's
+ * `messageBus` for the life of the page — a remount would skip installation and
+ * keep talking to the old bus.
+ */
+let removeTerminologyBridge: (() => void) | null = null
 
 const requestConceptSetChoice = (messageBus: MessageBus, title?: string): Promise<ConceptSetChoice | null> => {
   const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), REQUEST_TIMEOUT_MS))
@@ -95,7 +106,13 @@ const onTerminologyOpen =
     // CONCEPT_MULTI_SELECT wants a concept picker, which the host chooser is not.
     if (props.mode && props.mode !== 'CONCEPT_SET') return
 
+    // The bridge this handler belongs to. The request races a 60 second
+    // timeout, so it can resolve long after the user has left the plugin;
+    // calling `onClose` then would reach into an unmounted app.
+    const bridgeAtRequestTime = removeTerminologyBridge
+
     void requestConceptSetChoice(messageBus, props.title).then(choice => {
+      if (removeTerminologyBridge !== bridgeAtRequestTime) return
       if (!choice) {
         // Dismissed, timed out, or errored: report no change so the caller
         // closes cleanly instead of waiting.
@@ -107,18 +124,30 @@ const onTerminologyOpen =
   }
 
 /**
- * Idempotent: a remount must not leave two listeners answering the same event.
+ * Replaces any previous bridge, so a remount never stacks two listeners and
+ * never keeps a stale `messageBus`.
  */
 const installTerminologyBridge = (props: AtlasProps): void => {
-  if (terminologyBridgeInstalled) return
+  removeTerminologyBridge?.()
+  removeTerminologyBridge = null
+
   const messageBus = props?.messageBus as MessageBus | undefined
   if (!messageBus || typeof messageBus.request !== 'function') return
-  terminologyBridgeInstalled = true
-  window.addEventListener(OPEN_EVENT, onTerminologyOpen(messageBus))
+
+  const handler = onTerminologyOpen(messageBus)
+  window.addEventListener(OPEN_EVENT, handler)
+  removeTerminologyBridge = () => window.removeEventListener(OPEN_EVENT, handler)
 }
 
 export const bootstrap = portalBootstrap
-export const unmount = portalUnmount
+
+export const unmount = async (props: AtlasProps) => {
+  // Before delegating, so a failure inside portalUnmount cannot leave the
+  // listener attached to a realm this app has left.
+  removeTerminologyBridge?.()
+  removeTerminologyBridge = null
+  return (portalUnmount as (p: AtlasProps) => Promise<unknown>)(props)
+}
 
 export const mount = async (props: AtlasProps) => {
   const normalizedProps = normalizeProps(props ?? {})
