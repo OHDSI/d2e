@@ -10,7 +10,7 @@ import {
 import { RegisteredApp, SingleSpaPluginConfig } from "./types";
 import { createActivityFunction, generateContainerId, matchesBasePath } from "./utils";
 import { resolveModuleUrl } from "./overrideUtils";
-import { preloadNow, preloadWhenIdle } from "./preloadScheduler";
+import { cancelPreload, preloadNow, preloadWhenIdle } from "./preloadScheduler";
 
 const registeredApps: Map<string, RegisteredApp> = new Map();
 const moduleCache: Map<string, Promise<any>> = new Map();
@@ -109,6 +109,12 @@ export async function unloadSingleSpaApp(appId: string): Promise<void> {
 
   const status = getAppStatus(appId);
   console.debug(`[singleSpaRegistry] ${appId} - unregistering, current status: ${status}`);
+
+  // Before anything else: if this plugin's background preload has not run yet,
+  // drop it. Nobody is waiting for the bundle now, and downloading it would
+  // compete with whatever the user moved on to. Safe even in the deferred
+  // branch below, because a re-register queues the preload again.
+  cancelPreload(appId);
 
   try {
     if (status === MOUNTED || status === NOT_MOUNTED || status === NOT_LOADED) {

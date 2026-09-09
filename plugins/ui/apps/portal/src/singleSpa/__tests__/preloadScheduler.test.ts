@@ -1,4 +1,4 @@
-import { preloadNow, preloadWhenIdle, resetPreloadQueue } from "../preloadScheduler";
+import { cancelPreload, preloadNow, preloadWhenIdle, resetPreloadQueue } from "../preloadScheduler";
 
 // Force the setTimeout fallback so the tests drive the scheduler with fake
 // timers rather than depending on a jsdom requestIdleCallback.
@@ -102,5 +102,63 @@ describe("preloadScheduler", () => {
     await flush();
     await advance(IDLE_FALLBACK_MS);
     expect(next.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not download a plugin whose preload was cancelled", async () => {
+    // A plugin can unmount before its turn comes up — a dataset switch
+    // remounts the whole researcher container. Downloading it then would
+    // compete with whatever the user moved on to.
+    const going = deferred();
+    const staying = deferred();
+
+    preloadWhenIdle("going", going.load);
+    preloadWhenIdle("staying", staying.load);
+    cancelPreload("going");
+
+    await advance(IDLE_FALLBACK_MS);
+
+    expect(going.load).not.toHaveBeenCalled();
+    expect(staying.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("queues one entry per plugin, so a re-register cannot double up", async () => {
+    // `generateAppId` derives the id from the path alone, so a plugin that is
+    // unregistered and registered again reuses it. Two entries would put two
+    // background downloads on the wire.
+    const plugin = deferred();
+
+    preloadWhenIdle("plugin", plugin.load);
+    preloadWhenIdle("plugin", plugin.load);
+
+    await advance(IDLE_FALLBACK_MS);
+    expect(plugin.load).toHaveBeenCalledTimes(1);
+
+    plugin.resolve();
+    await flush();
+    await advance(IDLE_FALLBACK_MS * 2);
+    expect(plugin.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds background preloads until every foreground preload settles", async () => {
+    // Two plugins can both match the current location when their base paths
+    // nest. With a boolean flag the first to settle resumed the drain while
+    // the second was still on the wire.
+    const firstActive = deferred();
+    const secondActive = deferred();
+    const queued = deferred();
+
+    preloadNow("active-a", firstActive.load);
+    preloadNow("active-b", secondActive.load);
+    preloadWhenIdle("queued", queued.load);
+
+    firstActive.resolve();
+    await flush();
+    await advance(IDLE_FALLBACK_MS * 2);
+    expect(queued.load).not.toHaveBeenCalled();
+
+    secondActive.resolve();
+    await flush();
+    await advance(IDLE_FALLBACK_MS);
+    expect(queued.load).toHaveBeenCalledTimes(1);
   });
 });

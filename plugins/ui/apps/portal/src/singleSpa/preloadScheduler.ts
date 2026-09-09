@@ -23,9 +23,14 @@ type PreloadTask = { id: string; load: () => Promise<unknown> };
 
 const queue: PreloadTask[] = [];
 let draining = false;
-// True while the active plugin's bundle is downloading. Background preloads
-// wait for it, so the plugin the user opened gets the whole link.
-let foregroundInFlight = false;
+// How many foreground preloads are downloading. Background preloads wait for
+// all of them, so the plugin the user opened gets the whole link.
+//
+// A counter rather than a boolean: two registered plugins can both match the
+// current location if their base paths nest, and with a boolean the first to
+// settle would resume background draining while the second was still on the
+// wire.
+let foregroundInFlight = 0;
 
 const IDLE_TIMEOUT_MS = 5000;
 const FALLBACK_DELAY_MS = 500;
@@ -40,7 +45,7 @@ function whenIdle(run: () => void): void {
 }
 
 function drain(): void {
-  if (foregroundInFlight) {
+  if (foregroundInFlight > 0) {
     // A foreground preload started while we were waiting for idle. Stand down;
     // preloadNow restarts the drain once it settles.
     draining = false;
@@ -70,7 +75,7 @@ function drain(): void {
  */
 export function preloadNow(id: string, load: () => Promise<unknown>): void {
   console.debug(`[preloadScheduler] ${id} - foreground preload`);
-  foregroundInFlight = true;
+  foregroundInFlight += 1;
   // Fire and forget. A failure here is surfaced later by single-spa when it
   // calls the load function through its own lifecycle.
   load()
@@ -78,19 +83,44 @@ export function preloadNow(id: string, load: () => Promise<unknown>): void {
       console.debug(`[preloadScheduler] ${id} - preload failed (will retry on activation):`, error);
     })
     .then(() => {
-      foregroundInFlight = false;
+      foregroundInFlight -= 1;
       startDraining();
     });
 }
 
 /** Queue a preload to run in the background, one bundle at a time. */
 export function preloadWhenIdle(id: string, load: () => Promise<unknown>): void {
+  // One entry per plugin. A plugin can be registered again after an unload —
+  // `generateAppId` derives the id from the path alone, so the second
+  // registration reuses it — and two entries for one id would put two
+  // background downloads on the wire, which is the thing this file exists to
+  // prevent.
+  if (queue.some((task) => task.id === id)) {
+    console.debug(`[preloadScheduler] ${id} - already queued`);
+    return;
+  }
   queue.push({ id, load });
   startDraining();
 }
 
+/**
+ * Drop a plugin's queued preload. Call this when a plugin is unregistered.
+ *
+ * Without it a plugin that unmounts before its turn comes up still gets
+ * downloaded, competing with whatever the user moved on to. A dataset switch
+ * remounts the whole researcher container, so this is a normal event, not an
+ * edge case. A preload already in flight is left alone: the bytes are spent,
+ * and the module cache makes them harmless.
+ */
+export function cancelPreload(id: string): void {
+  const index = queue.findIndex((task) => task.id === id);
+  if (index === -1) return;
+  queue.splice(index, 1);
+  console.debug(`[preloadScheduler] ${id} - queued preload cancelled`);
+}
+
 function startDraining(): void {
-  if (draining || foregroundInFlight) return;
+  if (draining || foregroundInFlight > 0) return;
   draining = true;
   whenIdle(drain);
 }
@@ -99,5 +129,5 @@ function startDraining(): void {
 export function resetPreloadQueue(): void {
   queue.length = 0;
   draining = false;
-  foregroundInFlight = false;
+  foregroundInFlight = 0;
 }
