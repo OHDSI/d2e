@@ -63,6 +63,7 @@ import { AddLanguageToDatasetCode1770345329000 } from "./migrations/177034532900
 import { AddDatasetCacheId1778417559068 } from "./migrations/1778417559068-add-dataset-cache-id.ts";
 import { UpdateFhirDatasetIdColumn17763068271810 } from "./migrations/17763068271810-update-fhir-dataset-id-column.ts";
 import { FixSourceDatasetCacheId1778417559069 } from "./migrations/1778417559069-fix-source-dataset-cache-id.ts";
+import { FixCacheDatasetCacheId1778417559070 } from "./migrations/1778417559070-fix-cache-dataset-cache-id.ts";
 import { env } from "../env.ts";
 
 const migrationDataSourceOptions: DataSourceOptions = {
@@ -151,6 +152,7 @@ const migrationDataSourceOptions: DataSourceOptions = {
     AddDatasetCacheId1778417559068,
     UpdateFhirDatasetIdColumn17763068271810,
     FixSourceDatasetCacheId1778417559069,
+    FixCacheDatasetCacheId1778417559070,
   ],
 };
 const migrationDataSource = new DataSource(migrationDataSourceOptions);
