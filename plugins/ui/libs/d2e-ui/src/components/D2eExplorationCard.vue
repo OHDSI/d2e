@@ -1,7 +1,10 @@
 <template>
   <section
     class="d2e-exploration-card"
-    :class="{ 'd2e-exploration-card--clickable': clickable }"
+    :class="{
+      'd2e-exploration-card--clickable': clickable,
+      'd2e-exploration-card--selected': selected,
+    }"
     :style="{ width }"
     :tabindex="clickable ? 0 : undefined"
     :role="clickable ? 'button' : undefined"
@@ -174,6 +177,19 @@ const resolvedStatus = computed(() =>
       outline: var(--d2e-border-width-md) solid var(--d2e-color-primary-light);
       outline-offset: 2px;
     }
+  }
+
+  // The base card already carries a 1px border (above), so swapping only the
+  // color for a selected card keeps the same box size — the card must not
+  // move when the user selects it.
+  //
+  // `&--clickable:hover` is a class plus a pseudo-class, so it outranks a bare
+  // `&--selected`. Without the `:hover` rule here, moving the pointer over a
+  // selected card repaints its border in the hover colour and the card stops
+  // looking selected while the pointer is on it. Selection outranks hover.
+  &--selected,
+  &--selected#{&}--clickable:hover {
+    border-color: var(--d2e-color-primary);
   }
 
   &__head {

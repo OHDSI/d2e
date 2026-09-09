@@ -25,7 +25,40 @@
       />
     </header>
 
-    <div class="explorations-page__toolbar">
+    <div v-if="explorations.hasSelection" class="explorations-page__bulk" data-testid="explorations-bulk-bar">
+      <D2eCheckbox
+        size="sm"
+        :model-value="allPageSelected"
+        :indeterminate="somePageSelected"
+        :aria-label="getText('MRI_PA_EXPLORATIONS_SELECT_ALL')"
+        data-testid="explorations-select-all"
+        @update:model-value="explorations.setPageSelection(pageIds, $event)"
+      />
+      <!-- The count changes as the user ticks cards, and nothing else on screen
+           announces it, so a screen reader needs it as a live region. -->
+      <span
+        class="explorations-page__bulk-count"
+        role="status"
+        aria-live="polite"
+        data-testid="explorations-bulk-count"
+      >
+        {{ selectedCountLabel }}
+      </span>
+      <div class="explorations-page__bulk-actions">
+        <D2eButton
+          variant="primary"
+          :disabled="!canCompare"
+          data-testid="explorations-bulk-compare"
+          @click="openCompare"
+        >
+          {{ getText('MRI_PA_COMPARE_D2E_COHORT_TEXT') }}
+        </D2eButton>
+        <D2eButton variant="danger" data-testid="explorations-bulk-delete" @click="openBulkDelete">
+          {{ getText('MRI_PA_BUTTON_DELETE') }}
+        </D2eButton>
+      </div>
+    </div>
+    <div v-else class="explorations-page__toolbar">
       <div class="explorations-page__toolbar-left">
         <D2eTextField
           v-model="searchQuery"
@@ -84,7 +117,7 @@
       </div>
     </div>
 
-    <div v-if="loading" class="explorations-page__status" data-testid="explorations-loading">
+    <div v-if="showInitialLoader" class="explorations-page__status" data-testid="explorations-loading">
       <v-progress-circular indeterminate color="primary" />
     </div>
 
@@ -250,7 +283,7 @@
     </div>
 
     <ExplorationPagination
-      v-if="!loading && !loadError && matchedCards.length > 0"
+      v-if="!showInitialLoader && !loadError && matchedCards.length > 0"
       :page="currentPage"
       :page-size="pageSize"
       :total="matchedCards.length"
@@ -292,6 +325,47 @@
     <RenameExplorationDialog v-model="renameOpen" :bookmark-display="actionTarget" />
     <DeleteExplorationDialog v-model="deleteOpen" :bookmark-display="actionTarget" />
 
+    <!-- Mounted once, outside the grid, as Bookmarks.vue:153-158 does.
+         `compareOpen` is a trigger the dialog watches, not its own visibility
+         state, so it is reset only in `closeEv` (blueprint pr10/02 section 3b). -->
+    <CohortComparisonDialog
+      :bookmark-list="comparableBookmarks"
+      :open-compare-dialog="compareOpen"
+      @close-ev="compareOpen = false"
+    />
+
+    <!-- The bulk-delete confirmation. Same copy as the single-delete dialog,
+         built on the same D2eDialog primitive rather than reusing the
+         DeleteExplorationDialog.vue component instance — see the comment by
+         `confirmBulkDelete` and DECISIONS.md. -->
+    <D2eDialog
+      v-model="bulkDeleteOpen"
+      :busy="bulkDeleting"
+      :title="getText('MRI_PA_EXPLORATION_DELETE_DIALOG_TITLE')"
+      data-testid="explorations-bulk-delete-modal"
+      @close="closeBulkDelete"
+    >
+      <p>{{ getText('MRI_PA_EXPLORATION_DELETE_DIALOG_TEXT') }}</p>
+      <template #actions>
+        <D2eButton
+          variant="secondary"
+          :disabled="bulkDeleting"
+          data-testid="explorations-bulk-delete-cancel-btn"
+          @click="closeBulkDelete"
+        >
+          {{ getText('MRI_PA_BUTTON_CANCEL') }}
+        </D2eButton>
+        <D2eButton
+          variant="danger"
+          :disabled="bulkDeleting"
+          data-testid="explorations-bulk-delete-confirm-btn"
+          @click="confirmBulkDelete"
+        >
+          {{ getText('MRI_PA_BUTTON_YES_DELETE') }}
+        </D2eButton>
+      </template>
+    </D2eDialog>
+
     <Transition name="slide-in-right">
       <div
         v-if="filterSummaryOpen"
@@ -310,9 +384,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
-import { D2eButton, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
+import { D2eButton, D2eCheckbox, D2eDialog, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
 import { usePortalContext } from '../composables/usePortalContext'
@@ -323,10 +397,13 @@ import {
   isDashboardFlowOpen,
   shouldResetDashboardFlow,
 } from './helpers/explorationAnalyze'
-import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
+import { filterAndSort, toCardId, type ExplorationSortKey } from './helpers/explorationList'
+import { allSelected, someSelected } from './helpers/explorationSelection'
 import { applyFilters, authorOptions, emptyFilters, isEmpty, type ExplorationFilters } from './helpers/explorationFilters'
 import { PAGE_SIZES, clampPage, pageSlice } from './helpers/explorationPaging'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
+import { deleteExploration, type DeleteExplorationDeps } from './helpers/deleteExploration'
+import { runBulkDelete } from './helpers/bulkDeleteExplorations'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
 import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
 import ExplorationDataQualityIcon from './icons/ExplorationDataQualityIcon.vue'
@@ -343,6 +420,7 @@ import FilterCardSummary from './FilterCardSummary.vue'
 import DashboardFlowModals from './DashboardFlowModals.vue'
 import ExplorationPagination from './ExplorationPagination.vue'
 import ExplorationEmptyState from './ExplorationEmptyState.vue'
+import CohortComparisonDialog from './CohortComparisonDialog.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -406,6 +484,18 @@ const restoreTarget = ref<Record<string, unknown> | null>(null)
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
+/**
+ * The full-page spinner replaces the grid only while there is nothing to show.
+ *
+ * `fireBookmarkQuery` raises the same loading flag for every call, a delete
+ * included (`store/modules/bookmark.ts` SET_BOOKMARKS_LOADING), not just for
+ * `loadAll`. Keying the spinner on the raw flag therefore blanked the grid
+ * behind whichever delete dialog was open, and that dialog shows its own busy
+ * spinner — two loaders on screen at once, for as long as the deletes ran.
+ * A refresh keeps the rows on screen instead and lets the dialog own the
+ * feedback.
+ */
+const showInitialLoader = computed(() => loading.value && allCards.value.length === 0)
 const datasetName = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
 const datasetItems = computed(() => [{ label: datasetName.value, value: datasetName.value }])
 const canMaterialize = computed<boolean>(() => Boolean(store.getters.getCanDatasetMaterializeCohorts))
@@ -416,9 +506,9 @@ const isWizardEnabled = computed(
 )
 const canAnalyze = computed(() => Boolean(store.getters.getCanDatasetMaterializeCohorts) && isWizardEnabled.value)
 
-const getText = (key: string): string => {
+const getText = (key: string, param?: string | string[]): string => {
   const resolver = store.getters.getText
-  return typeof resolver === 'function' ? resolver(key) : key
+  return typeof resolver === 'function' ? resolver(key, param) : key
 }
 
 const load = (): void => {
@@ -495,16 +585,7 @@ const cards = computed(() => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
-    // Namespaced: a bookmark id and a cohort-definition id come from different
-    // tables and can collide, and two never-materialized records can share a
-    // displayName. Either collision makes one checkbox select two cards.
-    const id = bookmark?.id
-      ? `bookmark:${bookmark.id}`
-      : cohortDefinition?.id
-        ? `cohort:${cohortDefinition.id}`
-        : atlas?.id
-          ? `atlas:${atlas.id}`
-          : `name:${card.displayName}`
+    const id = toCardId(card)
     // An Atlas record is a cohort; a D2E bookmark is an exploration.
     const idLabel = ['A', 'A+M'].includes(getBookmarkType(card))
       ? getText('MRI_PA_EXPLORATIONS_COHORT_ID_LABEL')
@@ -554,6 +635,151 @@ const cards = computed(() => {
       ],
     }
   })
+})
+
+/* ---- bulk selection --------------------------------------------------- */
+
+/** The ids on the current page only. Select-all acts on these. */
+const pageIds = computed(() => cards.value.map(c => c.id))
+/** Every id in the filtered set, across every page. `retain` reads this, never
+    `pageIds` — a watcher on the page would drop the user's selection on every
+    page change. */
+const matchedIds = computed(() => matchedCards.value.map(toCardId))
+const allPageSelected = computed(() => allSelected(pageIds.value, explorations.selectedBookmarkIds))
+const somePageSelected = computed(() => someSelected(pageIds.value, explorations.selectedBookmarkIds))
+const selectedCountLabel = computed(() => getText('MRI_PA_EXPLORATIONS_N_SELECTED', String(explorations.selectedCount)))
+
+/** Every filtered record, keyed by its namespaced card id. Selection is
+    resolved against `matchedCards`, never `cards` — the selection spans
+    pages, and a record on another page must still be actionable. */
+const recordsById = computed(() => {
+  const map = new Map<string, BookmarkDisplay>()
+  for (const record of matchedCards.value) map.set(toCardId(record), record)
+  return map
+})
+
+/** The selected ids, mapped back to their records. `.filter(Boolean)` is load
+    bearing, not padding: `retain` runs on a watcher, so a selected id can
+    outlive its record for one tick after a filter/search/sort change. */
+const selectedRecords = computed(() =>
+  explorations.selectedBookmarkIds
+    .map(id => recordsById.value.get(id))
+    .filter((r): r is BookmarkDisplay => Boolean(r)),
+)
+
+/* ---- Compare ------------------------------------------------------------
+   Reuses CohortComparisonDialog whole; its own ten-item cap and warning are
+   untouched (blueprint pr10/02 section 3b). */
+
+/** Only a record with a `bookmark` can be compared — CohortComparisonDialog
+    forwards raw Bookmark objects to cohortComparisonContainer. */
+const comparableBookmarks = computed(() => selectedRecords.value.map(r => r.bookmark).filter(Boolean))
+/** More than one, not "any": two Atlas-only records must leave Compare
+    disabled rather than opening an empty comparison. */
+const canCompare = computed(() => comparableBookmarks.value.length > 1)
+/** A trigger CohortComparisonDialog watches, not a v-model. It emits `closeEv`
+    only when it actually opened. */
+const compareOpen = ref(false)
+/**
+ * Lower the trigger before raising it, so every click is a fresh false->true
+ * edge for the dialog's watcher.
+ *
+ * `CohortComparisonDialog.openCohortCompareDialog` refuses to open above its
+ * own ten-item cap: it raises a warning and never emits `closeEv`. Without the
+ * reset the flag would stay true after such an attempt, the watcher would see
+ * no change on the next click, and Compare would be dead for the life of the
+ * page. The page size is 12, so one select-all is already over the cap and
+ * reaches this.
+ */
+const openCompare = async (): Promise<void> => {
+  compareOpen.value = false
+  await nextTick()
+  compareOpen.value = true
+}
+
+/* ---- Bulk delete ----------------------------------------------------------
+   The confirmation reuses the same D2eDialog primitive and the same three
+   i18n strings as the single-delete dialog (unchanged copy, per
+   pr10/00-figma-spec.md section 7). It is not the DeleteExplorationDialog.vue
+   *component* instance: that component's confirm() is wired to one
+   `bookmarkDisplay` prop and has no seam to substitute the bulk loop below
+   without changing single-delete behaviour, which is out of scope here. See
+   DECISIONS.md. */
+
+const bulkDeleteOpen = ref(false)
+const bulkDeleting = ref(false)
+const openBulkDelete = (): void => {
+  bulkDeleteOpen.value = true
+}
+const closeBulkDelete = (): void => {
+  if (bulkDeleting.value) return
+  bulkDeleteOpen.value = false
+}
+
+const deleteDeps: DeleteExplorationDeps = {
+  fireBookmarkQuery: payload => store.dispatch('fireBookmarkQuery', payload),
+  fireDeleteMaterializedCohortQuery: id => store.dispatch('fireDeleteMaterializedCohortQuery', id),
+  fireDeleteAtlasCohortDefinitionQuery: id => store.dispatch('fireDeleteAtlasCohortDefinitionQuery', id),
+}
+
+/**
+ * Mirrors `DeleteExplorationDialog.confirm()`'s own active-bookmark check,
+ * for every successfully-deleted target rather than one. A record in `failed`
+ * was never actually deleted, so it cannot be the reason to clear the active
+ * bookmark.
+ *
+ * `failed` holds record objects. Matching on `displayName` would misread a
+ * deleted record as failed whenever two records share a name.
+ */
+const clearActiveBookmarkIfDeleted = async (
+  targets: BookmarkDisplay[],
+  failed: ReadonlySet<BookmarkDisplay>,
+): Promise<void> => {
+  const activeBookmark = store.getters.getActiveBookmark
+  if (!activeBookmark) return
+  const clearedTheActiveOne = targets.some(record => {
+    if (failed.has(record)) return false
+    if (getBookmarkType(record) === 'M') return false
+    return activeBookmark.bookmarkname === record.bookmark?.name
+  })
+  if (!clearedTheActiveOne) return
+  store.commit(types.SET_ACTIVE_BOOKMARK, null)
+  await store.dispatch('resetChart')
+}
+
+const notifyBulkDeleteFailure = (failedNames: string[]): void => {
+  notifications.setAlertMessage({
+    // The names go through the locale string's own {0}, so word order and any
+    // punctuation around the list stay translatable.
+    message: getText('MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED', failedNames.join(', ')),
+    messageType: 'error',
+  })
+}
+
+const confirmBulkDelete = async (): Promise<void> => {
+  if (bulkDeleting.value) return
+  bulkDeleting.value = true
+  try {
+    await runBulkDelete(selectedRecords.value, {
+      deleteOne: record => deleteExploration(record, deleteDeps),
+      reload: () => store.dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } }),
+      clearSelection: () => explorations.clear(),
+      clearActiveBookmarkIfDeleted,
+      notifyFailure: notifyBulkDeleteFailure,
+    })
+  } finally {
+    bulkDeleting.value = false
+    bulkDeleteOpen.value = false
+  }
+}
+
+// A change to the search, a filter or the sort can drop cards out of the
+// matched set; a selected card that leaves it must leave the selection too.
+// Watching `matchedIds` (not `pageIds`) is deliberate: `matchedIds` covers
+// every page, so turning the page — which changes `pageIds` but not
+// `matchedIds` — never fires this and never drops the user's selection.
+watch(matchedIds, ids => {
+  explorations.retain(ids)
 })
 
 /**
@@ -997,6 +1223,46 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  /* Replaces the toolbar row while a selection is live (Figma 1821:433737,
+     "Frame 7"). Same 60px height as the row it replaces.
+
+     The frame nests the two buttons in their own group (`Frame 2147226911`),
+     so the row carries 16px between groups and the group carries 8px between
+     the buttons. Mirroring that nesting keeps both gaps declarative — a flat
+     row cannot express two gaps without per-child margins. */
+  &__bulk {
+    display: flex;
+    align-items: center;
+    gap: var(--d2e-spacing-s);
+    flex-shrink: 0;
+    height: 60px;
+    padding: var(--d2e-spacing-xs-s) var(--d2e-spacing-s);
+    background: var(--d2e-color-neutral-lightest);
+    border-top: var(--d2e-border-width-sm) solid var(--d2e-color-neutral-lighter);
+    border-bottom: var(--d2e-border-width-sm) solid var(--d2e-color-neutral-lighter);
+
+    // D2eButton has no height/padding/shadow prop; its own border-radius
+    // already defaults to --d2e-radius-md (8px), which matches the frame.
+    :deep(.d2e-button) {
+      height: 36px;
+      padding: var(--d2e-spacing-xs) 22px;
+      box-shadow: var(--d2e-elevation-e2);
+    }
+  }
+
+  &__bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--d2e-spacing-xs);
+  }
+
+  &__bulk-count {
+    font-size: var(--d2e-font-body2-size);
+    font-weight: var(--d2e-font-body2-weight);
+    line-height: var(--d2e-font-body2-line-height);
+    color: var(--d2e-color-primary);
   }
 
   /* Search is 466x44 with a 1px #ACABA8 border and a 4px radius

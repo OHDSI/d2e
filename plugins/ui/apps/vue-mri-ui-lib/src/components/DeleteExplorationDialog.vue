@@ -36,6 +36,7 @@ import { mapActions, mapGetters, mapMutations } from 'vuex'
 import { D2eButton, D2eDialog } from '@d2e/ui'
 import * as types from '../store/mutation-types'
 import { getBookmarkType } from '../utils/BookmarkUtils'
+import { deleteExploration } from './helpers/deleteExploration'
 
 export default {
   name: 'DeleteExplorationDialog',
@@ -81,21 +82,13 @@ export default {
       const activeBookmark = this.getActiveBookmark
       const bookmarkType = getBookmarkType(bookmarkDisplay)
       const isMaterializedCohort = bookmarkType === 'M'
-      const isD2ECohortDefinition = ['D', 'D+M'].includes(bookmarkType)
-      const isAtlasCohortDefinition = ['A', 'A+M'].includes(bookmarkType)
 
       try {
-        if (isMaterializedCohort) {
-          await this.fireDeleteMaterializedCohortQuery(bookmarkDisplay.cohortDefinition.id)
-        } else if (isAtlasCohortDefinition) {
-          await this.fireDeleteAtlasCohortDefinitionQuery(bookmarkDisplay.atlasCohortDefinition.id)
-        } else if (isD2ECohortDefinition) {
-          await this.fireBookmarkQuery({
-            params: { cmd: 'delete' },
-            method: 'delete',
-            bookmarkId: bookmarkDisplay.bookmark.id,
-          })
-        }
+        await deleteExploration(bookmarkDisplay, {
+          fireBookmarkQuery: this.fireBookmarkQuery,
+          fireDeleteMaterializedCohortQuery: this.fireDeleteMaterializedCohortQuery,
+          fireDeleteAtlasCohortDefinitionQuery: this.fireDeleteAtlasCohortDefinitionQuery,
+        })
 
         await this.fireBookmarkQuery({ method: 'get', params: { cmd: 'loadAll' } })
         this.$emit('update:modelValue', false)

@@ -1,7 +1,31 @@
 import { describe, it, expect } from 'vitest'
-import { filterAndSort, lastUpdatedMs, scoreCard } from '../explorationList'
+import { filterAndSort, lastUpdatedMs, scoreCard, toCardId } from '../explorationList'
 
 const card = (over: Record<string, unknown> = {}) => ({ displayName: 'card', ...over }) as never
+
+describe('toCardId', () => {
+  it('namespaces a bookmark id', () => {
+    expect(toCardId(card({ bookmark: { id: '42' } }))).toBe('bookmark:42')
+  })
+
+  it('namespaces a cohort-definition id', () => {
+    expect(toCardId(card({ cohortDefinition: { id: '7' } }))).toBe('cohort:7')
+  })
+
+  it('namespaces an atlas id', () => {
+    expect(toCardId(card({ atlasCohortDefinition: { id: '9' } }))).toBe('atlas:9')
+  })
+
+  it('falls back to the display name when no id is available', () => {
+    expect(toCardId(card({ displayName: 'unsaved' }))).toBe('name:unsaved')
+  })
+
+  it('prefers the bookmark id over a cohort or atlas id', () => {
+    expect(
+      toCardId(card({ bookmark: { id: '1' }, cohortDefinition: { id: '2' }, atlasCohortDefinition: { id: '3' } })),
+    ).toBe('bookmark:1')
+  })
+})
 
 describe('lastUpdatedMs', () => {
   it('prefers the bookmark dateModified', () => {
