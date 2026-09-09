@@ -7,6 +7,7 @@
     "serve": "vite --port 8081",
     "build": "vite build",
     "build:atlas": "vite build --config vite.config.atlas.ts && vite build --config vite.config.atlas-app.ts",
+    "build:atlas-native": "vite build --config vite.config.atlas-native.ts",
     "build:local": "VITE_HOST=http://localhost:8085 vite build",
     "build:watch": "vite build --mode=development --watch",
     "dev": "vite build --mode=development && concurrently --kill-others \"npm run build:watch\" \"vite preview --port 8085 --mode=development\"",

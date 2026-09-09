@@ -2,7 +2,18 @@
   <div id="app" class="mri-app-vue-container" data-testid="pa-app-container">
     <NotificationStack />
     <SplashScreen v-if="showSplashScreen" :overlay="!getInitialLoad" />
-    <patientanalytics v-show="!getInitialLoad" />
+    <!-- `inert` while the reload overlay is up. The app stays in the DOM and
+         stays focusable, so Tab could otherwise reach controls that are
+         visually covered and about to be replaced — a translucent overlay
+         stops the mouse and nothing else. The data source switch is the case
+         that matters: it clears the active bookmark and the bookmark list
+         underneath.
+         Set on the component rather than a wrapper: PatientAnalytics has a
+         single root and no `inheritAttrs: false`, so this falls through onto
+         it, and a wrapper div would have broken the height chain the splitter
+         depends on. `undefined` rather than `false` keeps the attribute
+         absent instead of present-and-empty. -->
+    <patientanalytics v-show="!getInitialLoad" :inert="getDatasetReloadInProgress || undefined" />
     <UnsavedChangesDialog
       v-model="showUnsavedDialog"
       @leave="unsavedChanges.confirmLeave"

@@ -12,16 +12,20 @@
         <h1 class="explorations-page__title">{{ getText('MRI_PA_EXPLORATIONS_TITLE') }}</h1>
         <p class="explorations-page__description">{{ getText('MRI_PA_EXPLORATIONS_DESCRIPTION') }}</p>
       </div>
+      <!-- Switching is only possible in the Atlas mount. In the portal the
+           dataset arrives through customProps and there is no channel back, so
+           the select stays a read-only label until #2956 settles that. -->
       <D2eSelect
         class="explorations-page__dataset"
         size="sm"
-        disabled
+        :disabled="!canSwitchDataSource"
         :label="getText('MRI_PA_EXPLORATIONS_DATASOURCE')"
         :items="datasetItems"
-        :model-value="datasetName"
+        :model-value="datasetId"
         prepend-icon="mdi-database-outline"
         hide-details
         data-testid="explorations-datasource"
+        @update:model-value="onDataSourceSelect"
       />
     </header>
 
@@ -389,6 +393,7 @@ import { useStore } from 'vuex'
 import { D2eButton, D2eCheckbox, D2eDialog, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
 import { useNotificationStore } from '../stores/notifications'
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import { usePortalContext } from '../composables/usePortalContext'
 import { useDashboardFlow } from '../composables/useDashboardFlow'
 import * as types from '../store/mutation-types'
@@ -429,6 +434,8 @@ const emit = defineEmits<{
 
 const store = useStore()
 const portalContext = usePortalContext()
+// Singleton: module-level state, so this drives the same dialog App.vue renders.
+const unsavedChanges = useUnsavedChanges()
 const explorations = useExplorationsStore()
 const notifications = useNotificationStore()
 // Wrapped in `reactive()` so its nested refs unwrap the same way ChartToolbar's
@@ -494,10 +501,82 @@ const loadError = computed(() => store.getters.getBookmarksLoadError)
  * spinner — two loaders on screen at once, for as long as the deletes ran.
  * A refresh keeps the rows on screen instead and lets the dialog own the
  * feedback.
+ *
+ * A data source switch is excluded for the same reason. That flow commits
+ * `RESET_ALL_BOOKMARKS`, so `allCards` empties and this would fire — under the
+ * app-wide overlay `App.vue` already shows for the switch. Two loaders again,
+ * and the grid blanking underneath is what made a switch look like the whole
+ * application reloading.
  */
-const showInitialLoader = computed(() => loading.value && allCards.value.length === 0)
-const datasetName = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
-const datasetItems = computed(() => [{ label: datasetName.value, value: datasetName.value }])
+const datasetReloading = computed<boolean>(() => Boolean(store.getters.getDatasetReloadInProgress))
+const showInitialLoader = computed(() => loading.value && allCards.value.length === 0 && !datasetReloading.value)
+/** The active source's id. Still the select's value: the id is what every call
+    downstream uses, and the label is only what the user reads. */
+const datasetId = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
+/** `getSelectedDatasetName` resolves the id against the fetched source list and
+    falls back to the id, so this is never blank while that list is still
+    loading, or if it failed. */
+const datasetName = computed(() => store.getters.getSelectedDatasetName || datasetId.value)
+
+/**
+ * Switching the source is only possible in the native Atlas mount.
+ *
+ * In the portal the dataset arrives through customProps and nothing flows
+ * back, so changing it here would desynchronise the app from the shell that
+ * owns it. #2956 covers the portal's side. In Atlas the app can move itself:
+ * the dataset-change watcher reloads config and bookmarks off
+ * `portalContext.datasetId`, so setting that is the whole switch.
+ */
+const canSwitchDataSource = computed(
+  () => import.meta.env.VITE_ATLAS_NATIVE === 'true' && dataSourceItems.value.length > 1,
+)
+
+/** Every source the user can read, for the switcher. */
+const dataSourceItems = computed(() => {
+  const sources = (store.getters.getDataSources || []) as Array<{ sourceKey: string; sourceName?: string }>
+  return sources.map(source => ({ label: source.sourceName || source.sourceKey, value: source.sourceKey }))
+})
+
+/**
+ * The select's items. Falls back to the active source alone, which is what the
+ * portal always shows and what Atlas shows until the list arrives — a select
+ * with no item matching its model value renders blank.
+ */
+const datasetItems = computed(() =>
+  canSwitchDataSource.value ? dataSourceItems.value : [{ label: datasetName.value, value: datasetId.value }],
+)
+
+/**
+ * Move the app to another data source.
+ *
+ * Only `portalContext.datasetId` is set. `installDatasetChangeWatcher`
+ * subscribes to it and owns the rest — it clears the active bookmark, resets
+ * the bookmark list and the dataset cache, then re-requests the MRI config and
+ * reloads the bookmarks. Doing any of that here would duplicate it and race.
+ *
+ * **Through the unsaved-changes guard, not straight at the store.** That guard
+ * is installed on the `custom-props-changed` listener, so it only covers a
+ * switch the host initiates. This selector mutates the store from inside the
+ * app, which never reaches that listener — so without asking here, choosing a
+ * source while a bookmark had unedited changes discarded them instantly and
+ * silently, because the watcher's first act is to clear the active bookmark.
+ * `guard` runs the action immediately when nothing is dirty, so the common
+ * case is unaffected.
+ *
+ * The Atlas3 host is not told about the change. It has no handler for one, so
+ * its own idea of the selected source can drift from ours. The gaps document
+ * under `docs/projects/vue-mri-ui/atlas-native/` records what a host fix takes.
+ */
+const onDataSourceSelect = (nextDatasetId: string): void => {
+  if (!nextDatasetId || nextDatasetId === datasetId.value) return
+  unsavedChanges.guard(() => portalContext.applyProps({ datasetId: nextDatasetId }))
+}
+
+// One fetch per mount is enough: the response is every source this user can
+// read, not something scoped to the active dataset. Nothing awaits it — the
+// label falls back to the id until it lands, and the action swallows failure,
+// so a missing list costs a nicer name and nothing else.
+store.dispatch('fireGetDataSources')
 const canMaterialize = computed<boolean>(() => Boolean(store.getters.getCanDatasetMaterializeCohorts))
 
 // Matches ChartToolbar.vue's isWizardFeatureEnabled / canOpenDashboard.
