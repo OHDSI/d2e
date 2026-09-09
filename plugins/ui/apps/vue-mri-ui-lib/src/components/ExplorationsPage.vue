@@ -110,7 +110,7 @@
       </div>
     </div>
 
-    <div v-if="loading" class="explorations-page__status" data-testid="explorations-loading">
+    <div v-if="showInitialLoader" class="explorations-page__status" data-testid="explorations-loading">
       <v-progress-circular indeterminate color="primary" />
     </div>
 
@@ -276,7 +276,7 @@
     </div>
 
     <ExplorationPagination
-      v-if="!loading && !loadError && matchedCards.length > 0"
+      v-if="!showInitialLoader && !loadError && matchedCards.length > 0"
       :page="currentPage"
       :page-size="pageSize"
       :total="matchedCards.length"
@@ -477,6 +477,18 @@ const restoreTarget = ref<Record<string, unknown> | null>(null)
 
 const loading = computed(() => store.getters.getBookmarksLoading)
 const loadError = computed(() => store.getters.getBookmarksLoadError)
+/**
+ * The full-page spinner replaces the grid only while there is nothing to show.
+ *
+ * `fireBookmarkQuery` raises the same loading flag for every call, a delete
+ * included (`store/modules/bookmark.ts` SET_BOOKMARKS_LOADING), not just for
+ * `loadAll`. Keying the spinner on the raw flag therefore blanked the grid
+ * behind whichever delete dialog was open, and that dialog shows its own busy
+ * spinner — two loaders on screen at once, for as long as the deletes ran.
+ * A refresh keeps the rows on screen instead and lets the dialog own the
+ * feedback.
+ */
+const showInitialLoader = computed(() => loading.value && allCards.value.length === 0)
 const datasetName = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
 const datasetItems = computed(() => [{ label: datasetName.value, value: datasetName.value }])
 const canMaterialize = computed<boolean>(() => Boolean(store.getters.getCanDatasetMaterializeCohorts))
