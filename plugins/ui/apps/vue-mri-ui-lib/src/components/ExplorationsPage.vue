@@ -498,8 +498,15 @@ const loadError = computed(() => store.getters.getBookmarksLoadError)
  * spinner — two loaders on screen at once, for as long as the deletes ran.
  * A refresh keeps the rows on screen instead and lets the dialog own the
  * feedback.
+ *
+ * A data source switch is excluded for the same reason. That flow commits
+ * `RESET_ALL_BOOKMARKS`, so `allCards` empties and this would fire — under the
+ * app-wide overlay `App.vue` already shows for the switch. Two loaders again,
+ * and the grid blanking underneath is what made a switch look like the whole
+ * application reloading.
  */
-const showInitialLoader = computed(() => loading.value && allCards.value.length === 0)
+const datasetReloading = computed<boolean>(() => Boolean(store.getters.getDatasetReloadInProgress))
+const showInitialLoader = computed(() => loading.value && allCards.value.length === 0 && !datasetReloading.value)
 /** The active source's id. Still the select's value: the id is what every call
     downstream uses, and the label is only what the user reads. */
 const datasetId = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)

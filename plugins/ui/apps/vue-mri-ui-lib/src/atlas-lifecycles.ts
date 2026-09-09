@@ -33,15 +33,6 @@ type AtlasProps = Record<string, any>
 const FEATURE_LIST_URL = '/system-portal/feature/list'
 
 /**
- * The features fetched for the current mount.
- *
- * Held because `update()` re-normalizes the host's props, and the host never
- * sends `features`. Without this a dataset switch would hand the app an empty
- * list and silently turn Analyze back off.
- */
-let mountedFeatures: unknown[] | null = null
-
-/**
  * Atlas3 passes no `features`, and several things in this app are gated on
  * them. Most visibly, Analyze needs `wizards` enabled — with an empty list the
  * action is simply dead, which reads as a broken feature rather than a
@@ -69,10 +60,19 @@ const fetchFeatures = async (props: AtlasProps): Promise<unknown[]> => {
   }
 }
 
+/**
+ * `features` is deliberately passed through as given, including `undefined`.
+ *
+ * `update()` has nothing to contribute: Atlas3 never sends a feature list, so
+ * re-deriving one there would only overwrite what `mount` fetched with an empty
+ * array and turn Analyze back off after a source switch. The portal-context
+ * store's `applyProps` skips `undefined` values, so leaving it undefined means
+ * "keep what is already there" — no state of our own to hold or clear.
+ */
 const normalizeProps = (props: AtlasProps, features?: unknown[]): AtlasProps => ({
   ...props,
   qeSvcUrl: window.location.origin,
-  features: features ?? props.features ?? [],
+  features,
   featuresLoading: false,
   releaseId: props.releaseId ?? '',
 })
@@ -214,13 +214,11 @@ export const unmount = async (props: AtlasProps) => {
   // listener attached to a realm this app has left.
   removeTerminologyBridge?.()
   removeTerminologyBridge = null
-  mountedFeatures = null
   return (portalUnmount as (p: AtlasProps) => Promise<unknown>)(props)
 }
 
 export const mount = async (props: AtlasProps) => {
-  mountedFeatures = await fetchFeatures(props ?? {})
-  const normalizedProps = normalizeProps(props ?? {}, mountedFeatures)
+  const normalizedProps = normalizeProps(props ?? {}, await fetchFeatures(props ?? {}))
   const domElement = await resolveDomElement(normalizedProps)
   if (domElement) normalizedProps.domElement = domElement
   // portalMount runs single-spa-vue's handleInstance with these props, which
@@ -232,4 +230,4 @@ export const mount = async (props: AtlasProps) => {
 }
 
 export const update = async (props: AtlasProps) =>
-  (portalUpdate as (p: AtlasProps) => Promise<unknown>)(normalizeProps(props ?? {}, mountedFeatures ?? undefined))
+  (portalUpdate as (p: AtlasProps) => Promise<unknown>)(normalizeProps(props ?? {}))
