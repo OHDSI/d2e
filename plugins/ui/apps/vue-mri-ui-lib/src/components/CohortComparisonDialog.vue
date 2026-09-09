@@ -41,12 +41,15 @@ import messageBox from './MessageBox.vue'
 import appButton from '../lib/ui/app-button.vue'
 import ChartButton from './ChartButton.vue'
 import Constants from '../utils/Constants'
-import { defineAsyncComponent } from 'vue'
+import { lazyComponent } from '../utils/lazyComponent'
 import { useNotificationStore } from '../stores/notifications'
 
 // Loaded on demand so plotly.js stays out of the single-spa entry's static
 // dependency graph. See docs: the chart chunk was blocking mount.
-const CohortComparisonContainer = defineAsyncComponent(() => import('./CohortComparisonContainer.vue'))
+const CohortComparisonContainer = lazyComponent(
+  'CohortComparisonContainer',
+  () => import('./CohortComparisonContainer.vue')
+)
 
 // const CancelToken = axios.CancelToken;
 // let cancel;

@@ -168,7 +168,7 @@ import appButton from '../lib/ui/app-button.vue'
 import appIcon from '../lib/ui/app-icon.vue'
 import appLink from '../lib/ui/app-link.vue'
 import ExplorationsPage from './ExplorationsPage.vue'
-import { defineAsyncComponent } from 'vue'
+import { lazyComponent } from '../utils/lazyComponent'
 import ChartToolbar from './ChartToolbar.vue'
 import FilterCardSummary from './FilterCardSummary.vue'
 import filters from './Filters.vue'
@@ -189,7 +189,7 @@ import { useExplorationsStore } from '../stores/explorations'
 
 // Loaded on demand so plotly.js stays out of the single-spa entry's static
 // dependency graph. See docs: the chart chunk was blocking mount.
-const ChartController = defineAsyncComponent(() => import('./ChartController.vue'))
+const ChartController = lazyComponent('ChartController', () => import('./ChartController.vue'))
 
 const PANE_SIZE = {
   FULL: 100,
