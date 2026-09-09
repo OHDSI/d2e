@@ -438,6 +438,37 @@ const actions = {
         commit(types.SET_BOOKMARKS_LOADING, { loading: false })
       })
   },
+  /**
+   * Copy one exploration under a new name, then refresh the list.
+   *
+   * Its own action rather than another `fireBookmarkQuery` command: that action
+   * builds every URL as `${bookmarkURL}/${bookmarkId || ''}`, with nothing after
+   * the id, and the duplicate route is a sub-path. Adding one there would change
+   * the URL shape every other command depends on.
+   *
+   * The caller supplies `newName`, so the "(Copy)" suffix stays in the UI where
+   * it can be translated. The service decides the rest: the copy is unshared and
+   * not materialised.
+   *
+   * Reloading with `loadAll` is how every other mutation here refreshes. Do not
+   * insert the copy optimistically — the list is derived from three record types
+   * and a synthetic row will not match what the server returns.
+   */
+  async fireDuplicateBookmarkQuery({ dispatch, rootGetters }, { bookmarkId, newName }) {
+    const config = rootGetters.getMriFrontendConfig
+    await dispatch('ajaxAuth', {
+      url: `${bookmarkURL}/${bookmarkId}/duplicate`,
+      method: 'POST',
+      params: {
+        newName,
+        paConfigId: config.getPaConfigId(),
+        cdmConfigId: config.getDatamodelConfigId(),
+        cdmConfigVersion: config.getVersion(),
+        datasetId: rootGetters.getSelectedDataset.id,
+      },
+    })
+    await dispatch('fireBookmarkQuery', { method: 'get', params: { cmd: 'loadAll' } })
+  },
   async refreshBookmarksForDatasetSwitch({ dispatch, rootGetters }) {
     // Non-blocking: buttons stay disabled until the check resolves and commits.
     dispatch('fireCheckIfDatasetCanMaterializeCohorts')

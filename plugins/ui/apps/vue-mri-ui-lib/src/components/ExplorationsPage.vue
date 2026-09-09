@@ -1058,6 +1058,17 @@ const onMaterializeClose = (open: boolean): void => {
   }
 }
 
+/**
+ * The bookmark ids with a duplicate request in flight.
+ *
+ * Duplicate has no confirmation dialog, so the menu click is the side effect
+ * itself: without this a double click posts twice and the user gets two copies.
+ * Rename and Delete need no equivalent, because their click only opens a modal.
+ * Keyed by id rather than one boolean, so copying two different cards at once
+ * still works.
+ */
+const duplicatingIds = ref<Set<string>>(new Set())
+
 const moreItems = (card: { source: BookmarkDisplay }) => {
   // Do not offer an action the user cannot perform: the same ownership guard
   // BookmarkItems applies to rename and delete.
@@ -1074,13 +1085,20 @@ const moreItems = (card: { source: BookmarkDisplay }) => {
       icon: 'mdi-pencil-outline',
       disabled: renameDisabled,
     },
-    // #3123. The backend has no duplicate command yet, so the entry shows but
-    // cannot be chosen.
+    // #3123. Duplicate copies the bookmark's filters, so it needs a D2E
+    // bookmark to read: a materialized-only cohort has none, and an Atlas
+    // definition has its own /copy endpoint. Disable rather than fail.
+    //
+    // Also disabled while this card's own copy is in flight. The menu closes on
+    // select, so reopening it is the realistic way to fire a second request.
     {
       label: getText('MRI_PA_EXPLORATIONS_DUPLICATE'),
       value: 'duplicate',
       icon: 'mdi-content-copy',
-      disabled: true,
+      disabled:
+        disabled ||
+        !card.source.bookmark ||
+        duplicatingIds.value.has(card.source.bookmark.id),
     },
     {
       label: getText('MRI_PA_BUTTON_DELETE'),
@@ -1092,10 +1110,42 @@ const moreItems = (card: { source: BookmarkDisplay }) => {
   ]
 }
 
+/**
+ * Copy one exploration. #3123 asks for no confirmation dialog, so this runs on
+ * the menu click.
+ *
+ * The name goes through the locale string's own `{0}`, so a translation can put
+ * the marker where its language wants it. Duplicating twice deliberately gives
+ * two cards with the same name: the ticket says the user renames afterwards,
+ * and inventing "(Copy 2)" is scope it does not ask for.
+ */
+const duplicateExploration = async (record: BookmarkDisplay): Promise<void> => {
+  const bookmarkId = record.bookmark.id
+  if (duplicatingIds.value.has(bookmarkId)) return
+  duplicatingIds.value = new Set(duplicatingIds.value).add(bookmarkId)
+
+  const copyName = getText('MRI_PA_EXPLORATIONS_COPY_NAME', record.displayName)
+  try {
+    await store.dispatch('fireDuplicateBookmarkQuery', { bookmarkId, newName: copyName })
+    notifications.setToastMessage({ text: getText('MRI_PA_EXPLORATIONS_DUPLICATE_SUCCESS', copyName) })
+  } catch (error) {
+    console.error('[ExplorationsPage] Duplicate failed for', record.displayName, error)
+    notifications.setAlertMessage({
+      message: getText('MRI_PA_EXPLORATIONS_DUPLICATE_FAILED', record.displayName),
+      messageType: 'error',
+    })
+  } finally {
+    const next = new Set(duplicatingIds.value)
+    next.delete(bookmarkId)
+    duplicatingIds.value = next
+  }
+}
+
 const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void => {
   actionTarget.value = card.source
   if (value === 'rename') renameOpen.value = true
   if (value === 'delete') deleteOpen.value = true
+  if (value === 'duplicate') duplicateExploration(card.source)
 }
 </script>
 

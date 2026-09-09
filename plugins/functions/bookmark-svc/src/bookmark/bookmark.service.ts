@@ -150,7 +150,16 @@ export async function loadSingleBookmark(
     }
   } catch (error) {
     console.error(error)
-    callback(error, null)
+    // `callback` is optional: `loadBookmarks` and the `duplicate` command both
+    // await this function instead of passing one. Calling an undefined
+    // callback here threw `callback is not a function` and replaced every real
+    // error with that, so a missing bookmark and a rejected read looked
+    // identical in the logs.
+    if (callback) {
+      callback(error, null)
+    } else {
+      throw error
+    }
   }
 }
 
@@ -434,6 +443,73 @@ export async function loadBookmarks({
 }
 
 /**
+ * Duplicate an existing bookmark under a new name.
+ *
+ * Composes the two functions the service already has: it reads the source
+ * bookmark through `loadSingleBookmark` (which scopes by `userName`, so a
+ * user cannot duplicate a bookmark they cannot read), then inserts a new
+ * bookmark with the source's filter payload through `_insertBookmark`. The
+ * copy is always unshared, regardless of the source's sharing state, and it
+ * is never materialised.
+ *
+ * @param {string}
+ *            bookmarkId Bookmark ID of the source bookmark
+ * @param {string}
+ *            newName Name for the new (duplicated) bookmark, supplied by the
+ *            caller
+ * @param {string}
+ *            userName user Id
+ * @param {string}
+ *            paConfigId pa config Id
+ * @param {string}
+ *            cdmConfigId cdm config Id
+ * @param {string}
+ *            cdmConfigVersion cdm config version
+ * @param {string}
+ *            token user token
+ * @param {string}
+ *            datasetId dataset Id
+ * @param {object}
+ *            callback
+ */
+export async function _duplicateBookmark(
+  bookmarkId: string,
+  newName: string,
+  userName: string,
+  paConfigId: string,
+  cdmConfigId: string,
+  cdmConfigVersion: string,
+  token: string,
+  datasetId: string,
+  callback: CallBackInterface
+): Promise<void> {
+  try {
+    const source = await loadSingleBookmark(userName, bookmarkId, paConfigId, token, datasetId)
+    const sourceBookmark = source?.bookmarks?.[0]
+
+    if (!sourceBookmark) {
+      throw `Unable to find bookmark with id:${bookmarkId}, aborting duplicate bookmark`
+    }
+
+    _insertBookmark(
+      newName,
+      sourceBookmark.bookmark,
+      userName,
+      paConfigId,
+      cdmConfigId,
+      cdmConfigVersion,
+      false, // a duplicate always starts unshared, regardless of the source's sharing state
+      token,
+      datasetId,
+      callback
+    )
+  } catch (error) {
+    console.error(error)
+    callback(error, null)
+  }
+}
+
+/**
  * Process data passed to the bookmark REST-service.
  *
  * @param {object}
@@ -526,6 +602,23 @@ export async function queryBookmarks(
           datasetId,
           token,
           cb
+        )
+        break
+      case 'duplicate':
+        if (!trimmedBookmarkName.length) {
+          cb('Bookmark name cannot be empty', null)
+          return
+        }
+        _duplicateBookmark(
+          bookmarkId,
+          trimmedBookmarkName,
+          userName,
+          paConfigId,
+          cdmConfigId,
+          cdmConfigVersion,
+          token,
+          datasetId,
+          callback
         )
         break
       case 'loadSingle':

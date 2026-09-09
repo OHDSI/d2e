@@ -12,6 +12,7 @@ import {
   updateBookmarkSchema,
   createBookmarkSchema,
   deleteBookmarkSchema,
+  duplicateBookmarkSchema,
 } from '../types'
 @Service()
 export class BookmarkRouter {
@@ -139,6 +140,35 @@ export class BookmarkRouter {
           })
         } catch (err) {
           this.log.error(`Failed to delete bookamark: ${JSON.stringify(err)}`)
+        }
+      }
+    )
+
+    this.router.post(
+      '/:bookmarkId/duplicate',
+      validate(duplicateBookmarkSchema),
+      async (req: IMRIRequest, res: Response, next: NextFunction) => {
+        this.log.info('Duplicate bookmark')
+
+        try {
+          const { configConnection } = req.dbConnections
+          const user = getUser(req)
+          const language = user.lang
+          const userName = req.userName
+          const token = req.headers['authorization']
+
+          req.body.cmd = 'duplicate'
+          req.body.bmkId = req.params.bookmarkId
+
+          queryBookmarks(req.body, userName, token, configConnection, (err, data) => {
+            if (err) {
+              return res.status(500).send(MRIEndpointErrorHandler({ err, language }))
+            } else {
+              res.status(200).json(data)
+            }
+          })
+        } catch (err) {
+          this.log.error(`Failed to duplicate bookmark: ${JSON.stringify(err)}`)
         }
       }
     )
