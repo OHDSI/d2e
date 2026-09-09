@@ -328,28 +328,57 @@ def _discover_stata_dimension_vars(text: str) -> Dict[str, str]:
     return dim_vars
 
 
+_INDEX_VAR_RE = re.compile(r"^EQ_?index$", re.IGNORECASE)
+
+
+def _discover_stata_index_var(statements: list) -> str:
+    """
+    Find the STATA variable holding the final computed index, from the compiled
+    statements' own gen/replace targets (whichever matches "EQ_index"/"EQindex",
+    case-insensitively) - not hardcoded, because EuroQol's own real syntax isn't
+    consistent on the underscore: most bundled countries' files spell it
+    "EQ_index", but Trinidad and Tobago's spells it "EQindex". Same "discover from
+    the file" approach as _discover_stata_dimension_vars() below, for the same
+    reason - a fixed name would silently mis-handle any file using the other
+    spelling (parse "successfully" while leaving the real result variable
+    unassigned in `env`, since the wrong name would just read back _MISSING/None).
+    """
+    candidates = {stmt[1] for stmt in statements if _INDEX_VAR_RE.match(stmt[1])}
+    if not candidates:
+        raise ValueError(
+            "Could not find a gen/replace target matching 'EQ_index'/'EQindex' in STATA syntax"
+        )
+    if len(candidates) > 1:
+        raise ValueError(
+            f"Multiple candidate index variables (matching 'EQ_index'/'EQindex') found in "
+            f"STATA syntax: {sorted(candidates)}"
+        )
+    return candidates.pop()
+
+
 def parse_stata_value_set(text: str) -> dict:
     """
     Interpret EuroQol's published STATA syntax for an EQ-5D-5L value set by actually
     running it - once per one of the 3125 possible 5-dimension/5-level health states -
-    and recording each run's final EQ_index. Returns {source_comment, index_table,
-    range_low, range_high}; index_table maps every "MMSCUAPDAD"-style 5-digit health
-    state string to its computed index value, so health_state_to_index() becomes a
-    plain lookup for a STATA-derived value set, regardless of what formula shape
-    produced those numbers.
+    and recording each run's final index value (see _discover_stata_index_var()).
+    Returns {source_comment, index_table, range_low, range_high}; index_table maps
+    every "MMSCUAPDAD"-style 5-digit health state string to its computed index
+    value, so health_state_to_index() becomes a plain lookup for a STATA-derived
+    value set, regardless of what formula shape produced those numbers.
     """
     dim_vars = _discover_stata_dimension_vars(text)
     statements = _compile_stata_statements(text)
+    index_var = _discover_stata_index_var(statements)
     stata_var_for_dimension = {dim: dim_vars[DIMENSION_CODES[dim]] for dim in DIMENSION_ORDER}
 
     index_table = {}
     for levels in itertools.product(range(1, 6), repeat=len(DIMENSION_ORDER)):
         env = {stata_var_for_dimension[dim]: float(level) for dim, level in zip(DIMENSION_ORDER, levels)}
         _run_stata_statements(statements, env)
-        eq_index = env.get("EQ_index", _MISSING)
+        eq_index = env.get(index_var, _MISSING)
         if eq_index is _MISSING:
             health_state = "".join(str(l) for l in levels)
-            raise ValueError(f"STATA syntax left EQ_index unassigned for health_state='{health_state}'")
+            raise ValueError(f"STATA syntax left '{index_var}' unassigned for health_state='{health_state}'")
         index_table["".join(str(l) for l in levels)] = round(float(eq_index), 3)
 
     return {

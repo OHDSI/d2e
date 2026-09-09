@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Dict, Optional
 
 ValueSetDir = 'flows/eq5d5l_index_calculation_plugin/external/value_sets'
 
@@ -20,33 +19,28 @@ DIMENSION_CONCEPT_ID_MAP = {
     "anxiety_depression": 44813556,
 }
 
-# Default measurement_concept_id for "EQ-5D-5L Index Value", from the `indexValue`
-# item in templates/fhir/EQ-5D-5LQuestionnaire.json.
+# measurement_concept_id written for "EQ-5D-5L Index Value", from the `indexValue`
+# item in templates/fhir/EQ-5D-5LQuestionnaire.json. Fixed - not configurable per run,
+# since every deployment's FHIR->OMOP pipeline is meant to use this same template.
 EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID = 42537273
 
-# Default measurement_type_concept_id / observation_type_concept_id, from the
-# omop-type-concept-id extension in templates/fhir/EQ-5D-5LQuestionnaire.json - shared
-# by every item in that template, including indexValue.
+# measurement_type_concept_id / observation_type_concept_id written for the computed
+# index row, from the omop-type-concept-id extension in
+# templates/fhir/EQ-5D-5LQuestionnaire.json - shared by every item in that template,
+# including indexValue. Fixed for the same reason as EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID.
 EQ5D5L_TYPE_CONCEPT_ID = 32862
+
+# `metadata.name` for the row this plugin writes to record which EuroQol value set/
+# scoring algorithm produced a run's index values (see flow.write_algorithm_metadata).
+EQ5D5L_ALGORITHM_METADATA_NAME = "EQ-5D-5L Index Calculation Algorithm"
 
 
 class Eq5d5lCalculateConfig(BaseModel):
-    schema_name: str  # OMOP CDM schema for the dataset being scored
+    dry_run: bool = False
     database_code: str
+    schema_name: str  # OMOP CDM schema for the dataset being scored
     omop_dataset_id: str
     country_code: str  # required, single value per run - selects the EuroQol value set
-
-    # Raw answer code (value_source_value, e.g. "1" or "no-problems") -> level 1-5.
-    # A purely numeric code (e.g. "1".."5") is used as the level directly and needs no
-    # entry here. Only needed for non-numeric codes - per
-    # EQ-5D-5LObservationMap.json's own example ("e.g. '1' or 'no-problems'"), the code
-    # vocabulary isn't guaranteed numeric. Not defaulted - no safe guess for real
-    # answer codes.
-    answer_code_level_map: Optional[Dict[str, int]] = None
-
-    measurement_concept_id: Optional[int] = None  # override EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID
-    measurement_type_concept_id: int = EQ5D5L_TYPE_CONCEPT_ID
-    dry_run: bool = False
 
 
 class Eq5d5lPluginType(BaseModel):

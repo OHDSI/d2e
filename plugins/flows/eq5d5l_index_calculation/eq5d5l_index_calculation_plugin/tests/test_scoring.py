@@ -68,6 +68,96 @@ def test_ca_quadratic_num45_correction():
     )
 
 
+def test_stata_syntax_accepts_eqindex_without_underscore():
+    # Real EuroQol syntax isn't 100% consistent on "EQ_index" - Trinidad and
+    # Tobago's bundled download spells the result variable "EQindex" (no
+    # underscore). _discover_stata_index_var() must find that name too, not just
+    # the majority spelling, or this would silently raise "EQ_index unassigned"
+    # for every health state in a file that actually did assign its result.
+    text = """
+* STATA syntax code for the computation of index values with a test value set *;
+gen disut_mo = .
+replace disut_mo = 0 if missing(disut_mo) & mobility == 1
+replace disut_mo = 0.1 if missing(disut_mo) & mobility == 2
+replace disut_mo = 0.2 if missing(disut_mo) & mobility == 3
+replace disut_mo = 0.3 if missing(disut_mo) & mobility == 4
+replace disut_mo = 0.4 if missing(disut_mo) & mobility == 5
+gen disut_sc = .
+replace disut_sc = 0 if missing(disut_sc) & selfcare == 1
+replace disut_sc = 0.1 if missing(disut_sc) & selfcare == 2
+replace disut_sc = 0.2 if missing(disut_sc) & selfcare == 3
+replace disut_sc = 0.3 if missing(disut_sc) & selfcare == 4
+replace disut_sc = 0.4 if missing(disut_sc) & selfcare == 5
+gen disut_ua = .
+replace disut_ua = 0 if missing(disut_ua) & activity == 1
+replace disut_ua = 0.1 if missing(disut_ua) & activity == 2
+replace disut_ua = 0.2 if missing(disut_ua) & activity == 3
+replace disut_ua = 0.3 if missing(disut_ua) & activity == 4
+replace disut_ua = 0.4 if missing(disut_ua) & activity == 5
+gen disut_pd = .
+replace disut_pd = 0 if missing(disut_pd) & pain == 1
+replace disut_pd = 0.1 if missing(disut_pd) & pain == 2
+replace disut_pd = 0.2 if missing(disut_pd) & pain == 3
+replace disut_pd = 0.3 if missing(disut_pd) & pain == 4
+replace disut_pd = 0.4 if missing(disut_pd) & pain == 5
+gen disut_ad = .
+replace disut_ad = 0 if missing(disut_ad) & anxiety == 1
+replace disut_ad = 0.1 if missing(disut_ad) & anxiety == 2
+replace disut_ad = 0.2 if missing(disut_ad) & anxiety == 3
+replace disut_ad = 0.3 if missing(disut_ad) & anxiety == 4
+replace disut_ad = 0.4 if missing(disut_ad) & anxiety == 5
+gen disut_total = disut_mo + disut_sc + disut_ua + disut_pd + disut_ad
+gen EQindex = .
+replace EQindex = 1 - disut_total
+replace EQindex = round(EQindex, .001)
+"""
+    parsed = scoring.parse_stata_value_set(text)
+    assert parsed["index_table"]["11111"] == 1.0
+    assert parsed["index_table"]["55555"] == round(1 - 5 * 0.4, 3)
+    assert parsed["range_high"] == 1.0
+
+
+def test_stata_syntax_rejects_ambiguous_index_var():
+    text = """
+gen disut_mo = .
+replace disut_mo = 0 if missing(disut_mo) & mobility == 1
+replace disut_mo = 0.1 if missing(disut_mo) & mobility == 2
+replace disut_mo = 0.2 if missing(disut_mo) & mobility == 3
+replace disut_mo = 0.3 if missing(disut_mo) & mobility == 4
+replace disut_mo = 0.4 if missing(disut_mo) & mobility == 5
+gen disut_sc = .
+replace disut_sc = 0 if missing(disut_sc) & selfcare == 1
+replace disut_sc = 0.1 if missing(disut_sc) & selfcare == 2
+replace disut_sc = 0.2 if missing(disut_sc) & selfcare == 3
+replace disut_sc = 0.3 if missing(disut_sc) & selfcare == 4
+replace disut_sc = 0.4 if missing(disut_sc) & selfcare == 5
+gen disut_ua = .
+replace disut_ua = 0 if missing(disut_ua) & activity == 1
+replace disut_ua = 0.1 if missing(disut_ua) & activity == 2
+replace disut_ua = 0.2 if missing(disut_ua) & activity == 3
+replace disut_ua = 0.3 if missing(disut_ua) & activity == 4
+replace disut_ua = 0.4 if missing(disut_ua) & activity == 5
+gen disut_pd = .
+replace disut_pd = 0 if missing(disut_pd) & pain == 1
+replace disut_pd = 0.1 if missing(disut_pd) & pain == 2
+replace disut_pd = 0.2 if missing(disut_pd) & pain == 3
+replace disut_pd = 0.3 if missing(disut_pd) & pain == 4
+replace disut_pd = 0.4 if missing(disut_pd) & pain == 5
+gen disut_ad = .
+replace disut_ad = 0 if missing(disut_ad) & anxiety == 1
+replace disut_ad = 0.1 if missing(disut_ad) & anxiety == 2
+replace disut_ad = 0.2 if missing(disut_ad) & anxiety == 3
+replace disut_ad = 0.3 if missing(disut_ad) & anxiety == 4
+replace disut_ad = 0.4 if missing(disut_ad) & anxiety == 5
+gen disut_total = disut_mo + disut_sc + disut_ua + disut_pd + disut_ad
+gen EQ_index = .
+replace EQ_index = 1 - disut_total
+gen EQindex = EQ_index
+"""
+    with pytest.raises(ValueError, match="Multiple candidate index variables"):
+        scoring.parse_stata_value_set(text)
+
+
 def test_be_health_state_matches_stata_syntax():
     # cross-checked against four worked cases (originally verified against EuroQol's
     # SPSS syntax; Belgium.txt's STATA syntax - EQ_index = 1 - 0.038 - disut_total,

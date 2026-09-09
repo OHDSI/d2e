@@ -165,6 +165,16 @@ to assume any fixed variable naming beyond the `disut_<code>` convention itself.
 file that doesn't follow that convention isn't a fit for `.txt` - use a hand-authored
 `.json` file instead (see "Value set file format" above).
 
+The final result variable's name is discovered the same way
+(`_discover_stata_index_var()`), rather than assumed to be `EQ_index`: verified
+against all 46 real EQ-5D-5L STATA downloads on EuroQol's value-sets page
+(https://euroqol.org/information-and-support/resources/value-sets/, as of 2026-09),
+45 name it `EQ_index` but Trinidad and Tobago's spells it `EQindex` (no underscore) -
+both are matched case-insensitively against `EQ_?index`. A file using some other
+name for its result variable, or defining more than one candidate matching that
+pattern, raises `ValueError` rather than silently reading back an unassigned
+`_MISSING`/`None` as if it were a real (if wrong) index value.
+
 ### Reading responses - the `observation` contract this plugin expects
 
 `EQ-5D-5LObservationMap.json` is a two-stage transform: the FHIR StructureMap itself
@@ -188,12 +198,12 @@ stage-2-resolved** rows:
   `calculate_index_rows()` groups on exactly this column. A group missing any of the
   5 dimensions is skipped (logged as a warning), not partially scored. Rows in a
   group that disagree on `person_id` are also skipped, as a data-integrity guard.
-- **Answer value**: the 1-5 level is read from `value_source_value`. A purely numeric
-  code (`"1"`-`"5"`) is used directly; anything else is looked up in
-  `answer_code_level_map` (`{"no-problems": 1, ...}`), an optional config override -
-  per the StructureMap's own doc comment, the code vocabulary isn't guaranteed
-  numeric, and there's no safe default mapping for real answer codes. A code that's
-  neither numeric nor found in the map is treated as missing for that dimension.
+- **Answer value**: the 1-5 level is read from `value_source_value`. Only a purely
+  numeric code (`"1"`-`"5"`) is understood; anything else is treated as missing for
+  that dimension (per the StructureMap's own doc comment, the FHIR answer code
+  vocabulary isn't guaranteed numeric, but this plugin has no per-deployment mapping
+  to fall back on for one that isn't - a deployment whose pipeline emits non-numeric
+  answer codes needs a code change here, not a config override).
 - **Linkage**: `person_id` and `visit_occurrence_id` are taken directly from the
   observation rows (no separate FHIR->OMOP key-map lookup needed, since
   `observation` already carries standard OMOP linkage columns).
@@ -226,15 +236,43 @@ records lineage for the observation/measurement rows the upstream FHIR transform
 writes directly.
 
 This targets an `ON CONFLICT (fhir_id, fhir_resource_type, omop_table_name, omop_id)`
-arbiter, wider than `FhirMappingNode`'s current `(fhir_id, fhir_resource_type)` unique
-index - the narrower shape allows only one `omop_table_name` per `(qrId,
+arbiter, wider than `FhirMappingNode`'s former `(fhir_id, fhir_resource_type)` unique
+index - the narrower shape allowed only one `omop_table_name` per `(qrId,
 "QuestionnaireResponse")` pair, which can't hold this instrument's 5 `observation` +
-2 `measurement` rows per `qrId` side by side. **This requires `fhir_omop_key_map`'s
-unique index to already be widened to the 4-column shape - a prerequisite fix to
-`FhirMappingNode`/its table DDL, tracked separately from this plugin.** Until that
-fix lands, this write fails loudly (`no unique or exclusion constraint matching the
-ON CONFLICT specification`) rather than silently upserting against the old, too-narrow
-index.
+2 `measurement` rows per `qrId` side by side. `FhirMappingNode`'s DDL
+(`plugins/flows/data_transformation/dataflow_ui_plugin/nodes.py`) has since been
+widened to this 4-column shape, so this write now targets the same index that node
+creates.
+
+This plugin never creates `{database_code}_{schema_name}_fhir_mapping` or its
+`fhir_omop_key_map` table itself - it is a lineage *consumer*, appending to a mapping
+schema/table that only the upstream EQ5D5L-to-OMOP-Observation FHIR->OMOP pipeline
+(`FhirMappingNode`) is meant to create, by having already written that dataset's
+observation rows. If that schema/table doesn't exist yet, `write_fhir_key_map`
+raises `ValueError` immediately, naming the missing mapping table, rather than
+silently creating an empty one or failing later with an opaque
+"relation does not exist" / `ON CONFLICT` error.
+
+### Algorithm provenance (metadata)
+
+After a run computes and writes at least one index row, this plugin also writes one
+row into `{schema_name}.metadata` (OMOP CDM's standard `metadata` table) recording
+which EuroQol value set and scoring method (`scoring.SUPPORTED_METHODS`) produced
+that run's values - `name="EQ-5D-5L Index Calculation Algorithm"`, `value_as_string`
+holding `country_code=<CODE>; method=<method>; source=<value_set's source>`
+(truncated to the column's 250 chars). `metadata_concept_id` and
+`metadata_type_concept_id` are both `0` - no standard OMOP concept represents
+"value-set-derived questionnaire scoring algorithm", so this row's meaning lives
+entirely in `name`/`value_as_string`, same as any other free-text ETL provenance note
+in `metadata`. A `dry_run` or a run that computes zero valid rows writes no metadata
+row either, consistent with `measurement` being left untouched in both cases.
+
+Like `measurement`, this is overwrite-on-rerun rather than append-only: in a single
+transaction, any existing `metadata` row(s) named `"EQ-5D-5L Index Calculation
+Algorithm"` are deleted before the new one is inserted. So re-running the same
+`schema_name` with a different `country_code` (or an updated value set) replaces
+this row along with the `measurement` rows it describes, instead of leaving a stale
+algorithm description - or an accumulating pile of one row per run - behind.
 
 ### Parameters
 
@@ -242,15 +280,20 @@ index.
 {
   "options": {
     "config": {
-      "schema_name": "cdmdefault",          # Required: OMOP CDM schema of the dataset being scored
-      "database_code": "alpdev_pg",          # Required: CDM database code
-      "omop_dataset_id": "alpdev_pg",          # Required: OMOP dataset id passed through to DBDao as cache_id
-      "country_code": "AU",                   # Required: selects the EuroQol value set; single country per run
-      "answer_code_level_map": null,          # Optional: non-numeric answer code -> level 1-5, e.g. {"no-problems": 1}
-      "measurement_concept_id": null,         # Optional: override the "EQ-5D-5L index value" concept (default 42537273)
-      "measurement_type_concept_id": 32862,   # Optional: defaults to the type concept from EQ-5D-5LQuestionnaire.json
-      "dry_run": false                        # Optional: compute but don't write to measurement
+      "dry_run": false,                    # Optional: compute but don't write to measurement/metadata
+      "database_code": "alpdev_pg",        # Required: CDM database code
+      "schema_name": "cdmdefault",         # Required: OMOP CDM schema of the dataset being scored
+      "omop_dataset_id": "alpdev_pg",      # Required: OMOP dataset id passed through to DBDao as cache_id
+      "country_code": "AU"                 # Required: selects the EuroQol value set; single country per run
     }
   }
 }
 ```
+
+The "EQ-5D-5L index value" measurement concept id (`42537273`), its
+measurement_type_concept_id (`32862`), and the answer-code-to-level mapping are all
+fixed (`types.py`'s `EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID`/`EQ5D5L_TYPE_CONCEPT_ID`,
+and `flow._extract_level()`'s numeric-only parsing) rather than configurable per run
+- every deployment's FHIR->OMOP pipeline is meant to agree with the same
+`templates/fhir/EQ-5D-5LQuestionnaire.json` template these values come from. A
+deployment that genuinely differs needs a code change here, not a run-time override.

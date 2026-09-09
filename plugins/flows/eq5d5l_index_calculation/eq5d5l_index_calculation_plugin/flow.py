@@ -8,6 +8,8 @@ from .types import (
     DIMENSION_ORDER,
     DIMENSION_CONCEPT_ID_MAP,
     EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID,
+    EQ5D5L_TYPE_CONCEPT_ID,
+    EQ5D5L_ALGORITHM_METADATA_NAME,
 )
 from .scoring import load_value_set, assemble_health_state, health_state_to_index
 
@@ -48,9 +50,7 @@ def calculate_eq5d5l_index(config: Eq5d5lCalculateConfig):
     rows = calculate_index_rows(
         observation_rows=observation_rows,
         dimension_concept_id_map=dimension_concept_id_map,
-        answer_code_level_map=config.answer_code_level_map,
         value_set=value_set,
-        measurement_type_concept_id=config.measurement_type_concept_id,
     )
     logger.info(f"Computed {len(rows)} EQ-5D-5L index row(s)")
 
@@ -58,11 +58,9 @@ def calculate_eq5d5l_index(config: Eq5d5lCalculateConfig):
         logger.info("dry_run=True, skipping write to measurement")
         return rows
 
-    measurement_concept_id = resolve_measurement_concept_id(config.measurement_concept_id)
+    measurement_concept_id = EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID
     for row in rows:
         row["measurement_concept_id"] = measurement_concept_id
-        row["range_low"] = value_set.get("range_low")
-        row["range_high"] = value_set.get("range_high")
 
     inserted_rows = write_measurements(
         dbdao=dbdao,
@@ -80,6 +78,15 @@ def calculate_eq5d5l_index(config: Eq5d5lCalculateConfig):
         schema_name=config.schema_name,
         rows=inserted_rows,
     )
+
+    if inserted_rows:
+        write_algorithm_metadata(
+            dbdao=dbdao,
+            schema_name=config.schema_name,
+            country_code=config.country_code,
+            value_set=value_set,
+        )
+
     return rows
 
 
@@ -111,32 +118,31 @@ def read_eq5d5l_observations(dbdao, schema_name: str, dimension_concept_id_map: 
     )
 
 
-def _extract_level(code: Optional[str], answer_code_level_map: Optional[dict]) -> Optional[int]:
+def _extract_level(code: Optional[str]) -> Optional[int]:
     if code is None:
         return None
     try:
         return int(code)
     except (TypeError, ValueError):
-        pass
-    if answer_code_level_map and code in answer_code_level_map:
-        return answer_code_level_map[code]
-    return None
+        return None
 
 
 @task(log_prints=True)
 def calculate_index_rows(
     observation_rows: list,
     dimension_concept_id_map: dict,
-    answer_code_level_map: Optional[dict],
     value_set: dict,
-    measurement_type_concept_id: int,
 ) -> list:
     """
     Group the flat observation rows by observation_source_value - per
     EQ-5D-5LObservationMap.json's design, this holds the plain source
     QuestionnaireResponse id (qrId) shared by all 5 dimension rows of one
     administration, after the downstream python_node's resolution step - then score
-    each complete group.
+    each complete group. Each dimension's answer level is read from
+    value_source_value as a plain numeric code ("1".."5"); a non-numeric code is
+    treated as missing for that dimension (per EQ-5D-5LObservationMap.json's own
+    doc comment, the FHIR answer code vocabulary isn't guaranteed numeric, but this
+    plugin has no per-deployment mapping to fall back on for one that isn't).
     """
     logger = get_run_logger()
     concept_to_dimension = {v: k for k, v in dimension_concept_id_map.items()}
@@ -163,7 +169,7 @@ def calculate_index_rows(
         person_ids = set()
         observed_at = None
         for dim, row in dim_rows:
-            level = _extract_level(row["value_source_value"], answer_code_level_map)
+            level = _extract_level(row["value_source_value"])
             if level is not None:
                 dimension_answers[dim] = level
             if row["visit_occurrence_id"] is not None:
@@ -198,23 +204,13 @@ def calculate_index_rows(
             "person_id": int(person_ids.pop()),
             "measurement_date": measurement_date,
             "measurement_datetime": measurement_datetime,
-            "measurement_type_concept_id": measurement_type_concept_id,
+            "measurement_type_concept_id": EQ5D5L_TYPE_CONCEPT_ID,
             "value_as_number": index_value,
             "visit_occurrence_id": int(visit_occurrence_id) if visit_occurrence_id is not None else None,
             "measurement_source_value": qr_id,
             "value_source_value": health_state,
         })
     return rows
-
-
-def resolve_measurement_concept_id(override: Optional[int]) -> int:
-    """
-    Resolve the OMOP concept_id representing "EQ-5D-5L index value". Defaults to
-    EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID (the `indexValue` item's concept id in
-    templates/fhir/EQ-5D-5LQuestionnaire.json) unless overridden for a deployment
-    whose pipeline used a different concept id.
-    """
-    return override if override is not None else EQ5D5L_INDEX_MEASUREMENT_CONCEPT_ID
 
 
 @task(log_prints=True)
@@ -246,6 +242,27 @@ def write_measurements(dbdao, schema_name: str, measurement_concept_id: int, row
     )
 
 
+def _require_fhir_mapping_table(mapping_dao, mapping_schema: str) -> None:
+    """
+    This plugin is a lineage *consumer*: it only ever appends key-map rows for the
+    measurements it computed, on top of a mapping schema/table that the upstream
+    EQ5D5L-to-OMOP-Observation FHIR->OMOP pipeline (FhirMappingNode, see
+    plugins/flows/data_transformation/dataflow_ui_plugin/nodes.py) must already have
+    created by writing the 5 dimension observation rows. It deliberately does not
+    create the schema/table itself - a missing one means that prerequisite ETL run
+    hasn't happened for this dataset, which should fail loudly here rather than be
+    silently papered over with a fresh, empty mapping table.
+    """
+    if not mapping_dao.check_schema_exists(mapping_schema) or not mapping_dao.check_table_exists(
+        mapping_schema, "fhir_omop_key_map"
+    ):
+        raise ValueError(
+            f"'{mapping_schema}.fhir_omop_key_map' does not exist. This plugin requires the "
+            f"upstream EQ5D5L-to-OMOP-Observation FHIR->OMOP pipeline to have already run for "
+            f"this dataset (creating the FHIR mapping schema/table) before this plugin runs."
+        )
+
+
 @task(log_prints=True)
 def write_fhir_key_map(database_code: str, schema_name: str, rows: list):
     """
@@ -259,6 +276,7 @@ def write_fhir_key_map(database_code: str, schema_name: str, rows: list):
     logger = get_run_logger()
     mapping_schema = f"{database_code}_{schema_name}_fhir_mapping"
     mapping_dao = DBDao(dialect=SupportedDatabaseDialects.TREX, database_code=database_code)
+    _require_fhir_mapping_table(mapping_dao, mapping_schema)
 
     key_map_rows = [
         (
@@ -278,3 +296,51 @@ def write_fhir_key_map(database_code: str, schema_name: str, rows: list):
         on_conflict="ON CONFLICT (fhir_id, fhir_resource_type, omop_table_name, omop_id) DO NOTHING",
     )
     logger.info(f"Upserted {len(key_map_rows)} fhir_omop_key_map row(s) in {mapping_schema}")
+
+
+@task(log_prints=True)
+def write_algorithm_metadata(dbdao, schema_name: str, country_code: str, value_set: dict) -> None:
+    """
+    Record one OMOP `metadata` row per dataset describing which EuroQol value set and
+    scoring method (see scoring.SUPPORTED_METHODS) produced the current
+    `measurement` rows, so a later reader of `{schema_name}.metadata` can see how
+    they were derived without needing this plugin's source or run history. Uses
+    metadata_concept_id=0 / metadata_type_concept_id=0 - no standard OMOP concept
+    represents "value-set-derived questionnaire scoring algorithm" - so the
+    description lives entirely in `name`/`value_as_string`, the same way the
+    `metadata` table is meant to hold free-text ETL provenance that has no fitting
+    standard concept.
+
+    Overwrite-on-rerun, mirroring write_measurements(): deletes any existing row(s)
+    named EQ5D5L_ALGORITHM_METADATA_NAME before inserting the new one, in the same
+    transaction. Without this, re-running for a different country_code (or a value
+    set update) would leave the *previous* run's algorithm description sitting
+    alongside the new one - or, worse, alongside measurement rows it no longer
+    describes - rather than replacing it to stay in sync with write_measurements()'s
+    own overwrite-on-rerun of the `measurement` rows it documents.
+    """
+    logger = get_run_logger()
+    value_as_string = (
+        f"country_code={country_code.upper()}; method={value_set.get('method')}; "
+        f"source={value_set.get('source', '')}"
+    )[:250]
+
+    now = datetime.datetime.now()
+    dbdao.delete_and_insert_rows(
+        schema=schema_name,
+        table="metadata",
+        delete_column="name",
+        delete_value=EQ5D5L_ALGORITHM_METADATA_NAME,
+        insert_rows=[{
+            "metadata_concept_id": 0,
+            "metadata_type_concept_id": 0,
+            "name": EQ5D5L_ALGORITHM_METADATA_NAME,
+            "value_as_string": value_as_string,
+            "value_as_concept_id": None,
+            "value_as_number": None,
+            "metadata_date": now.date(),
+            "metadata_datetime": now,
+        }],
+        id_column="metadata_id",
+    )
+    logger.info(f"Wrote EQ-5D-5L algorithm metadata row to {schema_name}.metadata: {value_as_string}")
