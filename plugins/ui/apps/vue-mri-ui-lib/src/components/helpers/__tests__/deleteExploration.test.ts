@@ -104,7 +104,7 @@ describe('deleteExploration', () => {
     await deleteExploration(record, deps)
 
     const loadAllCalls = deps.fireBookmarkQuery.mock.calls.filter(
-      ([payload]: [{ params?: { cmd?: string } }]) => payload?.params?.cmd === 'loadAll',
+      ([payload]: [{ params?: { cmd?: string } }]) => payload?.params?.cmd === 'loadAll'
     )
     expect(loadAllCalls).toHaveLength(0)
   })

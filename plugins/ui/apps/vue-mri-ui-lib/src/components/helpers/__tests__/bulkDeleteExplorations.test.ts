@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { runBulkDelete } from '../bulkDeleteExplorations'
 
-const record = (displayName: string): BookmarkDisplay => ({ displayName }) as unknown as BookmarkDisplay
+const record = (displayName: string): BookmarkDisplay => ({ displayName } as unknown as BookmarkDisplay)
 
 const makeDeps = () => ({
   deleteOne: vi.fn().mockResolvedValue(undefined),
