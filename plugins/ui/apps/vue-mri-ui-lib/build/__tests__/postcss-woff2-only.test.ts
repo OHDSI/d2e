@@ -79,6 +79,6 @@ describe('postcssWoff2Only', () => {
     const css = `.thing { src: url('a.ttf'); }`
     const out = await run(css)
 
-    expect(out).toContain("a.ttf")
+    expect(out).toContain('a.ttf')
   })
 })

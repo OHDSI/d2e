@@ -63,20 +63,20 @@ export function postcssWoff2Only(): Plugin {
   return {
     postcssPlugin: 'woff2-only-font-src',
     AtRule: {
-      'font-face': (rule) => {
+      'font-face': rule => {
         const declarations = rule.nodes?.filter(
           (node): node is typeof node & { prop: string; value: string } =>
             node.type === 'decl' && node.prop.toLowerCase() === 'src'
         )
         if (!declarations || declarations.length === 0) return
 
-        const sources = declarations.flatMap((declaration) => splitSources(declaration.value))
+        const sources = declarations.flatMap(declaration => splitSources(declaration.value))
         const woff2 = sources.filter(isWoff2)
         if (woff2.length === 0) return
 
         const kept = [...sources.filter(isLocal), ...woff2]
         declarations[0].value = kept.join(', ')
-        declarations.slice(1).forEach((declaration) => declaration.remove())
+        declarations.slice(1).forEach(declaration => declaration.remove())
       },
     },
   }
