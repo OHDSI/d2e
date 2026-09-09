@@ -6,6 +6,7 @@ import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
 import path from 'path'
 import { copyFileSync, mkdirSync, readdirSync } from 'fs'
 import { createRequire } from 'module'
+import { vueDir } from './vite.resolve-deps'
 
 // The d4l web components use Stencil lazy loading: entry chunks are resolved at
 // runtime relative to the importing chunk's URL, invisible to Rollup's static
@@ -87,9 +88,22 @@ export default defineConfig({
       // Load the d4l loader from the un-bundled Stencil esm files staged next
       // to index.system.js (see copyD4lStencilChunks above)
       '@d4l/web-components-library/dist/loader': path.resolve(__dirname, 'src/bootstrap/d4lLoaderNativeImport.ts'),
+      // @d2e/ui is private and unpublished, so neither the registry nor
+      // node_modules resolves it — this alias is the only path to the library.
+      // The portal config carries the same two entries. This build config
+      // predated the component library, and rebasing onto the redesign is what
+      // surfaced the gap.
+      '@d2e/ui/tokens.css': path.resolve(__dirname, '../../libs/d2e-ui/src/tokens/tokens.css'),
+      '@d2e/ui': path.resolve(__dirname, '../../libs/d2e-ui/src/index.ts'),
       '@': path.resolve(__dirname, './src'),
-      // Dedupe Vue to prevent multiple instances (matching webpack alias)
-      vue: path.resolve(__dirname, 'node_modules/vue'),
+      // Dedupe Vue to prevent multiple instances (matching webpack alias).
+      // Resolved through vite.resolve-deps rather than hardcoded to
+      // `<app>/node_modules/vue`: the bun workspace install that CI and local
+      // development use hoists vue to plugins/ui, so the hardcoded path builds
+      // only under the isolated atlas install and fails everywhere else with
+      // ENOENT. That helper exists for exactly this, and the portal config
+      // already uses it.
+      vue: vueDir,
       // D3 v3 wrapper - provides access to window.d3 (loaded from public/vendor)
       d3: path.resolve(__dirname, './src/lib/d3.ts'),
     },
