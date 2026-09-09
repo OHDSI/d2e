@@ -492,12 +492,10 @@ export class DatasetCommandService {
         type: newType,
         tenantId,
         databaseCode,
-        // A cache dataset owns its own catalog, named after its OWN id — the cache file is
-        // written against this row (see resolveCacheWriteTarget in jobplugins), not the
-        // source row. It must not inherit the source's cache_id: for a `source` row that
-        // value is the databaseCode (issue #2877), which would make the cache build write
-        // into the source connection's own catalog. Resolved through the shared helper so
-        // HANA keeps its databaseCode — it is queried directly and has no DuckDB cache.
+        // A cache dataset is built and queried through its SOURCE connection's trex
+        // catalog, so this resolves to databaseCode (see CACHE_DATASET_TYPES). It must not
+        // name a catalog of its own — nothing attaches one, because this method makes no
+        // trex /attach call, and the cache flow's catalog-qualified DDL then fails.
         cacheId: resolveCacheId({
           dialect,
           type: newType,

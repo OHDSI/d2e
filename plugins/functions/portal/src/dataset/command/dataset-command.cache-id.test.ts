@@ -8,9 +8,9 @@ import { sanitizeIdForCacheId } from '../entity/dataset.entity.ts'
 // These exercise the two things the entity-level tests cannot:
 //   1. that the value PERSISTED to cache_id and the value handed to trex /attach agree
 //      (they were computed by two hand-maintained copies of the rule and could drift), and
-//   2. that a cache dataset (snapshot) gets its OWN catalog rather than inheriting the
-//      source row's cache_id — which, now that a source row holds databaseCode, would
-//      otherwise point the cache build at the source connection's catalog.
+//   2. that a cache dataset (snapshot) resolves cache_id to the source connection's
+//      databaseCode — the datamart cache flow connects to trex on that value and nothing
+//      attaches a per-snapshot catalog (see docs/plans/revert-cache-dataset-catalog.md).
 
 const SOURCE_ID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301'
 const SNAPSHOT_ID = 'ab2504e0-4f89-11d3-9a0c-0305e82c9999'
@@ -150,22 +150,20 @@ describe('createDataset — cache_id assignment', () => {
   })
 })
 
-describe('createDatasetSnapshot — cache dataset gets its own catalog', () => {
-  function snapshotDto() {
+describe('createDatasetSnapshot — cache dataset uses the source connection catalog', () => {
+  function snapshotDto(type = 'omop') {
     return {
       id: SNAPSHOT_ID,
       sourceDatasetId: SOURCE_ID,
       newDatasetName: 'My Cache',
       schemaName: 'cdm',
       timestamp: new Date(0),
-      type: 'omop',
+      type,
     } as any
   }
 
-  it('does NOT inherit a postgres source row cache_id (which is now the databaseCode)', async () => {
-    // Post-fix, the source row's cacheId is its databaseCode. Inheriting it would make the
-    // cache build write into the source connection's catalog instead of its own.
-    const { svc, inserted } = buildService({
+  function pgSource() {
+    return {
       id: SOURCE_ID,
       tenantId: 'tenant-1',
       databaseCode: 'pg_db',
@@ -178,32 +176,39 @@ describe('createDatasetSnapshot — cache dataset gets its own catalog', () => {
       paConfigId: 'pa-1',
       dataModel: 'omop',
       plugin: null,
-    })
+    }
+  }
 
-    await svc.createDatasetSnapshot(snapshotDto())
+  // Regression: fc0eb12 persisted sanitizeIdForCacheId(SNAPSHOT_ID) here.
+  it('persists the databaseCode for a postgres omop data mart', async () => {
+    const { svc, inserted } = buildService(pgSource())
+
+    await svc.createDatasetSnapshot(snapshotDto('omop'))
 
     assertEquals(inserted.length, 1)
-    assertEquals(inserted[0].cacheId, sanitizeIdForCacheId(SNAPSHOT_ID))
-    assertEquals(inserted[0].cacheId === 'pg_db', false)
+    assertEquals(inserted[0].cacheId, 'pg_db')
+    assertEquals(inserted[0].cacheId === sanitizeIdForCacheId(SNAPSHOT_ID), false)
   })
 
-  it('still inherits the source cache_id for HANA (queried directly, no DuckDB cache)', async () => {
+  it('persists the databaseCode for a study data mart too', async () => {
+    const { svc, inserted } = buildService(pgSource())
+
+    await svc.createDatasetSnapshot(snapshotDto('study'))
+
+    assertEquals(inserted[0].cacheId, 'pg_db')
+  })
+
+  it('keeps the databaseCode for HANA (queried directly, no DuckDB cache)', async () => {
     const { svc, inserted } = buildService({
-      id: SOURCE_ID,
-      tenantId: 'tenant-1',
+      ...pgSource(),
       databaseCode: 'HANA_DB',
       cacheId: 'HANA_DB',
       dialect: 'hana',
-      type: 'source',
       vocabSchemaName: 'VOCAB',
       resultsSchemaName: 'RESULTS',
-      tokenDatasetCode: 'tok_1',
-      paConfigId: 'pa-1',
-      dataModel: 'omop',
-      plugin: null,
     })
 
-    await svc.createDatasetSnapshot(snapshotDto())
+    await svc.createDatasetSnapshot(snapshotDto('hana__omop'))
 
     assertEquals(inserted[0].cacheId, 'HANA_DB')
   })
