@@ -101,16 +101,36 @@ describe('runBulkDelete', () => {
     expect(deps.clearSelection).toHaveBeenCalledTimes(1)
   })
 
-  it('passes every target and the failed names to clearActiveBookmarkIfDeleted', async () => {
+  it('passes every target, and the failed records themselves, to clearActiveBookmarkIfDeleted', async () => {
     const deps = makeDeps()
-    deps.deleteOne.mockImplementation(async (r: BookmarkDisplay) => {
-      if (r.displayName === 'two') throw new Error('boom')
-    })
     const targets = [record('one'), record('two')]
+    deps.deleteOne.mockImplementation(async (r: BookmarkDisplay) => {
+      if (r === targets[1]) throw new Error('boom')
+    })
 
     await runBulkDelete(targets, deps)
 
-    expect(deps.clearActiveBookmarkIfDeleted).toHaveBeenCalledWith(targets, ['two'])
+    expect(deps.clearActiveBookmarkIfDeleted).toHaveBeenCalledWith(targets, new Set([targets[1]]))
+  })
+
+  it('identifies a failed record by identity, not by display name', async () => {
+    // Two never-materialised records can share a displayName. Tracking the
+    // failures by name would mark the deleted one as failed too, and the
+    // caller would leave the active bookmark pointing at a record that is
+    // already gone.
+    const deps = makeDeps()
+    const deleted = record('Cohort A')
+    const failedOne = record('Cohort A')
+    const targets = [deleted, failedOne]
+    deps.deleteOne.mockImplementation(async (r: BookmarkDisplay) => {
+      if (r === failedOne) throw new Error('boom')
+    })
+
+    await runBulkDelete(targets, deps)
+
+    const [, failed] = deps.clearActiveBookmarkIfDeleted.mock.calls[0] as [BookmarkDisplay[], Set<BookmarkDisplay>]
+    expect(failed.has(failedOne)).toBe(true)
+    expect(failed.has(deleted)).toBe(false)
   })
 
   it('does not use Promise.all — deletes are sequential, not concurrent', async () => {

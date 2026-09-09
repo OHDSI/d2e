@@ -22,12 +22,19 @@ export interface RunBulkDeleteDeps {
   /** Clears the page's selection state. */
   clearSelection: () => void
   /**
-   * If any target that was NOT in `failedNames` was the active bookmark,
-   * clears it and resets the chart. Receives every target (not only the
-   * successful ones) so it can apply the same "was this the active one"
-   * check `DeleteExplorationDialog` uses, filtered by the failure list.
+   * If any target that is NOT in `failed` was the active bookmark, clears it
+   * and resets the chart. Receives every target so it can apply the same "was
+   * this the active one" check `DeleteExplorationDialog` uses.
+   *
+   * `failed` holds the record objects, not their names. Two never-materialised
+   * records can share a `displayName` (see `toCardId` in `explorationList.ts`),
+   * and matching on the name would read a successfully deleted record as
+   * failed, leaving the active bookmark pointed at something that is gone.
    */
-  clearActiveBookmarkIfDeleted: (targets: BookmarkDisplay[], failedNames: string[]) => Promise<void> | void
+  clearActiveBookmarkIfDeleted: (
+    targets: BookmarkDisplay[],
+    failed: ReadonlySet<BookmarkDisplay>
+  ) => Promise<void> | void
   /** Reports the display names that failed to delete, in order. */
   notifyFailure: (failedNames: string[]) => void
 }
@@ -38,14 +45,14 @@ export interface RunBulkDeleteDeps {
  * failures. A failure on one target does not stop the rest.
  */
 export async function runBulkDelete(targets: readonly BookmarkDisplay[], deps: RunBulkDeleteDeps): Promise<void> {
-  const failed: string[] = []
+  const failed = new Set<BookmarkDisplay>()
 
   for (const record of targets) {
     try {
       await deps.deleteOne(record)
     } catch (error) {
       console.error('Bulk delete failed for', record?.displayName, error)
-      failed.push(record?.displayName)
+      failed.add(record)
     }
   }
 
@@ -53,7 +60,7 @@ export async function runBulkDelete(targets: readonly BookmarkDisplay[], deps: R
   deps.clearSelection()
   await deps.clearActiveBookmarkIfDeleted([...targets], failed)
 
-  if (failed.length) {
-    deps.notifyFailure(failed)
+  if (failed.size) {
+    deps.notifyFailure([...failed].map(record => record?.displayName))
   }
 }

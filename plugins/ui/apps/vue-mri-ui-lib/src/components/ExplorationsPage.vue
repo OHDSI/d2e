@@ -34,7 +34,14 @@
         data-testid="explorations-select-all"
         @update:model-value="explorations.setPageSelection(pageIds, $event)"
       />
-      <span class="explorations-page__bulk-count" data-testid="explorations-bulk-count">
+      <!-- The count changes as the user ticks cards, and nothing else on screen
+           announces it, so a screen reader needs it as a live region. -->
+      <span
+        class="explorations-page__bulk-count"
+        role="status"
+        aria-live="polite"
+        data-testid="explorations-bulk-count"
+      >
         {{ selectedCountLabel }}
       </span>
       <div class="explorations-page__bulk-actions">
@@ -377,7 +384,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { D2eButton, D2eCheckbox, D2eDialog, D2eExplorationCard, D2eIconButton, D2eMenu, D2eSelect, D2eTextField } from '@d2e/ui'
 import { useExplorationsStore } from '../stores/explorations'
@@ -670,10 +677,23 @@ const comparableBookmarks = computed(() => selectedRecords.value.map(r => r.book
 /** More than one, not "any": two Atlas-only records must leave Compare
     disabled rather than opening an empty comparison. */
 const canCompare = computed(() => comparableBookmarks.value.length > 1)
-/** A trigger CohortComparisonDialog watches, not a v-model. Reset only in
-    `closeEv` — an early reset would leave the dialog unable to reopen. */
+/** A trigger CohortComparisonDialog watches, not a v-model. It emits `closeEv`
+    only when it actually opened. */
 const compareOpen = ref(false)
-const openCompare = (): void => {
+/**
+ * Lower the trigger before raising it, so every click is a fresh false->true
+ * edge for the dialog's watcher.
+ *
+ * `CohortComparisonDialog.openCohortCompareDialog` refuses to open above its
+ * own ten-item cap: it raises a warning and never emits `closeEv`. Without the
+ * reset the flag would stay true after such an attempt, the watcher would see
+ * no change on the next click, and Compare would be dead for the life of the
+ * page. The page size is 12, so one select-all is already over the cap and
+ * reaches this.
+ */
+const openCompare = async (): Promise<void> => {
+  compareOpen.value = false
+  await nextTick()
   compareOpen.value = true
 }
 
@@ -704,16 +724,21 @@ const deleteDeps: DeleteExplorationDeps = {
 
 /**
  * Mirrors `DeleteExplorationDialog.confirm()`'s own active-bookmark check,
- * for every successfully-deleted target rather than one. A record in
- * `failedNames` was never actually deleted, so it cannot be the reason to
- * clear the active bookmark.
+ * for every successfully-deleted target rather than one. A record in `failed`
+ * was never actually deleted, so it cannot be the reason to clear the active
+ * bookmark.
+ *
+ * `failed` holds record objects. Matching on `displayName` would misread a
+ * deleted record as failed whenever two records share a name.
  */
-const clearActiveBookmarkIfDeleted = async (targets: BookmarkDisplay[], failedNames: string[]): Promise<void> => {
+const clearActiveBookmarkIfDeleted = async (
+  targets: BookmarkDisplay[],
+  failed: ReadonlySet<BookmarkDisplay>,
+): Promise<void> => {
   const activeBookmark = store.getters.getActiveBookmark
   if (!activeBookmark) return
-  const failed = new Set(failedNames)
   const clearedTheActiveOne = targets.some(record => {
-    if (failed.has(record.displayName)) return false
+    if (failed.has(record)) return false
     if (getBookmarkType(record) === 'M') return false
     return activeBookmark.bookmarkname === record.bookmark?.name
   })
@@ -724,7 +749,9 @@ const clearActiveBookmarkIfDeleted = async (targets: BookmarkDisplay[], failedNa
 
 const notifyBulkDeleteFailure = (failedNames: string[]): void => {
   notifications.setAlertMessage({
-    message: `${getText('MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED')} ${failedNames.join(', ')}`,
+    // The names go through the locale string's own {0}, so word order and any
+    // punctuation around the list stay translatable.
+    message: getText('MRI_PA_EXPLORATIONS_BULK_DELETE_FAILED', failedNames.join(', ')),
     messageType: 'error',
   })
 }
