@@ -496,8 +496,20 @@ const loadError = computed(() => store.getters.getBookmarksLoadError)
  * feedback.
  */
 const showInitialLoader = computed(() => loading.value && allCards.value.length === 0)
-const datasetName = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
-const datasetItems = computed(() => [{ label: datasetName.value, value: datasetName.value }])
+/** The active source's id. Still the select's value: the id is what every call
+    downstream uses, and the label is only what the user reads. */
+const datasetId = computed(() => store.getters.getSelectedDataset?.id || portalContext.datasetId)
+/** `getSelectedDatasetName` resolves the id against the fetched source list and
+    falls back to the id, so this is never blank while that list is still
+    loading, or if it failed. */
+const datasetName = computed(() => store.getters.getSelectedDatasetName || datasetId.value)
+const datasetItems = computed(() => [{ label: datasetName.value, value: datasetId.value }])
+
+// One fetch per mount is enough: the response is every source this user can
+// read, not something scoped to the active dataset. Nothing awaits it — the
+// label falls back to the id until it lands, and the action swallows failure,
+// so a missing list costs a nicer name and nothing else.
+store.dispatch('fireGetDataSources')
 const canMaterialize = computed<boolean>(() => Boolean(store.getters.getCanDatasetMaterializeCohorts))
 
 // Matches ChartToolbar.vue's isWizardFeatureEnabled / canOpenDashboard.

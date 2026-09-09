@@ -27,6 +27,10 @@ const state = {
   hasAssignedConfig: false,
   selectedDatasetId: {},
   selectedDatasetVersion: '',
+  // The data sources this user can read, from /d2e-webapi/source/sources. Held
+  // only to turn a dataset id into a name for display: `setDataset` commits
+  // `{ id }` and nothing else, so the id is all the app otherwise knows.
+  dataSources: [],
 }
 
 // default release version
@@ -47,6 +51,22 @@ const getters = {
   getSelectedPAConfigId: state => state.mriconfig.meta.configId,
   getSelectedDataset: state => state.selectedDataset,
   getSelectedDatasetVersion: state => state.selectedDatasetVersion,
+  getDataSources: state => state.dataSources,
+  /**
+   * The active data source's display name, or its id when the name is not
+   * known yet.
+   *
+   * The id is a UUID, so it is not something to show a user. It stays as the
+   * fallback rather than an empty string, because the source list is fetched
+   * asynchronously and can legitimately fail — an id reads badly but still
+   * tells the user which source they are on.
+   */
+  getSelectedDatasetName: state => {
+    const id = state.selectedDataset?.id
+    if (!id) return ''
+    const match = state.dataSources.find(source => source.sourceKey === id)
+    return match?.sourceName || id
+  },
 }
 
 // actions
@@ -164,6 +184,31 @@ const actions = {
     const releaseId = usePortalContext().releaseId
     commit(types.SET_SELECTED_DATASET_RELEASE_ID, releaseId)
   },
+  /**
+   * Fetch the data sources, so a dataset id can be shown as its name.
+   *
+   * `/d2e-webapi` rather than `/WebAPI`. Both return the same
+   * `sourceKey` to `sourceName` mapping, and `sourceKey` is the dataset id
+   * this app already holds, but `/d2e-webapi` is the base every live call in
+   * this application already uses, so its auth is proven in both the portal
+   * and the Atlas mount. `/WebAPI` is called nowhere outside deprecated code,
+   * and it answers an unauthorised request with `200 []` rather than a 401 —
+   * a silent empty list is a worse failure for a name lookup than a loud one.
+   *
+   * Failure is not surfaced to the user. The name is decoration; the getter
+   * falls back to the id, and nothing else depends on this list.
+   */
+  async fireGetDataSources({ commit, dispatch }) {
+    try {
+      const response = await dispatch('ajaxAuth', {
+        method: 'get',
+        url: '/d2e-webapi/source/sources',
+      })
+      commit(types.SET_DATA_SOURCES, Array.isArray(response?.data) ? response.data : [])
+    } catch (error) {
+      console.error('[config] Could not load the data sources; names fall back to ids', error)
+    }
+  },
 }
 
 // mutations
@@ -185,6 +230,9 @@ const mutations = {
   },
   [types.SET_SELECTED_DATASET](moduleState, dataset) {
     moduleState.selectedDataset = dataset
+  },
+  [types.SET_DATA_SOURCES](moduleState, dataSources) {
+    moduleState.dataSources = dataSources
   },
   [types.SET_SELECTED_DATASET_RELEASE_ID](moduleState, selectedDatasetReleaseId) {
     moduleState.selectedDatasetReleaseId = selectedDatasetReleaseId
