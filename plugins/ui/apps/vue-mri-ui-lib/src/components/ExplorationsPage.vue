@@ -95,8 +95,12 @@
       </D2eButton>
     </div>
 
-    <div v-else-if="cards.length === 0" class="explorations-page__status" data-testid="explorations-empty">
-      {{ getText('MRI_PA_EXPLORATIONS_EMPTY') }}
+    <div
+      v-else-if="matchedCards.length === 0"
+      class="explorations-page__status"
+      data-testid="explorations-empty"
+    >
+      <ExplorationEmptyState :title="emptyState.title" :body="emptyState.body" />
     </div>
 
     <div v-else class="explorations-page__grid" data-testid="explorations-grid">
@@ -245,6 +249,15 @@
       </D2eExplorationCard>
     </div>
 
+    <ExplorationPagination
+      v-if="!loading && !loadError && matchedCards.length > 0"
+      :page="currentPage"
+      :page-size="pageSize"
+      :total="matchedCards.length"
+      @update:page="page = $event"
+      @update:page-size="pageSize = $event"
+    />
+
     </div>
 
     <!--
@@ -311,7 +324,8 @@ import {
   shouldResetDashboardFlow,
 } from './helpers/explorationAnalyze'
 import { filterAndSort, type ExplorationSortKey } from './helpers/explorationList'
-import { applyFilters, authorOptions, emptyFilters, type ExplorationFilters } from './helpers/explorationFilters'
+import { applyFilters, authorOptions, emptyFilters, isEmpty, type ExplorationFilters } from './helpers/explorationFilters'
+import { PAGE_SIZES, clampPage, pageSlice } from './helpers/explorationPaging'
 import { chartQueryFor } from './helpers/explorationSqlQuery'
 import { canModifyBookmark, getBookmarkType } from '../utils/BookmarkUtils'
 import ExplorationMaterializeIcon from './icons/ExplorationMaterializeIcon.vue'
@@ -327,6 +341,8 @@ import DeleteExplorationDialog from './DeleteExplorationDialog.vue'
 import ExplorationFiltersPanel from './ExplorationFiltersPanel.vue'
 import FilterCardSummary from './FilterCardSummary.vue'
 import DashboardFlowModals from './DashboardFlowModals.vue'
+import ExplorationPagination from './ExplorationPagination.vue'
+import ExplorationEmptyState from './ExplorationEmptyState.vue'
 
 const emit = defineEmits<{
   (e: 'open-exploration', bmkId: string, chartType: string | null): void
@@ -370,6 +386,8 @@ const searchQuery = ref('')
 const sortKey = ref<ExplorationSortKey>('lastUpdated')
 const filters = ref<ExplorationFilters>(emptyFilters())
 const filtersOpen = ref(false)
+const page = ref(1)
+const pageSize = ref<number>(PAGE_SIZES[0])
 const filterSummaryOpen = ref(false)
 /** True while the panel's SQL query is in flight; feeds its `chartBusy` prop. */
 const summaryBusy = ref(false)
@@ -430,11 +448,50 @@ const allCards = computed(() => store.getters.getDisplayBookmarks(false, portalC
     cannot be widened again. */
 const authorNames = computed<string[]>(() => authorOptions(allCards.value))
 
-const cards = computed(() => {
+/** After filter, search and sort, before paging. The pagination bar's count
+    and the empty-state choice are both taken from here, never from `cards`. */
+const matchedCards = computed(() => {
   // Filter, then search, then sort. Searching inside a filtered set is what
   // the user expects, and it is cheaper.
   const filtered = applyFilters(allCards.value, filters.value)
-  return filterAndSort(filtered, searchQuery.value, sortKey.value).map((card: BookmarkDisplay) => {
+  return filterAndSort(filtered, searchQuery.value, sortKey.value)
+})
+
+// Reset to page 1 whenever the result set changes underneath it. Without
+// this, filtering from 43 rows to 5 while on page 3 would show an empty grid
+// that looks like a bug.
+watch([searchQuery, filters, sortKey], () => {
+  page.value = 1
+})
+
+const emptyState = computed(() => {
+  if (allCards.value.length === 0) {
+    return { title: getText('MRI_PA_EXPLORATIONS_EMPTY'), body: getText('MRI_PA_EXPLORATIONS_EMPTY_BODY') }
+  }
+  // Filter takes precedence over search when both are active — it names the
+  // control furthest from the user's attention.
+  if (!isEmpty(filters.value)) {
+    return {
+      title: getText('MRI_PA_EXPLORATIONS_EMPTY_FILTER_TITLE'),
+      body: getText('MRI_PA_EXPLORATIONS_EMPTY_FILTER_BODY'),
+    }
+  }
+  return {
+    title: getText('MRI_PA_EXPLORATIONS_EMPTY_SEARCH_TITLE'),
+    body: getText('MRI_PA_EXPLORATIONS_EMPTY_SEARCH_BODY'),
+  }
+})
+
+// Clamped, not `page` itself: the reset-on-change watcher only sees
+// searchQuery/filters/sortKey, so a list that shrinks through any other path
+// (e.g. deleting the last card on a page) leaves `page` stale. Both the grid
+// and the pagination bar read this, or the bar would show a stranded page's
+// nonsensical range and backwards disabled state even though the grid itself
+// was showing the correctly-clamped page underneath it.
+const currentPage = computed(() => clampPage(page.value, matchedCards.value.length, pageSize.value))
+
+const cards = computed(() => {
+  return pageSlice(matchedCards.value, currentPage.value, pageSize.value).map((card: BookmarkDisplay) => {
     const bookmark = card.bookmark
     const cohortDefinition = card.cohortDefinition
     const atlas = card.atlasCohortDefinition
@@ -822,14 +879,14 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
 .explorations-page {
   height: 100%;
   padding: 24px;
-  overflow-y: auto;
   background: var(--d2e-color-neutral-xtra-lightest);
   font-family: var(--d2e-font-family);
 
   &__card {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
+    height: 100%;
+    overflow: hidden;
     background: var(--d2e-color-white);
     border-radius: var(--d2e-radius-lg);
   }
@@ -840,6 +897,11 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     justify-content: space-between;
     gap: 24px;
     padding: 24px;
+    // Never shrink: the card is now clamped to viewport height, and only
+    // __status/__grid (both `min-height: 0`) are meant to absorb a shortfall
+    // by scrolling. Without this, a very short viewport would squeeze the
+    // header instead of the content that's actually built to give way.
+    flex-shrink: 0;
   }
 
   /* 10px Medium, 1px tracking, closed by a 24x2 secondary rule
@@ -921,6 +983,7 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    flex-shrink: 0;
     padding: 8px 24px;
   }
 
@@ -1009,14 +1072,23 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
     }
   }
 
+  /* The scrolling region: everything above (header, toolbar) and below
+     (the pagination bar) stays fixed, and only this area — whichever of
+     status/grid is showing — scrolls internally, clamped to the viewport. */
   &__status {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
     padding: 48px 24px;
-    flex: 1 0 auto;
-    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    // "safe": on a viewport too short for the content, fall back to
+    // flex-start instead of centering it — centered overflow in a scroll
+    // container clips symmetrically, and scrollTop can't go negative, so a
+    // plain `center` would leave the top permanently unreachable.
+    justify-content: safe center;
     color: var(--d2e-color-neutral);
   }
 
@@ -1028,10 +1100,14 @@ const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void =>
   &__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, 324px);
+    grid-auto-rows: min-content;
     justify-content: start;
     column-gap: 16px;
     row-gap: 40px;
     padding: 24px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   &__summary-panel {
