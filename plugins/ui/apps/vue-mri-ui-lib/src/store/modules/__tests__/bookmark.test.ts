@@ -372,6 +372,68 @@ describe('store - bookmark', () => {
       })
     })
 
+    describe('fireDuplicateBookmarkQuery', () => {
+      const rootGetters = {
+        getMriFrontendConfig: {
+          getPaConfigId: () => 'pa-config-id',
+          getDatamodelConfigId: () => 'cdm-config-id',
+          getVersion: () => 'cdm-version',
+        },
+        getSelectedDataset: { id: 'dataset-1' },
+      }
+
+      it('posts to the duplicate sub-path with the new name and the config fields', async () => {
+        const dispatch = vi.fn().mockResolvedValue({ data: {} })
+
+        await bookmarkModule.actions.fireDuplicateBookmarkQuery(
+          { dispatch, rootGetters },
+          { bookmarkId: 'bmk-1', newName: 'SNRI Users (Copy)' }
+        )
+
+        expect(dispatch).toHaveBeenCalledWith('ajaxAuth', {
+          url: '/analytics-svc/api/services/bookmark/bmk-1/duplicate',
+          method: 'POST',
+          params: {
+            newName: 'SNRI Users (Copy)',
+            paConfigId: 'pa-config-id',
+            cdmConfigId: 'cdm-config-id',
+            cdmConfigVersion: 'cdm-version',
+            datasetId: 'dataset-1',
+          },
+        })
+      })
+
+      it('reloads the list after the copy is created', async () => {
+        const dispatch = vi.fn().mockResolvedValue({ data: {} })
+
+        await bookmarkModule.actions.fireDuplicateBookmarkQuery(
+          { dispatch, rootGetters },
+          { bookmarkId: 'bmk-1', newName: 'a copy' }
+        )
+
+        expect(dispatch).toHaveBeenNthCalledWith(2, 'fireBookmarkQuery', {
+          method: 'get',
+          params: { cmd: 'loadAll' },
+        })
+      })
+
+      it('does not reload when the copy fails, and rethrows', async () => {
+        // A reload after a failed duplicate would tell the user nothing changed
+        // while hiding the reason, and the page's own error path never fires.
+        const dispatch = vi.fn().mockRejectedValueOnce(new Error('Bookmark name cannot be empty'))
+
+        await expect(
+          bookmarkModule.actions.fireDuplicateBookmarkQuery(
+            { dispatch, rootGetters },
+            { bookmarkId: 'bmk-1', newName: '' }
+          )
+        ).rejects.toThrow('Bookmark name cannot be empty')
+
+        expect(dispatch).toHaveBeenCalledTimes(1)
+        expect(dispatch).not.toHaveBeenCalledWith('fireBookmarkQuery', expect.anything())
+      })
+    })
+
     const createDeferred = () => {
       let resolve!: (value?: any) => void
       let reject!: (reason?: any) => void

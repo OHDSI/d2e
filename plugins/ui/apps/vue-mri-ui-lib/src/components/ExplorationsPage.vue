@@ -1074,13 +1074,14 @@ const moreItems = (card: { source: BookmarkDisplay }) => {
       icon: 'mdi-pencil-outline',
       disabled: renameDisabled,
     },
-    // #3123. The backend has no duplicate command yet, so the entry shows but
-    // cannot be chosen.
+    // #3123. Duplicate copies the bookmark's filters, so it needs a D2E
+    // bookmark to read: a materialized-only cohort has none, and an Atlas
+    // definition has its own /copy endpoint. Disable rather than fail.
     {
       label: getText('MRI_PA_EXPLORATIONS_DUPLICATE'),
       value: 'duplicate',
       icon: 'mdi-content-copy',
-      disabled: true,
+      disabled: disabled || !card.source.bookmark,
     },
     {
       label: getText('MRI_PA_BUTTON_DELETE'),
@@ -1092,10 +1093,37 @@ const moreItems = (card: { source: BookmarkDisplay }) => {
   ]
 }
 
+/**
+ * Copy one exploration. #3123 asks for no confirmation dialog, so this runs on
+ * the menu click.
+ *
+ * The name goes through the locale string's own `{0}`, so a translation can put
+ * the marker where its language wants it. Duplicating twice deliberately gives
+ * two cards with the same name: the ticket says the user renames afterwards,
+ * and inventing "(Copy 2)" is scope it does not ask for.
+ */
+const duplicateExploration = async (record: BookmarkDisplay): Promise<void> => {
+  const copyName = getText('MRI_PA_EXPLORATIONS_COPY_NAME', record.displayName)
+  try {
+    await store.dispatch('fireDuplicateBookmarkQuery', {
+      bookmarkId: record.bookmark.id,
+      newName: copyName,
+    })
+    notifications.setToastMessage({ text: getText('MRI_PA_EXPLORATIONS_DUPLICATE_SUCCESS', copyName) })
+  } catch (error) {
+    console.error('Duplicate failed for', record.displayName, error)
+    notifications.setAlertMessage({
+      message: getText('MRI_PA_EXPLORATIONS_DUPLICATE_FAILED', record.displayName),
+      messageType: 'error',
+    })
+  }
+}
+
 const onMoreSelect = (card: { source: BookmarkDisplay }, value: string): void => {
   actionTarget.value = card.source
   if (value === 'rename') renameOpen.value = true
   if (value === 'delete') deleteOpen.value = true
+  if (value === 'duplicate') duplicateExploration(card.source)
 }
 </script>
 
