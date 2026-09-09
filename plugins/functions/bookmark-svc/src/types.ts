@@ -56,6 +56,20 @@ export const deleteBookmarkSchema = z.object({
   }),
 })
 
+export const duplicateBookmarkSchema = z.object({
+  params: z.object({
+    bookmarkId: z.string(),
+  }),
+  body: z.object({
+    cmd: z.string(),
+    newName: z.string(),
+    paConfigId: z.string(),
+    cdmConfigId: z.string(),
+    cdmConfigVersion: z.string(),
+    datasetId: z.string(),
+  }),
+})
+
 export interface IMRIRequest extends Request {
   dbConnections: {
     analyticsConnection: ConnectionInterface
