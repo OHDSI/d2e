@@ -74,6 +74,10 @@ export default defineConfig({
     __VUE_PROD_DEVTOOLS__: JSON.stringify(false),
     __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: JSON.stringify(false),
     'import.meta.env.VITE_STANDALONE_ATLAS': JSON.stringify('false'),
+    // Only this build shares a document with Atlas3's own Vuetify, so only this
+    // build scopes the theme stylesheet. src/plugins/vuetify.ts reads it; every
+    // other build leaves it undefined and keeps the theme global.
+    'import.meta.env.VITE_ATLAS_NATIVE': JSON.stringify('true'),
     // Process env replacements (lightweight alternative to vite-plugin-node-polyfills)
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env.VUE_APP_API_BASE_URL': JSON.stringify(''),
