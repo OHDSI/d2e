@@ -3,7 +3,6 @@ import { param, validationResult } from "express-validator";
 import { validateCreateCachedbFileFlowRunDto } from "../middlewares/CachedbValidatorMiddlewares.ts";
 import { CachedbService } from "../services/CachedbService.ts";
 import { PortalServerAPI } from "../api/PortalServerAPI.ts";
-import { resolveCacheWriteTarget } from "../utils/cacheWriteTarget.ts";
 
 export class CachedbController {
   private cachedbService: CachedbService;
@@ -61,19 +60,19 @@ export class CachedbController {
       const dataset = await portalServerApi.getDataset(params.datasetId);
       const { databaseCode, schemaName, resultsSchemaName, vocabSchemaName } =
         dataset;
+      // The catalog the cache is written to comes from the SOURCE dataset. Its cache_id is
+      // the databaseCode (#2877) and is attached in trex at dataset creation; a
+      // per-snapshot catalog is not (fc0eb12 / #3064) and the flow's catalog-qualified DDL
+      // fails against it.
+      const cacheId = dataset.cacheId ?? databaseCode;
 
-      // Read side comes from the source dataset; the cache file is WRITTEN to the cache
-      // dataset's own catalog. See resolveCacheWriteTarget for why these differ.
       const cacheDatasetId = params?.cacheDatasetId;
       let snapshotSchemaName;
-      let cacheDataset;
 
       if (cacheDatasetId) {
-        cacheDataset = await portalServerApi.getDataset(cacheDatasetId);
-        snapshotSchemaName = cacheDataset.schemaName;
+        const { schemaName } = await portalServerApi.getDataset(cacheDatasetId);
+        snapshotSchemaName = schemaName;
       }
-
-      const cacheId = resolveCacheWriteTarget(dataset, cacheDataset);
 
       let snapshotCopyConfig;
       if (params.snapshotCopyConfig) {

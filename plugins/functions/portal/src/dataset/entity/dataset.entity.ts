@@ -16,6 +16,21 @@ export function sanitizeIdForCacheId(id: string): string {
 // never on the source row itself, so the source row must not name a cache catalog.
 export const SOURCE_DATASET_TYPE = 'source'
 
+// Cache / data-mart dataset types (CacheDatasetType in plugins/functions/dataset/const.ts
+// and the portal UI's types/study.ts). A row of one of these types is created only by
+// createDatasetSnapshot, and its data is read and written through its SOURCE connection's
+// trex catalog. It must not name a catalog of its own: createDatasetSnapshot makes no trex
+// /attach call, so a per-snapshot catalog is never attached, and the datamart cache flow
+// connects to trex with dbname = cache_id and issues catalog-qualified DDL — which fails
+// against a catalog that does not exist. Regression introduced by fc0eb12 (#3064).
+export const CACHE_DATASET_TYPES: ReadonlySet<string> = new Set([
+  'omop',
+  'study',
+  'non_omop',
+  'hana__omop',
+  'hana__non_omop',
+])
+
 export interface CacheIdInput {
   dialect?: string | null
   type?: string | null
@@ -27,17 +42,23 @@ export interface CacheIdInput {
 // or transmits a cache_id must go through this, otherwise the value stored in the DB and
 // the value handed to trex /attach can drift.
 //
-// The two databaseCode branches are deliberately separate — they hold for different
-// reasons and neither subsumes the other:
+// The three databaseCode branches are deliberately separate — they hold for different
+// reasons and none subsumes the others:
 //   * dialect === 'hana'  — HANA is queried directly; no DuckDB cache exists for ANY HANA
 //     dataset regardless of type (this is the only branch covering hana + type 'webapi').
 //   * type === 'source'   — the source row's cache lives on its child cache dataset, so on
 //     any dialect a source row pointing at sanitizeIdForCacheId(id) names a catalog nobody
 //     builds. Consumers resolve `cacheId ?? databaseCode`, so a bogus non-null value
 //     suppresses the fallback and queries hit a missing catalog. See issue #2877.
+//   * CACHE_DATASET_TYPES — a cache/data-mart row is built and queried through its source
+//     connection's catalog; it never owns one. Covering only 'omop' here would leave
+//     'study' and 'non_omop' data marts pointing at an unattached catalog.
 export function resolveCacheId(dataset: CacheIdInput): string | null {
   if (dataset.dialect === 'hana') return dataset.databaseCode ?? null
   if (dataset.type === SOURCE_DATASET_TYPE) return dataset.databaseCode ?? null
+  if (dataset.type && CACHE_DATASET_TYPES.has(dataset.type)) {
+    return dataset.databaseCode ?? null
+  }
   if (dataset.id) return sanitizeIdForCacheId(dataset.id)
   return dataset.databaseCode ?? null
 }

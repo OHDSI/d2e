@@ -57,16 +57,45 @@ describe('resolveCacheId — the dialect/type matrix', () => {
     )
   })
 
-  it('postgres + webapi -> sanitized id (a cache really is built for these)', () => {
+  // fc0eb12 (#3064) sent these down the sanitized-id branch. Nothing attaches a
+  // per-snapshot catalog in trex, and the datamart cache flow connects to trex on this
+  // value and issues catalog-qualified DDL, so the run failed on its first task.
+  it('postgres + omop cache dataset -> databaseCode', () => {
     assertEquals(
-      resolveCacheId({ dialect: 'postgres', type: 'webapi', id: DS_ID, databaseCode: 'pg_db' }),
-      SANITIZED
+      resolveCacheId({ dialect: 'postgres', type: 'omop', id: DS_ID, databaseCode: 'pg_db' }),
+      'pg_db'
     )
   })
 
-  it('postgres + omop cache dataset -> sanitized id', () => {
+  // omop is not special: `study` and `non_omop` are equally selectable cache types
+  // (CopyStudyDialog / AddStudyDialog) and hit the same flow with no type guard
+  // (router.ts /snapshot). Fixing only 'omop' would leave these broken.
+  it('postgres + study cache dataset -> databaseCode', () => {
     assertEquals(
-      resolveCacheId({ dialect: 'postgres', type: 'omop', id: DS_ID, databaseCode: 'pg_db' }),
+      resolveCacheId({ dialect: 'postgres', type: 'study', id: DS_ID, databaseCode: 'pg_db' }),
+      'pg_db'
+    )
+  })
+
+  it('postgres + non_omop cache dataset -> databaseCode', () => {
+    assertEquals(
+      resolveCacheId({ dialect: 'postgres', type: 'non_omop', id: DS_ID, databaseCode: 'pg_db' }),
+      'pg_db'
+    )
+  })
+
+  it('duckdb + non_omop cache dataset -> databaseCode', () => {
+    assertEquals(
+      resolveCacheId({ dialect: 'duckdb', type: 'non_omop', id: DS_ID, databaseCode: 'fhir_db' }),
+      'fhir_db'
+    )
+  })
+
+  // Guard against over-reach: `webapi` and `fhir` are NOT cache types. A cache file really
+  // is built per-dataset for these, and createDataset does call trex /attach for them.
+  it('postgres + webapi -> sanitized id (unchanged; a cache really is built for these)', () => {
+    assertEquals(
+      resolveCacheId({ dialect: 'postgres', type: 'webapi', id: DS_ID, databaseCode: 'pg_db' }),
       SANITIZED
     )
   })
