@@ -374,6 +374,11 @@ jobs:
         if: ${{ always() || cancelled() || failure() }}
         run: yarn removetestdb-hana
 
+      - name: Stop d2e services
+        if: success() || failure()
+        run: |
+          node ./scripts/dist/cli.js -v develop -e -n .env.local --hana -d ./plugins/functions -p 41100 stop
+
       - name: Prune system
         if: always()
         run: docker system prune -af
