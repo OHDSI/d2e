@@ -1,4 +1,5 @@
 import * as cohort from "./cohort.ts";
+import * as cohortCache from "./cohortCache.ts";
 import * as cohortCompare from "./cohortCompare.ts";
 import * as cohortSurvival from "./cohortSurvival.ts";
 import * as concept from "./concept.ts";
@@ -13,6 +14,7 @@ import * as values from "./values.ts";
 
 export const controllers: Record<string, Record<string, unknown>> = {
   cohort,
+  cohortCache,
   cohortCompare,
   cohortSurvival,
   concept,

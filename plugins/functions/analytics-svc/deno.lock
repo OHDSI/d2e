@@ -12,8 +12,6 @@
     "npm:@types/node@*": "24.2.0",
     "npm:@types/passport-azure-ad@^4.3.0": "4.3.6",
     "npm:async@3.2.4": "3.2.4",
-    "npm:axios@*": "0.21.4",
-    "npm:axios@~0.21.2": "0.21.4",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:csv-write-stream@2": "2.0.0",
     "npm:dotenv@10.0.0": "10.0.0",
@@ -288,12 +286,6 @@
       "integrity": "sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==",
       "dependencies": [
         "possible-typed-array-names"
-      ]
-    },
-    "axios@0.21.4": {
-      "integrity": "sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==",
-      "dependencies": [
-        "follow-redirects"
       ]
     },
     "babel-code-frame@6.26.0": {
@@ -843,9 +835,6 @@
     },
     "fn.name@1.1.0": {
       "integrity": "sha512-GRnmB5gPyJpAhTQdSZTSp9uaPSvl09KoYcMQtsB9rQoOmzs9dH6ffeccH+Z+cv6P68Hu5bC6JjRh4Ah/mHSNRw=="
-    },
-    "follow-redirects@1.15.11": {
-      "integrity": "sha512-deG2P0JfjrTxl50XGCDyfI97ZGVCxIpfKYmfyrQ54n5FO/0gfIES8C/Psl6kWVDolizcaaxZJnTS0QSMxvnsBQ=="
     },
     "for-each@0.3.5": {
       "integrity": "sha512-dKx12eRCVIzqCxFGplyFKJMPvLEWgmNtUrpTiJIR5u97zEhRG8ySrtboPHZXx7daLxQVrl643cTzbab2tkQjxg==",
@@ -1995,7 +1984,6 @@
     },
     "uuid@10.0.0": {
       "integrity": "sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==",
-      "deprecated": true,
       "bin": true
     },
     "v8-compile-cache-lib@3.0.1": {
@@ -2130,7 +2118,6 @@
       "npm:@types/jsonstream@~0.8.30",
       "npm:@types/passport-azure-ad@^4.3.0",
       "npm:async@3.2.4",
-      "npm:axios@~0.21.2",
       "npm:bcryptjs@^2.4.3",
       "npm:csv-write-stream@2",
       "npm:dotenv@10.0.0",

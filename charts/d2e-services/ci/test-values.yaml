@@ -37,6 +37,8 @@ resources:
       memory: "2Gi"
 
 config:
+  COHORT_CACHE_TTL_HOURS: "24"
+  COHORT_CACHE_MAX_AGE_DAYS: "30"
   OMOP_RELATIONSHIPS_FOR_DESCENDANTS: "'Maps to','Subsumes'"
   PLUGINS_API_VERSION: "~0.15.0"
   PLUGINS_IMAGE_TAG: "0.15.0-beta"

@@ -43,6 +43,13 @@ const mriConfigConnection = new MriConfigConnection(
     env.SERVICE_ROUTES?.paConfig
 );
 const envVarUtils = new EnvVarUtils(Deno.env.toObject());
+
+// Cohort cache routes are served entirely from the portal Postgres
+// `analytics` schema and never query a dataset's analytics database, so the
+// per-request analytics connection and its cleanup are skipped for them.
+const COHORT_CACHE_PATH_PREFIX = "/analytics-svc/api/services/cohort-cache";
+const isCohortCacheReq = (req: IMRIRequest): boolean =>
+    req.originalUrl.startsWith(COHORT_CACHE_PATH_PREFIX);
 /**
  * Declare Startup Functions
  */
@@ -118,6 +125,15 @@ const initRoutes = async (app: express.Application) => {
 
     app.use(async (req: IMRIRequest, res, next) => {
         try {
+            // No analytics database connection is opened for cohort cache
+            // requests.
+            if (isCohortCacheReq(req)) {
+                log.info(
+                    "Skipping analytics db connection for /cohort-cache* requests"
+                );
+                return next();
+            }
+
             if (!utils.isHealthProbesReq(req)) {
                 let userObj: User;
                 try {
@@ -208,6 +224,13 @@ const initRoutes = async (app: express.Application) => {
         // Skip getting cleanupMiddleware if request starts with "/analytics-svc/api/services/alpdb/", as these requests are all in dbsvc.ts and has a separate implementation for database connection cleanups
         if (req.originalUrl.startsWith("/analytics-svc/api/services/alpdb/")) {
             log.info("Skipping cleanupMiddleware for /alpdb/* requests");
+            return next();
+        }
+
+        // Nothing to clean up: no analytics database connection was opened
+        // for cohort cache requests.
+        if (isCohortCacheReq(req)) {
+            log.info("Skipping cleanupMiddleware for /cohort-cache* requests");
             return next();
         }
 

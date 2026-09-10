@@ -499,6 +499,16 @@ spec:
               value: "10800"
             - name: CACHE_CHUNK_TIMEOUT
               value: "3600"
+            - name: COHORT_CACHE_TTL_HOURS
+              valueFrom:
+                configMapKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: COHORT_CACHE_TTL_HOURS
+            - name: COHORT_CACHE_MAX_AGE_DAYS
+              valueFrom:
+                configMapKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: COHORT_CACHE_MAX_AGE_DAYS
             - name: DATABASE_CREDENTIALS
               value: "{}"
             - name: DB_CREDENTIALS_MGR__API_URL
@@ -1000,7 +1010,7 @@ spec:
                     "+terminology": {}, "+usermgmt": {}, "+files_manager": {},
                     "+perseus": {}, "+white_rabbit": {}, "+trex": {},
                     "+storage": {}, "+strategus": {}, "+notebook": {},
-                    "+network": {}
+                    "+network": {}, "+analytics": {}
                    }
                   }
                  }

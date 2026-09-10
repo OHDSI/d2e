@@ -41,17 +41,13 @@ export const cohortdefinition: FastifyPluginAsyncZod = async function (app) {
           },
         ],
         querystring: z.object({
+          // Accepted for backwards compatibility; the handler ignores it.
           source: z.string().optional(),
         }),
       },
     },
     async (req, res) => {
-      const isAtlas = !req.query.source || req.query.source !== "pa";
-      const result = await getCohortDefinitionList(
-        req.token,
-        req.datasetId,
-        isAtlas,
-      );
+      const result = await getCohortDefinitionList(req.token, req.datasetId);
       res.send(result);
     },
   );

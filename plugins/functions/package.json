@@ -70,6 +70,11 @@
           "function": "/supabase-storage-init",
           "imports": "/supabase-storage-init/deno.json",
           "env": "supabase-storage"
+        },
+        {
+          "function": "/analytics-svc-init",
+          "imports": "/analytics-svc-init/deno.json",
+          "env": "analytics-svc-init"
         }
       ],
       "api": [
@@ -328,7 +333,11 @@
           "IS_AUDIT_LOG_ENABLED": "${IS_AUDIT_LOG_ENABLED:-false}",
           "IS_CDM_SQL_AUDIT_LOG_ENABLED": "${IS_CDM_SQL_AUDIT_LOG_ENABLED:-false}",
           "AUDIT_LOG_TO_CONSOLE": "${AUDIT_LOG_TO_CONSOLE:-false}",
-          "ANALYTICS_HANA_STREAMING_ENABLED": "${ANALYTICS_HANA_STREAMING_ENABLED:-false}"
+          "ANALYTICS_HANA_STREAMING_ENABLED": "${ANALYTICS_HANA_STREAMING_ENABLED:-false}",
+          "PG_PASSWORD": "${PG_WRITE_PASSWORD}",
+          "PG_SCHEMA": "analytics",
+          "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}",
+          "COHORT_CACHE_TTL_HOURS": "${COHORT_CACHE_TTL_HOURS:-24}"
         },
         "mri-pg-config": {
           "PG_ADMIN_PASSWORD": "${PG_ADMIN_PASSWORD}",
@@ -419,6 +428,14 @@
           "PORT": 41114,
           "PG__MAX_POOL": "10",
           "isTestEnv": "${isTestEnv}"
+        },
+        "analytics-svc-init": {
+          "PG_ADMIN_PASSWORD": "${PG_ADMIN_PASSWORD}",
+          "PG_ADMIN_USER": "${PG_ADMIN_USER:-alp_pg_admin_user}",
+          "PG_PASSWORD": "${PG_WRITE_PASSWORD}",
+          "PG_SCHEMA": "analytics",
+          "PG_USER": "${PG_WRITE_USER:-alp_pg_write_user}",
+          "COHORT_CACHE_MAX_AGE_DAYS": "${COHORT_CACHE_MAX_AGE_DAYS:-30}"
         },
         "jobplugins-init": {
           "PG_ADMIN_PASSWORD": "${PG_ADMIN_PASSWORD}",
@@ -1074,6 +1091,16 @@
           "path": "^/analytics-svc/api/services/(fhir|data|datastream|userStudies|population)/(?!schema)(.*)",
           "scopes": [
             "PA.svc"
+          ]
+        },
+        {
+          "_comment": "Intended for Service-to-service only, this scope exists solely to deny every browser caller, so it must NEVER be added to trex.functions.roles. This is required because of the catch-all PA.svc scope",
+          "path": "^/analytics-svc/api/services/cohort-cache/?$",
+          "scopes": [
+            "PA.cohortCache.write.serviceOnly.neverGrant"
+          ],
+          "httpMethods": [
+            "PUT"
           ]
         },
         {

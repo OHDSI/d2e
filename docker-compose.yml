@@ -274,7 +274,8 @@ services:
             "+storage": {},
             "+strategus": {},
             "+notebook": {},
-            "+network": {}
+            "+network": {},
+            "+analytics": {}
            }
           }
          }
@@ -559,6 +560,8 @@ services:
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-}
+      COHORT_CACHE_TTL_HOURS: ${COHORT_CACHE_TTL_HOURS:-24}
+      COHORT_CACHE_MAX_AGE_DAYS: ${COHORT_CACHE_MAX_AGE_DAYS:-30}
 
   alp-caddy:
     container_name: &c1 ${PROJECT_NAME:-d2e}-caddy

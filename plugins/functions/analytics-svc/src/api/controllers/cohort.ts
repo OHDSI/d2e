@@ -19,6 +19,12 @@ import { convertIFRToExtCohort } from "../../ifr-to-extcohort/main";
 import { dataflowRequest } from "../../utils/DataflowMgmtProxy";
 import { env } from "../../env";
 import { createCdmSqlAuditContext } from "../../utils/CdmSqlAuditLogger.ts";
+import {
+    evictCohortCacheEntry,
+    readCohortDefinitionSyntax,
+    refreshCohortCacheEntry,
+    updateCohortCacheEntryMetadata,
+} from "../../utils/cohortCacheMaintenance.ts";
 
 const language = "en";
 
@@ -336,6 +342,14 @@ export async function createCohort(req: IMRIRequest, res: Response) {
             );
         }
 
+        await refreshCohortCacheEntry({
+            cohortEndpoint,
+            cohortDefinitionId,
+            bookmarkId,
+            datasetId,
+            paConfigId: req.paConfigId,
+        });
+
         // Return the id so callers do not have to re-read it from the bookmark
         // list, where it is only derived once the materialized cohort is
         // visible to the reading connection.
@@ -453,6 +467,7 @@ export async function createCohortDefinition(req: IMRIRequest, res: Response) {
         // Get inserted cohort definition id from cohort definition
         const cohortDefinitionId =
             await cohortEndpoint.queryCohortDefinitionId(cohortDefiniton);
+
         res.status(200).send({
             data: cohortDefinitionId,
         });
@@ -496,20 +511,31 @@ export async function updateCohortDefinition(req: IMRIRequest, res: Response) {
         // Create new cohort definition id object based on existing cohort definition and incoming parameters
         const newCohortDefinition: CohortDefinitionTableType = {
             id: cohortDefinitionId,
-            name: name ?? existingCohortDefinition.cohort_definition_name,
+            name: name ?? existingCohortDefinition.COHORT_DEFINITION_NAME,
             description:
                 description ??
-                existingCohortDefinition.cohort_definition_description,
-            creationTimestamp: existingCohortDefinition.cohort_initiation_date,
+                existingCohortDefinition.COHORT_DEFINITION_DESCRIPTION,
+            creationTimestamp: existingCohortDefinition.COHORT_INITIATION_DATE,
             definitionTypeConceptId:
                 definitionTypeConceptId ??
-                existingCohortDefinition.definition_type_concept_id,
+                existingCohortDefinition.DEFINITION_TYPE_CONCEPT_ID,
             subjectConceptId:
-                subjectConceptId ?? existingCohortDefinition.subject_concept_id,
-            syntax: syntax ?? existingCohortDefinition.cohort_definition_syntax,
+                subjectConceptId ?? existingCohortDefinition.SUBJECT_CONCEPT_ID,
+            syntax: syntax ?? existingCohortDefinition.COHORT_DEFINITION_SYNTAX,
         };
 
         await cohortEndpoint.updateCohortDefinitionToDb(newCohortDefinition);
+
+        // Fire-and-forget: a cache metadata update must not fail the response.
+        updateCohortCacheEntryMetadata({
+            syntax: newCohortDefinition.syntax,
+            datasetId: req.body.datasetId ?? req.selectedstudyDbMetadata?.id,
+            paConfigId: req.paConfigId,
+            name: newCohortDefinition.name,
+            description: newCohortDefinition.description,
+        }).catch((err) =>
+            logger.warn(`Cohort cache metadata update rejected: ${err}`)
+        );
 
         res.status(200).send(newCohortDefinition);
     } catch (err) {
@@ -535,12 +561,21 @@ export async function deleteCohort(req: IMRIRequest, res: Response) {
             req.selectedstudyDbMetadata.type,
             sourceResultsSchemaName
         );
+        const cohortDefinitionSyntax = await readCohortDefinitionSyntax(
+            cohortEndpoint,
+            cohortId
+        );
+        await evictCohortCacheEntry({
+            syntax: cohortDefinitionSyntax,
+            datasetId: req.selectedstudyDbMetadata?.id ?? req.query?.datasetId,
+            paConfigId: req.paConfigId,
+        });
 
         // Delete cohort definition from database
-        let cohortDefinitionResult =
+        const cohortDefinitionResult =
             await cohortEndpoint.deleteCohortDefinitionFromDb(cohortId);
         // Delete cohort from database
-        let cohortResult = await cohortEndpoint.deleteCohortFromDb(cohortId);
+        const cohortResult = await cohortEndpoint.deleteCohortFromDb(cohortId);
 
         res.status(200).send(
             `Deleted ${cohortDefinitionResult.data} rows from COHORT_DEFINITION and ${cohortResult.data} rows from COHORT with ID: ${cohortId}`
@@ -598,6 +633,7 @@ export async function materializeCohort(req: IMRIRequest, res: Response) {
         await Promise.allSettled(inserts);
 
         analyticsConnection.close();
+
         res.status(200).send({ message: "Cohort materialized successfully" });
     } catch (err) {
         logger.error(err);

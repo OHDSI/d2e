@@ -1,9 +1,13 @@
 import { env } from "../env.ts";
+import { CohortCacheShapeError } from "../errors/CohortCacheErrors.ts";
 import {
   ICohortDefinition,
   IAnalyticsCohortDefinition,
   IFilterValue,
   IBaseMaterializedCohort,
+  CohortCacheLookupResponseSchema,
+  ICohortCacheLookupResponse,
+  ICohortCacheWriteEntry,
 } from "./types.ts";
 
 const materializableCohortDatasetIds = new Set<string>();
@@ -179,6 +183,69 @@ export class AnalyticsSvcAPI {
       console.error(
         `Error while checking if cohort can be materialized: ${error}`,
       );
+      throw error;
+    }
+  }
+
+  /**
+   * `POST /analytics-svc/api/services/cohort-cache/lookup`
+   *
+   * Returns, for every requested bookmark id, either an entry under `entries`
+   * or the id under `missing`. An entry whose `materializedCohort` is `null`
+   * is still a hit: it records that the bookmark has no materialized cohort.
+   *
+   * Throws `CohortCacheShapeError` when the body does not match the schema and
+   * rethrows transport failures; callers fall back to the uncached path.
+   */
+  async cohortCacheLookup(
+    datasetId: string,
+    bookmarkIds: string[],
+  ): Promise<ICohortCacheLookupResponse> {
+    try {
+      const url = `${this.baseURL}/cohort-cache/lookup`;
+      console.log(
+        `Calling ${url} to look up ${bookmarkIds.length} cohort cache entries`,
+      );
+      const options = this.getRequestConfig();
+      const result = await this.analyticsapi.post(
+        url,
+        { datasetId, bookmarkIds },
+        options,
+      );
+
+      const parsed = CohortCacheLookupResponseSchema.safeParse(result?.data);
+      if (!parsed.success) {
+        throw new CohortCacheShapeError(
+          `Cohort cache lookup returned an unexpected response shape: ${parsed.error.message}`,
+        );
+      }
+      return parsed.data as ICohortCacheLookupResponse;
+    } catch (error) {
+      console.error(`Error while looking up cohort cache: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * `PUT /analytics-svc/api/services/cohort-cache` → 204.
+   *
+   * Upserts one entry per bookmark. Pass `materializedCohort: null` to record
+   * a negative entry; those are read back as hits. `patientIds` is stripped
+   * server-side and is never stored. Callers treat this as fire-and-forget.
+   */
+  async cohortCacheWrite(
+    datasetId: string,
+    entries: ICohortCacheWriteEntry[],
+  ): Promise<void> {
+    try {
+      const url = `${this.baseURL}/cohort-cache`;
+      console.log(
+        `Calling ${url} to write ${entries.length} cohort cache entries`,
+      );
+      const options = this.getRequestConfig();
+      await this.analyticsapi.put(url, { datasetId, entries }, options);
+    } catch (error) {
+      console.error(`Error while writing cohort cache entries: ${error}`);
       throw error;
     }
   }
