@@ -1653,6 +1653,23 @@ jobs:
             echo "Neither $SRC nor $DST present; nothing to publish."
           fi
 
+      # build_trex_image pushes a second variant as <RUN_TAG>-devx off the same
+      # Dockerfile. The matrix above iterates image *names*, so it cannot reach a
+      # tag suffix — the canonical -devx alias was therefore never published for
+      # any branch. docker-compose-local.yml asks for <DOCKER_TAG_NAME>-devx,
+      # which for the compose default (develop) surfaces far from here as
+      # "manifest unknown" on a pull.
+      #
+      # Develop only, and forward only: never publishes a commit-specific tag.
+      # No build_disable fallback arm — that is a build_images matrix input only,
+      # so <RUN_TAG>-devx is always present when this step runs.
+      - name: Re-tag develop devx image as canonical
+        if: matrix.image == 'd2e-trex' && needs.setup.outputs.is_develop_push == 'true'
+        run: |
+          SRC=${REG_URL}/d2e-trex:${RUN_TAG}-devx          # develop-<sha>-devx (read only)
+          DST=${REG_URL}/d2e-trex:develop-devx             # the alias being moved
+          docker buildx imagetools create -t "$DST" "$SRC"
+
       # Multi-arch-aware cleanup: the per-arch child manifests of a manifest
       # list are stored as untagged package versions in GHCR, so a blind
       # delete-only-untagged sweep (actions/delete-package-versions) removes
