@@ -679,7 +679,7 @@ jobs:
             BUILD_TYPE=OSS
             PLUGINS_FEED=${{ needs.setup.outputs.is_release_push == 'true' && 'stable' || 'd2e' }}
             PLUGINS_FROM_REGISTRY=@ohdsi/pythia-agent@0.1.0-develop.18.g80bf4aa
-            TREXSQL_REF=sha-13aaec845e6df19a72d0ee529cb3c81926b0697f@sha256:8152fae8c4e3a98dc19d0dc3ebc6099d42ea89d1da80c9ad16931121ea511287
+            TREXSQL_REF=sha-c951d24225e0a93306172f7a24a660bf584e2118@sha256:8895af3de5b9ad02d6dd2c68bbbab9608f85172119d3a59e695c01cb3eae2d66
           secrets: |
             "PLUGINS_REGISTRY=${{ secrets.PLUGINS_REGISTRY }}"
             "github_token=${{ secrets.GITHUB_TOKEN }}"
