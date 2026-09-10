@@ -1,0 +1,54 @@
+/* @data2evidence/atlas-data-quality
+ *
+ * Design tokens for the DQD dashboard, from the D2E WebApp main file (Figma node
+ * 1747-229812). Declared on the plugin root rather than :root so they cannot
+ * leak into the Atlas host, and inherited by the scoped component styles.
+ *
+ * This file is also what the bootstrap style-link resolves to: `vite.config.mjs`
+ * sets `cssCodeSplit: false`, so every component's scoped CSS is bundled into it.
+ */
+/* `.dq-tooltip` is the plugin's own content too, but Vuetify teleports it into
+   `.v-overlay-container` outside `.dq-root`, so it has to be named here to
+   inherit the same tokens rather than re-stating them. */
+.dq-root,
+.dq-tooltip {
+  --dq-font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --dq-text: #000000;
+  --dq-text-muted: #595757;
+  /* The d2e brand navy, the same one the portal theme calls `primary`. */
+  --dq-primary: #000080;
+
+  --dq-surface: #ffffff;
+  --dq-surface-subtle: #faf8f8;
+  /* Tint that marks the all-checks row. */
+  --dq-surface-accent: #f8f8ff;
+
+  --dq-border-subtle: #f2f0f1;
+  --dq-border: #dedcda;
+
+  --dq-radius-xs: 4px;
+  --dq-radius-sm: 8px;
+
+  --dq-space-xs: 8px;
+  /* Figma's Spacing/XS|S, the step between the two. */
+  --dq-space-xs-s: 12px;
+  --dq-space-s: 16px;
+  --dq-space-m: 24px;
+  --dq-space-xl: 56px;
+
+  font-family: var(--dq-font);
+  color: var(--dq-text);
+}
+
+.dq-root {
+  /* The design insets the card's content by 24px; the surface Atlas mounts us on
+     is an `AtlasCard padding="md"`, which already contributes 20px. Make up the
+     difference rather than re-padding from zero, so the dashboard lands where the
+     design puts it and either number can be corrected in one place. Mounted
+     without that card (routed mode) this leaves a 4px inset, which is what the
+     surface would then be responsible for. */
+  --dq-host-card-inset: 20px;
+  --dq-section-inset: var(--dq-space-m);
+  padding: calc(var(--dq-section-inset) - var(--dq-host-card-inset));
+}

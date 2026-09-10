@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data quality dashboard — dev harness</title>
+    <style>
+      /* Stands in for the Atlas page background, so the edge of the card the
+         host draws around the plugin stays visible. */
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #f4f4f5;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Harness page for `npm run dev` only: Atlas loads dist/index.system.js
+         through SystemJS and never sees this file. Scenarios are documented in
+         src/dev.ts. -->
+    <div id="app"></div>
+    <script type="module" src="/src/dev.ts"></script>
+  </body>
+</html>
