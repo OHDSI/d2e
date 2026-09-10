@@ -91,7 +91,7 @@ white-rabbit = [
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "linux-aarch64"]
 
 [tool.pixi.dependencies]
 python = "3.12.*"
@@ -150,6 +150,18 @@ R_MAKEVARS_USER = "/dev/null"
 [tool.pixi.tasks]
 setup-r = "bash setup_r.sh"
 setup-assets = "bash setup_assets.sh"
+
+# x86-only, unlike the rest of the workspace. Two of the NER stack's pins have
+# no aarch64 form: torch is pinned to a literal manylinux_2_28_x86_64 wheel URL
+# on download.pytorch.org (the +cpu build is published for x86_64 only), and
+# nmslib-metabrainz publishes no aarch64 wheel at all, so an aarch64 solve
+# falls back to its sdist — which the binary-only lock rule forbids and which
+# would compile at provision time. Narrowing the feature keeps the `ner`
+# environment out of the aarch64 solve entirely; the default environment stays
+# multi-arch. provision-envs.sh skips environments the running platform does
+# not declare.
+[tool.pixi.feature.ner]
+platforms = ["linux-64"]
 
 # Conda side of the self-contained ner environment (no-default-feature drops
 # the default conda deps): interpreter + toolchain for nmslib's C++ build.

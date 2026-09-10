@@ -229,6 +229,17 @@ jobs:
             # the rotating token cannot poison its cache key.
             cache_enabled: "true"
             needs_github_pat_secret: "true"
+            # amd64-only, unlike the rest of the set — a build-time limit now,
+            # not a dependency one: the flow manifests declare linux-aarch64 and
+            # their locks carry the aarch64 leg, so the image itself is
+            # buildable for arm64. What it cannot survive is QEMU. The heavy
+            # stages compile R from source (setup_r.sh restores renv.lock off
+            # the plain CRAN snapshot — there is no binary mirror for any arch),
+            # which already costs ~1h50m natively; emulated, that overruns the
+            # 6h job limit. Lifting this needs the arm64 leg on a native arm
+            # runner (ubuntu-24.04-arm, free on this public repo), each leg
+            # pushed by digest and merged into one manifest list.
+            PLATFORMS: linux/amd64
           - AZ_REG_REPOSITORY: d2e-supabase-storage
             DOCKER_BUILD_FILE_PATH: ./services/supabase-storage/Dockerfile
             DOCKER_BUILD_CONTEXT_PATH: ./services/supabase-storage
@@ -258,6 +269,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Cross-arch legs run under binfmt/QEMU on the amd64 runner. Skipped for
+      # the amd64-only entries so they pay nothing for it.
+      - name: Set up QEMU
+        if: ${{ contains(matrix.PLATFORMS || 'linux/amd64,linux/arm64', 'arm64') }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v3
         id: builder
 
@@ -269,7 +288,7 @@ jobs:
           builder: ${{ steps.builder.outputs.name }}
           context: ${{ matrix.DOCKER_BUILD_CONTEXT_PATH }}
           file: ${{ matrix.DOCKER_BUILD_FILE_PATH }}
-          platforms: linux/amd64
+          platforms: ${{ matrix.PLATFORMS || 'linux/amd64,linux/arm64' }}
           push: true
           pull: ${{ matrix.pull_base == 'true' || false }}
           tags: ${{ env.REG_URL }}/${{ matrix.AZ_REG_REPOSITORY }}:${{ env.RUN_TAG }}
@@ -632,6 +651,11 @@ jobs:
             echo "$(basename "$f"): $(tar -xzOf "$f" package/package.json | jq -r '.name + " " + .version')"
           done
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v3
         id: builder
 
@@ -712,6 +736,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v3
         id: builder
 
@@ -721,7 +750,7 @@ jobs:
           builder: ${{ steps.builder.outputs.name }}
           context: ./tests/e2e
           file: ./tests/e2e/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.REG_URL }}/d2e-e2e:${{ env.RUN_TAG }}
           provenance: false
