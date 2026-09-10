@@ -48,54 +48,33 @@
             "definitions": {
               "Eq5d5lCalculateConfig": {
                 "properties": {
-                  "schema_name": {
-                    "title": "Schema Name",
-                    "type": "string"
+                  "dry_run": {
+                    "default": false,
+                    "title": "Dry Run",
+                    "type": "boolean"
                   },
                   "database_code": {
                     "title": "Database Code",
                     "type": "string"
                   },
-                  "cache_id": {
-                    "anyOf": [
-                      { "type": "string" },
-                      { "type": "null" }
-                    ],
-                    "title": "Cache Id"
+                  "schema_name": {
+                    "title": "Schema Name",
+                    "type": "string"
+                  },
+                  "omop_dataset_id": {
+                    "title": "OMOP Dataset Id",
+                    "type": "string"
                   },
                   "country_code": {
                     "title": "Country Code",
                     "type": "string",
                     "enum": ["AU", "BE", "CA", "CN", "DE", "DK", "EG", "ET", "FR", "GH"]
-                  },
-                  "answer_code_level_map": {
-                    "anyOf": [
-                      { "type": "object", "additionalProperties": { "type": "integer" } },
-                      { "type": "null" }
-                    ],
-                    "title": "Answer Code Level Map"
-                  },
-                  "measurement_concept_id": {
-                    "anyOf": [
-                      { "type": "integer" },
-                      { "type": "null" }
-                    ],
-                    "title": "Measurement Concept Id"
-                  },
-                  "measurement_type_concept_id": {
-                    "default": 32862,
-                    "title": "Measurement Type Concept Id",
-                    "type": "integer"
-                  },
-                  "dry_run": {
-                    "default": false,
-                    "title": "Dry Run",
-                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "schema_name",
                   "database_code",
+                  "schema_name",
+                  "omop_dataset_id",
                   "country_code"
                 ],
                 "title": "Eq5d5lCalculateConfig",
