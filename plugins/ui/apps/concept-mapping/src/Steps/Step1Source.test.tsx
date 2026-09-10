@@ -48,6 +48,23 @@ describe("Step1Source", () => {
     expect(screen.getByText(/can't be changed once you start mapping/i)).toBeInTheDocument();
   });
 
+  test("dataset options are listed alphabetically, whatever order the API returned", () => {
+    const unsorted = [
+      { id: "ds-3", studyDetail: { name: "Zurich cohort" } },
+      { id: "ds-1", studyDetail: { name: "alpha cohort" } },
+      { id: "ds-2", studyDetail: { name: "Munich cohort" } },
+    ] as any[];
+    renderWithProviders(<Step1Source datasets={unsorted} onResetDownstream={vi.fn()} />);
+
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "alpha cohort",
+      "Munich cohort",
+      "Zurich cohort",
+    ]);
+  });
+
   test("dataset Select is disabled once mapping has started", () => {
     const state = {
       ...initialState,

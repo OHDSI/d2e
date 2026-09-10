@@ -2,6 +2,24 @@
   &-preview {
     margin-bottom: 24px;
 
+    // The preview is a read-only glance at the source rows, so it uses tighter cell padding
+    // and a compact pagination bar than MUI's defaults - those defaults (16px cells, a 52px
+    // near-empty toolbar) were what made the preview look padded out with white space.
+    td.MuiTableCell-root,
+    th.MuiTableCell-root {
+      padding: 6px 8px;
+    }
+
+    // The pagination bar is a MUI Toolbar, so it arrives with `MuiToolbar-gutters`
+    // (16px side padding, 24px at >=600px) and a 52px min-height - all of it dead space
+    // beside a single "Rows per page" control. Zero the gutters so the bar lines up with the
+    // table's own left edge instead of being inset from it.
+    .MuiTablePagination-toolbar {
+      min-height: 36px;
+      padding-left: 0;
+      padding-right: 0;
+    }
+
     // Same light-blue tint as the panel header bars ("1. Data source" / "2. Select a
     // dataset" / "3. Column mapping" - see &-panel-title below and Step1Source.scss),
     // so the preview table's header row visually matches them. Keep this in sync with
@@ -14,6 +32,7 @@
   }
 
   &-panel {
+    margin-bottom: 24px;
     border: 1px solid #dad7d7;
     border-radius: 8px;
     overflow: hidden;
@@ -34,10 +53,18 @@
 
   // 2-column grid, filled row by row in DOM order: [sourceCode | sourceFrequency],
   // [sourceName | description], [domain checkbox | domain select (only when checked)].
+  //
+  // Row spacing lives HERE, on the grid, and deliberately not as a margin-bottom on the
+  // fields: a field is a MUI FormControl, whose own styled root sets `margin: 0`. That rule
+  // and a `.concept-mapping__step2-field` rule have equal specificity, and emotion injects
+  // MUI's styles after this stylesheet, so a margin set on the field is silently zeroed -
+  // which is why the fields used to sit flush against the next row's label. The grid
+  // container is ours alone, so nothing competes with its row-gap.
   &-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 24px;
+    row-gap: 24px;
     margin-bottom: 16px;
 
     @media (max-width: 700px) {
@@ -48,13 +75,5 @@
   &-grid-checkbox {
     display: flex;
     align-items: center;
-    // The grid has no row-gap (rows are spaced by each select's margin-bottom), so give the
-    // checkbox its own top spacing - otherwise, when unchecked (no domain select beside it),
-    // it sits tight against the "Source name column" dropdown above.
-    margin-top: 8px;
-  }
-
-  &-field {
-    margin-bottom: 16px;
   }
 }

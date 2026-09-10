@@ -565,8 +565,11 @@ export default {
           })
         }
 
-        await this.fireBookmarkQuery({ method: 'get', params: { cmd: 'loadAll' } })
+        // Close the delete dialog right after the delete succeeds so the success toast is
+        // shown after the modal closes instead of expiring behind the still-open modal.
         this.showDeleteDialog = false
+
+        await this.fireBookmarkQuery({ method: 'get', params: { cmd: 'loadAll' } })
         if (!isMaterializedCohort && activeBookmark && activeBookmark.bookmarkname === bookmarkDisplay.bookmark.name) {
           this[types.SET_ACTIVE_BOOKMARK](null)
           this.reset()

@@ -38,6 +38,10 @@ export interface SuggestionDto {
   domainId: string;
   vocabularyId: string;
   suggestedBy: string;
+  // Display names for the UI's "Checked by" column: who suggested this concept, and - once
+  // approved - who approved it. Null on suggestions written before these were recorded.
+  suggestedByName: string | null;
+  approvedByName: string | null;
   createdAt: Date;
   isApproved: boolean;
 }
@@ -57,6 +61,8 @@ function toDto(suggestion: ConceptMappingSuggestion): SuggestionDto {
     domainId: suggestion.domainId,
     vocabularyId: suggestion.vocabularyId,
     suggestedBy: suggestion.suggestedBy,
+    suggestedByName: suggestion.suggestedByName ?? null,
+    approvedByName: suggestion.approvedByName ?? null,
     createdAt: suggestion.createdDate,
     isApproved: suggestion.isApproved,
   };
@@ -132,6 +138,7 @@ export class ConceptMappingSuggestionService {
     sourceRowId: string,
     concept: ConceptInput,
     userSub: string,
+    username?: string,
   ): Promise<SuggestionDto> {
     const entity = {
       id: uuidv4(),
@@ -144,6 +151,7 @@ export class ConceptMappingSuggestionService {
       domainId: concept.domainId,
       vocabularyId: concept.vocabularyId,
       suggestedBy: userSub,
+      suggestedByName: username ?? null,
       isApproved: false,
       createdBy: userSub,
       modifiedBy: userSub,
@@ -182,7 +190,7 @@ export class ConceptMappingSuggestionService {
   // with more than one suggestion (violating the "an approved row has
   // exactly one suggestion" invariant the frontend relies on), or with none
   // approved at all.
-  async approve(id: string, userSub: string): Promise<void> {
+  async approve(id: string, userSub: string, username?: string): Promise<void> {
     const suggestion = await this.suggestionRepo.findOne({ where: { id } });
     if (!suggestion) {
       throw new Error(`Suggestion ${id} not found`);
@@ -195,7 +203,11 @@ export class ConceptMappingSuggestionService {
       const siblings = await repo.find({ where: { dataflowId, nodeId, sourceRowId } });
       const otherIds = siblings.map((s) => s.id).filter((siblingId) => siblingId !== id);
 
-      await repo.update(id, { isApproved: true, modifiedBy: userSub });
+      await repo.update(id, {
+        isApproved: true,
+        approvedByName: username ?? null,
+        modifiedBy: userSub,
+      });
       if (otherIds.length > 0) {
         await repo.delete(otherIds);
       }
@@ -203,7 +215,11 @@ export class ConceptMappingSuggestionService {
   }
 
   async unapprove(id: string, userSub: string): Promise<void> {
-    await this.suggestionRepo.update(id, { isApproved: false, modifiedBy: userSub });
+    await this.suggestionRepo.update(id, {
+      isApproved: false,
+      approvedByName: null,
+      modifiedBy: userSub,
+    });
   }
 
   async setRowFlag(

@@ -1,0 +1,39 @@
+{
+  "name": "@data2evidence/atlas-data-quality",
+  "version": "0.1.0",
+  "description": "OMOP CDM data quality dashboard for Atlas3, reading the d2e jobplugins DQD endpoints",
+  "type": "module",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/index.system.js",
+    "./dist/*": "./dist/*"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@ohdsi/atlas-ui": "^0.1.0-20260721210553-c51900d",
+    "vue": "^3.4.0",
+    "vuetify": "^3.5.0"
+  },
+  "devDependencies": {
+    "@mdi/font": "^7.4.47",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^15.11.2",
+    "single-spa-vue": "^3.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^5.4.21",
+    "vite-plugin-vuetify": "^2.0.0",
+    "vitest": "^3.2.1",
+    "vue-tsc": "^2.1.0"
+  }
+}

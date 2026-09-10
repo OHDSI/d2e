@@ -152,6 +152,9 @@ const initRoutes = async (app: express.Application) => {
                             `Database code:${databaseCode} not found in analyticsCredentials`
                         );
                     }
+                    // Set credentials.schema as undefined so that SET SCHEMA is skipped for this endpoint
+                    // Check if schema exists endpoint does not require schema in the credentials, instead it uses schema from request parameters
+                    credentials.schema = undefined;
                 } else {
                     credentials = req.dbCredentials.studyAnalyticsCredential;
                 }

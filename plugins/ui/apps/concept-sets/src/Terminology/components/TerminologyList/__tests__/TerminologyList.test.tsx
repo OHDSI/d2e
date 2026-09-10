@@ -599,6 +599,47 @@ describe("TerminologyList", () => {
         expect.objectContaining({ conceptId: 1 }),
       );
     });
+
+    it("clicking anywhere in the row selects that concept, like clicking its radio", async () => {
+      const onSelectConceptId = vi.fn();
+
+      await act(async () => {
+        render(
+          <TerminologyList
+            {...conceptMappingRadioProps}
+            onSelectConceptId={onSelectConceptId}
+            conceptsResult={loadedResult}
+          />,
+        );
+      });
+
+      const row = screen.getByText("Test Concept").closest("tr") as HTMLElement;
+      fireEvent.click(row);
+
+      expect(onSelectConceptId).toHaveBeenCalledWith(
+        expect.objectContaining({ conceptId: 1 }),
+      );
+    });
+
+    it("a row click outside CONCEPT_MAPPING still does not select the concept", async () => {
+      const onSelectConceptId = vi.fn();
+
+      await act(async () => {
+        render(
+          <TerminologyList
+            {...conceptMappingRadioProps}
+            mode="CONCEPT_SEARCH"
+            onSelectConceptId={onSelectConceptId}
+            conceptsResult={loadedResult}
+          />,
+        );
+      });
+
+      const row = screen.getByText("Test Concept").closest("tr") as HTMLElement;
+      fireEvent.click(row);
+
+      expect(onSelectConceptId).not.toHaveBeenCalled();
+    });
   });
 
   // ==========================================

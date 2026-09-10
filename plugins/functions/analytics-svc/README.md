@@ -1,3 +1,48 @@
+# Audit logs
+
+Patient-access and CDM SQL audit events include these top-level routing fields:
+
+```json
+{"log-type":"audit","audit-log-type":"access","service-name":"analytics-svc"}
+```
+
+Each event is serialized as one JSON line, including SQL containing newlines.
+The existing event details (`eventType`, `actor`, `occurredAt`, patient attributes,
+SQL, request/database metadata, success status, and errors) retain their names,
+values, and structure. Both loggers use `access`, including failed SQL executions.
+
+The enablement flags and output destinations are unchanged:
+
+- `IS_AUDIT_LOG_ENABLED=true` enables patient-access events.
+- `IS_CDM_SQL_AUDIT_LOG_ENABLED=true` enables CDM SQL events independently.
+- `AUDIT_LOG_TO_CONSOLE=true` selects JSON lines on stdout for log collection.
+- Otherwise, events are appended to `/var/log/d2e/audit/patient-access.ndjson`
+  and `/var/log/d2e/audit/cdm-sql-access.ndjson` respectively.
+
+Run the focused regression tests from `plugins/functions/analytics-svc`:
+
+```sh
+deno test --no-check --allow-env --allow-read --allow-write \
+  src/utils/AuditEventWriter_test.ts src/utils/AuditLogger_test.ts \
+  src/utils/CdmSqlAuditLogger_test.ts src/utils/AuditLogFormat_test.ts
+```
+
+Or run from the repository root in an isolated container. A temporary copy of the
+lockfile allows Deno to prune stale entries without modifying the checkout:
+
+```sh
+docker run --rm --entrypoint sh \
+  -v "$PWD:/workspace" -v d2e-audit-deno-cache:/deno-dir \
+  -w /workspace/plugins/functions/analytics-svc \
+  ghcr.io/ohdsi/d2e-trex:develop-devx -c '
+    cp deno.lock /tmp/audit-deno.lock &&
+    deno test --lock=/tmp/audit-deno.lock --frozen=false --no-check \
+      --allow-env --allow-read --allow-write \
+      src/utils/AuditEventWriter_test.ts src/utils/AuditLogger_test.ts \
+      src/utils/CdmSqlAuditLogger_test.ts src/utils/AuditLogFormat_test.ts
+  '
+```
+
 # Prepare the test schema
 
 For easiness use the Az HANA instance, which doesn't have the SSL enabled.
