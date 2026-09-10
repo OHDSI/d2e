@@ -15,7 +15,7 @@ import { assertEquals } from '@std/assert'
 Deno.env.set('USER_MGMT__IDP_SUBJECT_PROP', 'sub')
 
 const { Container } = await import('typedi')
-const { CONTAINER_KEY, IDP_SCOPE_ROLE } = await import('../const.ts')
+const { CONTAINER_KEY, IDP_SCOPE_ROLE, ROLES } = await import('../const.ts')
 const { env } = await import('../env.ts')
 const { UserService } = await import('../services/UserService.ts')
 const { UserGroupService } = await import('../services/UserGroupService.ts')
@@ -34,7 +34,17 @@ const base64url = (value: unknown) =>
 const makeBearer = (payload: Record<string, unknown>) =>
   `Bearer ${base64url({ alg: 'HS256', typ: 'JWT' })}.${base64url(payload)}.signature`
 
-type GroupCall = { method: 'register' | 'withdraw'; userId: string; options: any }
+type GroupCall = { method: 'register' | 'withdraw'; userId: string; groupId: string; options: any }
+
+/**
+ * The group ids the B2cGroupService stub below hands back, so an assertion can
+ * name the role it expects rather than settling for "something was registered".
+ */
+const groupFor = (role: string) => `group-for-${role}`
+
+/** Group ids seen for one call shape, sorted so assertions can compare exactly. */
+const groupIds = (calls: GroupCall[], method: GroupCall['method']) =>
+  calls.filter(c => c.method === method).map(c => c.groupId).sort()
 
 /**
  * Replaces every collaborator the reconciliation reaches, and records the calls
@@ -60,12 +70,12 @@ const installStubs = () => {
   })
   Container.set(UserGroupService, {
     getUserGroup: () => Promise.resolve({ id: 'ug-1' }),
-    registerUserToGroup: (userId: string, _g: string, _trx: any, options: any) => {
-      groupCalls.push({ method: 'register', userId, options })
+    registerUserToGroup: (userId: string, groupId: string, _trx: any, options: any) => {
+      groupCalls.push({ method: 'register', userId, groupId, options })
       return Promise.resolve()
     },
-    withdrawUserFromGroup: (userId: string, _g: string, _trx: any, options: any) => {
-      groupCalls.push({ method: 'withdraw', userId, options })
+    withdrawUserFromGroup: (userId: string, groupId: string, _trx: any, options: any) => {
+      groupCalls.push({ method: 'withdraw', userId, groupId, options })
       return Promise.resolve()
     }
   })
@@ -161,11 +171,14 @@ Deno.test('the reconciliation grants and revokes according to token scopes', asy
   await withEnv(async () => {
     const { groupCalls } = await run()
 
-    // Sanity: the token carried SYSTEM_ADMIN only, so that role is granted and
-    // the other two system roles are revoked. This pins that suppressing the
-    // stamp did not suppress the reconciliation itself.
-    assertEquals(groupCalls.some(c => c.method === 'register'), true)
-    assertEquals(groupCalls.some(c => c.method === 'withdraw'), true)
+    // The token carried SYSTEM_ADMIN only, so that role is granted and the other
+    // two system roles are revoked. This pins that suppressing the stamp did not
+    // suppress the reconciliation itself.
+    assertEquals(groupIds(groupCalls, 'register'), [groupFor(ROLES.ALP_SYSTEM_ADMIN)])
+    assertEquals(
+      groupIds(groupCalls, 'withdraw'),
+      [groupFor(ROLES.ALP_DASHBOARD_VIEWER), groupFor(ROLES.ALP_USER_ADMIN)].sort()
+    )
     assertEquals(groupCalls.every(c => c.userId === USER_ID), true)
   })
 })
@@ -178,8 +191,14 @@ Deno.test('idp_groups from a federated session are mapped to roles and granted',
     // come from the idp_groups -> role mapping wired into the same scopes list.
     const { groupCalls } = await run({ roles: undefined, idp_groups: ['group-guid-1'], idp_provider: 'entra' })
 
-    const userAdminCall = groupCalls.find(c => c.method === 'register' && c.userId === USER_ID)
-    assertEquals(userAdminCall !== undefined, true)
+    // USER_ADMIN specifically -- not merely "a registration happened". This is
+    // what would fail if the mapper resolved the group to the wrong role.
+    assertEquals(groupIds(groupCalls, 'register'), [groupFor(ROLES.ALP_USER_ADMIN)])
+    assertEquals(
+      groupIds(groupCalls, 'withdraw'),
+      [groupFor(ROLES.ALP_DASHBOARD_VIEWER), groupFor(ROLES.ALP_SYSTEM_ADMIN)].sort()
+    )
+    assertEquals(groupCalls.every(c => c.userId === USER_ID), true)
   }, mapping)
 })
 
@@ -191,7 +210,13 @@ Deno.test('idp_groups from a provider not present in the mapping grant nothing e
     // the one configured for it, so it must not be honoured.
     const { groupCalls } = await run({ roles: [], idp_groups: ['group-guid-1'], idp_provider: 'physionet' })
 
-    assertEquals(groupCalls.some(c => c.method === 'register'), false)
+    assertEquals(groupIds(groupCalls, 'register'), [])
+    // Every system role is revoked: the token carried no scopes and the mapping
+    // contributed none, so nothing is left to grant.
+    assertEquals(
+      groupIds(groupCalls, 'withdraw'),
+      [groupFor(ROLES.ALP_DASHBOARD_VIEWER), groupFor(ROLES.ALP_SYSTEM_ADMIN), groupFor(ROLES.ALP_USER_ADMIN)].sort()
+    )
   }, mapping)
 })
 
@@ -202,10 +227,15 @@ Deno.test('a native login (no idp_groups/idp_provider claims) is unaffected by t
     // No idp_groups/idp_provider claims at all -- native password login shape.
     const { groupCalls } = await run({ roles: [IDP_SCOPE_ROLE.SYSTEM_ADMIN] })
 
-    assertEquals(groupCalls.some(c => c.method === 'register' && c.userId === USER_ID), true)
-    // USER_ADMIN must still be revoked (not granted) since the token carried
-    // nothing that would grant it.
-    assertEquals(groupCalls.some(c => c.method === 'withdraw' && c.userId === USER_ID), true)
+    // Exactly the token's own SYSTEM_ADMIN is granted. USER_ADMIN -- the role the
+    // configured mapping would have added for a federated session -- is revoked,
+    // which is what proves the mapping contributed nothing here.
+    assertEquals(groupIds(groupCalls, 'register'), [groupFor(ROLES.ALP_SYSTEM_ADMIN)])
+    assertEquals(
+      groupIds(groupCalls, 'withdraw'),
+      [groupFor(ROLES.ALP_DASHBOARD_VIEWER), groupFor(ROLES.ALP_USER_ADMIN)].sort()
+    )
+    assertEquals(groupCalls.every(c => c.userId === USER_ID), true)
   }, mapping)
 })
 
@@ -216,6 +246,10 @@ Deno.test('a malformed IDP__GROUP_ROLE_MAPPING does not crash the request', asyn
     // Bad config is treated as "no mapping" -- request handling proceeds and
     // still reconciles the roles the token's own scopes describe.
     assertEquals(res.statusCode, undefined)
-    assertEquals(groupCalls.length > 0, true)
+    assertEquals(groupIds(groupCalls, 'register'), [groupFor(ROLES.ALP_SYSTEM_ADMIN)])
+    assertEquals(
+      groupIds(groupCalls, 'withdraw'),
+      [groupFor(ROLES.ALP_DASHBOARD_VIEWER), groupFor(ROLES.ALP_USER_ADMIN)].sort()
+    )
   }, '{not valid json')
 })
