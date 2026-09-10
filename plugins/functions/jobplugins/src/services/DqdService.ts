@@ -50,11 +50,36 @@ export class DqdService {
       return null;
     }
 
-    const artifactData = JSON.parse(artifacts[0].data);
+    const artifactData = JSON.parse(artifacts[0].data) as IDataQualityResult;
     const checkResults = artifactData.CheckResults;
     const derivedResults = this.dataQualityOverviewParser.parse(checkResults);
+    const dqdVersion = artifactData.Metadata?.[0]?.dqdVersion;
+    const timing = {
+      ...this.getArtifactTimingValue(
+        "startTimestamp",
+        artifactData.startTimestamp
+      ),
+      ...this.getArtifactTimingValue("endTimestamp", artifactData.endTimestamp),
+      ...this.getArtifactTimingValue(
+        "executionTime",
+        artifactData.executionTime
+      ),
+      ...this.getArtifactTimingValue(
+        "executionTimeSeconds",
+        artifactData.executionTimeSeconds
+      ),
+    };
 
-    return derivedResults;
+    return {
+      ...derivedResults,
+      ...(Object.keys(timing).length > 0 ? { timing } : {}),
+      ...(dqdVersion ? { dqdVersion } : {}),
+    };
+  }
+
+  private getArtifactTimingValue<T>(key: string, value?: T | T[]) {
+    const scalarValue = Array.isArray(value) ? value[0] : value;
+    return scalarValue === undefined ? {} : { [key]: scalarValue };
   }
 
   public async getLatestFlowRunWithoutCohort(datasetId: string, token: string) {

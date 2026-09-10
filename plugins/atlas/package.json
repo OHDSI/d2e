@@ -16,6 +16,7 @@
     "dev": "vite"
   },
   "dependencies": {
+    "@data2evidence/atlas-data-quality": "file:./subplugins/data-quality",
     "@ohdsi/atlas3": "0.1.0-20260823112941-269a00a",
     "@ohdsi/network-plugin": "file:./trex-notebook/plugins/network",
     "@ohdsi/notebook-plugin": "file:./trex-notebook/plugins/notebook-plugin",
