@@ -19,7 +19,12 @@ export function mapGroupsToRoles(
 ): string[] {
   if (!Array.isArray(groups) || groups.length === 0 || !provider) return []
 
-  const forProvider = mapping?.[provider]
+  // `provider` is a token claim and `mapping` is operator-supplied JSON, so an
+  // own-property check is what keeps a claim like `constructor`, `toString` or
+  // `__proto__` from resolving to something off Object.prototype.
+  if (!mapping || !Object.hasOwn(mapping, provider)) return []
+
+  const forProvider = mapping[provider]
   if (!forProvider) return []
 
   const held = new Set(groups)

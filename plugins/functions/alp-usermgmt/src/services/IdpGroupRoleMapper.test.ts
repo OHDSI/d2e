@@ -45,3 +45,12 @@ Deno.test('returns nothing when the provider is empty', () => {
 Deno.test('returns nothing when the mapping config is empty', () => {
   assertEquals(mapGroupsToRoles(['group-guid-1'], 'entra', {}), [])
 })
+
+Deno.test('an inherited property name from the token does not resolve to a mapping', () => {
+  // `provider` comes from a token claim while `mapping` is operator-supplied
+  // JSON, so a name that exists on Object.prototype must not be treated as a
+  // configured provider.
+  for (const inherited of ['constructor', 'toString', 'valueOf', '__proto__', 'hasOwnProperty']) {
+    assertEquals(mapGroupsToRoles(['group-guid-1'], inherited, mapping), [], inherited)
+  }
+})
