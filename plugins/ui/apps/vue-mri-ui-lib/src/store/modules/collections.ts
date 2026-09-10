@@ -77,7 +77,7 @@ const actions = {
       commit(types.COLLECTIONS_SET_SUBSETCOUNT, response.data.data[0]['patient.attributes.pcount'])
     })
   },
-  onAddCohortOkButtonPress({ state, commit, dispatch, rootGetters }, { params, url }) {
+  onAddCohortOkButtonPress({ state, commit, dispatch, rootGetters }, { params, url, suppressToast }) {
     if (cancel) {
       cancel()
     }
@@ -104,14 +104,18 @@ const actions = {
               text: response.data.Title,
             })
             commit(types.COLLECTIONS_SET_OLDCOLLECTION, oldColl)
-            useNotificationStore().setToastMessage({
-              text: rootGetters.getText('MRI_PA_COLL_SUCCESS_CREATE_AND_ADD', title),
-            })
+            if (!suppressToast) {
+              useNotificationStore().setToastMessage({
+                text: rootGetters.getText('MRI_PA_COLL_SUCCESS_CREATE_AND_ADD', title),
+              })
+            }
           }
         } else {
-          useNotificationStore().setToastMessage({
-            text: rootGetters.getText('MRI_PA_COLL_SUCCESS_ADD_PATIENT'),
-          })
+          if (!suppressToast) {
+            useNotificationStore().setToastMessage({
+              text: rootGetters.getText('MRI_PA_COLL_SUCCESS_ADD_PATIENT'),
+            })
+          }
         }
         return response?.data
       })

@@ -15,9 +15,12 @@ import "./DisclaimerDialog.scss";
 
 const logUserResponse = async (logResponse: LogResponseType): Promise<void> => {
   if (typeof env.REACT_APP_LOG_DISCLAIMER === "string" && env.REACT_APP_LOG_DISCLAIMER.toLowerCase() === "true") {
-    await api.trex.logResponse(logResponse);
+    try {
+      await api.systemPortal.logAuditResponse(logResponse);
+    } catch {
+      // Disclaimer auditing must not block a user's decision.
+    }
   }
-  return;
 };
 
 export const DisclaimerDialog: FC = () => {
@@ -35,11 +38,11 @@ export const DisclaimerDialog: FC = () => {
     setIsDisclaimerAccepted(true);
     // Persist acceptance to localStorage (only store when accepted)
     saveDisclaimerToStorage(true);
-    await logUserResponse(LogResponseType.ACCEPTED);
+    void logUserResponse(LogResponseType.ACCEPTED);
   }, [setIsDisclaimerAccepted]);
 
-  const handleLogout = useCallback(async () => {
-    await logUserResponse(LogResponseType.DECLINED);
+  const handleLogout = useCallback(() => {
+    void logUserResponse(LogResponseType.DECLINED);
     navigate(config.ROUTES.logout);
   }, [navigate]);
 

@@ -107,8 +107,8 @@ export const Step2ColumnMapping: FC<Step2ColumnMappingProps> = ({ selectedDatase
   const currentPageRows = sourceRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const renderSelect = (target: MappingTarget) => (
-    <FormControl fullWidth key={target.key} className="concept-mapping__step2-field">
-      <Typography sx={{ mb: 0.5, fontWeight: 500 }}>{getText(target.labelKey)}</Typography>
+    <FormControl fullWidth key={target.key}>
+      <Typography sx={{ mb: 1, fontWeight: 500 }}>{getText(target.labelKey)}</Typography>
       <Select
         displayEmpty
         fullWidth
@@ -133,7 +133,7 @@ export const Step2ColumnMapping: FC<Step2ColumnMappingProps> = ({ selectedDatase
   return (
     <div className="concept-mapping__step2">
       <div className="concept-mapping__step2-preview">
-        <TableContainer component={Paper} sx={{ maxHeight: 320, border: "1px solid #dad7d7" }}>
+        <TableContainer component={Paper} elevation={0} sx={{ maxHeight: 320, border: "1px solid #dad7d7" }}>
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
@@ -183,8 +183,8 @@ export const Step2ColumnMapping: FC<Step2ColumnMappingProps> = ({ selectedDatase
             </div>
 
             {showDomainMapping && (
-              <FormControl fullWidth className="concept-mapping__step2-field">
-                <Typography sx={{ mb: 0.5, fontWeight: 500 }}>
+              <FormControl fullWidth>
+                <Typography sx={{ mb: 1, fontWeight: 500 }}>
                   {getText(i18nKeys.IMPORT_DIALOG__SOURCE_DOMAIN_COLUMN)}
                 </Typography>
                 <Select

@@ -133,6 +133,7 @@ const actions = {
         useNotificationStore().setAlertMessage({
           message: rootGetters.getText('MRI_PA_DELETE_BMK_ERROR'),
         })
+        throw error
       })
   },
   fireDeleteAtlasCohortDefinitionQuery({ commit, dispatch, getters, rootGetters }, atlasCohortDefinitionId) {
@@ -155,6 +156,7 @@ const actions = {
         useNotificationStore().setAlertMessage({
           message: rootGetters.getText('MRI_PA_DELETE_BMK_ERROR'),
         })
+        throw error
       })
   },
   fireUpdateAtlasCohortDefinitionQuery({ commit, dispatch, getters, rootGetters }, { cancelToken,  content }) {
