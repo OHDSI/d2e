@@ -1142,7 +1142,11 @@ const TerminologyList: FC<TerminologyListProps> = ({
     // in CONCEPT_MAPPING we must stop MRT from ALSO filtering client-side — otherwise the
     // injected "Suggested concepts" rows (which don't carry concept/domain filter fields) get
     // dropped by the active filters (e.g. Concept = Standard).
-    manualFiltering: mode === "CONCEPT_MAPPING",
+    // The SELECTED tab shows the concepts the user added, not search results. Its column
+    // filters are hidden (enableColumnFilter is true only on SEARCH), but the columnFilters
+    // state stays active, so MRT would filter the added concepts client-side and hide them.
+    // Turn client-side filtering off on that tab.
+    manualFiltering: mode === "CONCEPT_MAPPING" || tab === tabNames.SELECTED,
     // Stable row ids so pinning can target the suggested rows/header (and so the same concept
     // appearing in both the suggested and search lists doesn't collide on a shared id).
     getRowId: (originalRow) => {
@@ -1192,6 +1196,15 @@ const TerminologyList: FC<TerminologyListProps> = ({
           }
           const terminology = row.original;
           onConceptClick(terminology.conceptId);
+          // CONCEPT_MAPPING: the row IS the picker, so clicking anywhere in it selects that
+          // concept - the same thing its radio does. Elsewhere a row click only opens the
+          // concept details panel and selection stays an explicit add/remove action, so this
+          // is deliberately scoped to CONCEPT_MAPPING. (In CONCEPT_MAPPING the details panel
+          // is suppressed anyway - see the showDetails effect in Terminology.tsx - which is
+          // why a row click used to do nothing but tint the row.)
+          if (mode === "CONCEPT_MAPPING") {
+            onClickAddRemoveButton(terminology);
+          }
         },
         sx: {
           cursor: isAtlas ? "auto" : "pointer", //you might want to change the cursor too when adding an onClick

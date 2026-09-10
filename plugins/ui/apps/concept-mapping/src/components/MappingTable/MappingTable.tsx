@@ -44,6 +44,10 @@ interface MappingTableProps {
 // action column line up row-for-row.
 const SUGGESTION_LINE_HEIGHT = 36;
 
+// Shown in "Checked by" for a persisted suggestion whose acting user has no recorded name -
+// i.e. one written before those names were stored.
+const UNKNOWN_USER = "\u2014";
+
 interface ConceptLine {
   key: string;
   // Present when this line is a persisted backend suggestion; absent for a client-only
@@ -55,6 +59,9 @@ interface ConceptLine {
   conceptCode: any;
   domainId: any;
   vocabularyId: any;
+  // Who last acted on this line: its approver once approved, otherwise whoever suggested it.
+  // Empty for a client-only Recommend concept, which nobody has acted on yet.
+  checkedBy: string;
 }
 
 // A source row can carry several competing suggestions. We render one line per suggestion
@@ -74,6 +81,7 @@ function conceptLines(original: { [key: string]: any }): ConceptLine[] {
       conceptCode: s.conceptCode,
       domainId: s.domainId,
       vocabularyId: s.vocabularyId,
+      checkedBy: (s.isApproved ? s.approvedByName : s.suggestedByName) ?? UNKNOWN_USER,
     }));
   }
   if (original.conceptId) {
@@ -86,6 +94,7 @@ function conceptLines(original: { [key: string]: any }): ConceptLine[] {
         conceptCode: original.conceptCode,
         domainId: original.domainId,
         vocabularyId: original.vocabularyId,
+        checkedBy: "",
       },
     ];
   }
@@ -262,9 +271,13 @@ export const MappingTable: FC<MappingTableProps> = ({
   );
 
   // Bulk actions: batch the cores over the selected rows, refetch once, then clear selection.
+  // A row with competing suggestions needs a human decision about WHICH concept wins, so it is
+  // skipped here - left at its current status for the user to resolve individually - rather
+  // than blocking the whole batch. Every other selected row is approved as normal.
   const bulkApprove = useCallback(
     async (rows: MRT_Row<{ [key: string]: any }>[]) => {
-      await Promise.all(rows.map((r) => approveRowCore(r.original)));
+      const unambiguous = rows.filter((r) => (r.original._suggestions?.length ?? 0) <= 1);
+      await Promise.all(unambiguous.map((r) => approveRowCore(r.original)));
       await loadSuggestions();
     },
     [approveRowCore, loadSuggestions]
@@ -506,6 +519,17 @@ export const MappingTable: FC<MappingTableProps> = ({
         Cell: ({ row }) => renderConceptCell(row.original, "vocabularyId"),
       },
       {
+        id: "10",
+        header: getText(i18nKeys.MAPPING_TABLE__CHECKED_BY),
+        size: 150,
+        // Unlike the other columns, this one has no single value on the row - a branched row
+        // carries one name per suggestion line - so there's nothing for MRT to sort or filter
+        // on. Turning both off avoids offering an affordance that would quietly do nothing.
+        enableSorting: false,
+        enableColumnFilter: false,
+        Cell: ({ row }) => renderConceptCell(row.original, "checkedBy"),
+      },
+      {
         id: "actions",
         header: "",
         size: 130,
@@ -518,13 +542,28 @@ export const MappingTable: FC<MappingTableProps> = ({
     [sourceCode, sourceName, sourceFrequency, description, getText, renderStatusCell, renderActionsCell, renderConceptCell]
   );
 
-  // Whole-row click used to open the terminology search drawer; that's now an explicit
-  // "Suggest" action icon instead (see renderActionsCell), so this only supplies the
-  // alternating-row / selected-row styling.
+  // Clicking anywhere in a row opens the concept list popup for that row - the same thing the
+  // "Suggest" action icon does (which stays, as the visible affordance). Clicks that land on a
+  // control inside the row (the selection checkbox, the Approve/Uncheck/Suggest/Flag icons)
+  // belong to that control, so they're skipped here: every one of them is a MUI ButtonBase,
+  // which also covers clicks on the icon/ripple *inside* the control rather than the control
+  // element itself.
+  const handleRowClick = useCallback(
+    (event: React.MouseEvent<HTMLTableRowElement>, original: { [key: string]: any }) => {
+      if ((event.target as HTMLElement).closest(".MuiButtonBase-root")) {
+        return;
+      }
+      dispatch({ type: ACTION_TYPES.SET_SELECTED_DATA, payload: original });
+    },
+    [dispatch]
+  );
+
   const TableBodyRowProps = ({ row }: { row: MRT_Row<{ [key: string]: any }> }) => {
     const selected = row.getIsSelected();
     return {
+      onClick: (event: React.MouseEvent<HTMLTableRowElement>) => handleRowClick(event, row.original),
       sx: {
+        cursor: "pointer",
         backgroundColor: selected ? "#E5E6F2" : row.index % 2 === 0 ? "#f5f5f5" : "#ffffff",
         // Override MRT's default (darker) row-selection highlight with our lighter tint.
         "&.Mui-selected, &.Mui-selected:hover": {
@@ -600,9 +639,19 @@ export const MappingTable: FC<MappingTableProps> = ({
     renderTopToolbarCustomActions: ({ table }) => {
       const selectedRows = table.getSelectedRowModel().rows;
       if (selectedRows.length > 0) {
-        // Bulk Approve is only offered when every selected row is unambiguous (<=1 suggestion);
-        // a row with competing suggestions must be resolved individually via its sub-table.
-        const approveDisabled = selectedRows.some((r) => (r.original._suggestions?.length ?? 0) > 1);
+        // An unchecked row has nothing to approve at all, so rather than silently skip it the
+        // button refuses the whole selection - that's a sign the user picked the wrong rows.
+        // Beyond that, Approve is offered whenever at least one selected row would actually
+        // change: exactly the rows bulkApprove acts on (one suggestion, not yet approved).
+        // Rows that are already approved, or that carry competing suggestions, simply don't
+        // count towards that - so a selection made up only of those leaves Approve disabled
+        // instead of becoming a click that does nothing.
+        const selectedOriginals = selectedRows.map((r) => r.original);
+        const hasUnchecked = selectedOriginals.some((r) => r.status === "unchecked");
+        const willChange = selectedOriginals.some(
+          (r) => r.status === "suggested" && (r._suggestions?.length ?? 0) === 1
+        );
+        const approveDisabled = hasUnchecked || !willChange;
         const uncheckDisabled = !selectedRows.some((r) => r.original.status === "approved");
         return (
           <Box sx={{ display: "flex", alignItems: "center", gap: "1rem", width: "100%", p: "4px" }}>

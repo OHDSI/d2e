@@ -138,6 +138,7 @@ import VProgressCircular from '../vuetify/VProgressCircular.vue'
 import appMessageStrip from '@/lib/ui/app-message-strip.vue'
 import * as types from '../../store/mutation-types'
 import { usePortalContext } from '../../composables/usePortalContext'
+import { useNotificationStore } from '../../stores/notifications'
 
 export default {
   name: 'SaveCohortModal',
@@ -396,6 +397,9 @@ export default {
           cohortId: this.savedCohortId,
           bookmarkId: this.savedBookmarkId,
         })
+        // Fire the success toast after the modal closes (the parent closes it on success)
+        // so the user always sees confirmation, even when materialization is slow.
+        useNotificationStore().setToastMessage({ text: successMessage })
       } catch (error) {
         console.error('[SaveCohortModal] Error:', error)
 
@@ -479,7 +483,7 @@ export default {
           datasetId: selectedDataset?.id,
         }
 
-        await this.fireBookmarkQuery({ params, method: 'post' })
+        await this.fireBookmarkQuery({ params, method: 'post', suppressToast: true })
       } else {
         this.savingStep = 'saving-filter'
         const params = {
@@ -492,6 +496,7 @@ export default {
           method: 'put',
           params,
           bookmarkId: activeBookmark.bmkId,
+          suppressToast: true,
         })
       }
 
@@ -530,7 +535,7 @@ export default {
       const url = '/analytics-svc/api/services/cohort'
 
       this.savingStep = 'materializing-cohort'
-      const materializeResponse = await this.onAddCohortOkButtonPress({ params, url })
+      const materializeResponse = await this.onAddCohortOkButtonPress({ params, url, suppressToast: true })
       const cohortDefinitionId = Number(materializeResponse?.cohortDefinitionId)
 
       if (!Number.isInteger(cohortDefinitionId)) {

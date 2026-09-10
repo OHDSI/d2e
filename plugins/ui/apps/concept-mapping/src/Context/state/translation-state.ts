@@ -32,6 +32,7 @@ export const i18nDefault = {
     MAPPING_TABLE__DATASET_REFERENCE: "Dataset for concept reference",
     MAPPING_TABLE__SOURCE: "Source",
     MAPPING_TABLE__STATUS: "Status",
+    MAPPING_TABLE__CHECKED_BY: "Checked by",
     STATUS__UNCHECKED: "Unchecked",
     STATUS__SUGGESTED: "Suggested",
     STATUS__APPROVED: "Approved",
