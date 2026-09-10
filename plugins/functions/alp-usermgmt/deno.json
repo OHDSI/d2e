@@ -108,6 +108,7 @@
     "./src/services/roles/SystemAdminService": "./src/services/roles/SystemAdminService.ts",
     "./src/services/roles/DashboardViewerService": "./src/services/roles/DashboardViewerService.ts",
     "./src/services/UserGroupService": "./src/services/UserGroupService.ts",
+    "./src/services/IdpGroupRoleMapper": "./src/services/IdpGroupRoleMapper.ts",
     "./src/services/UserService": "./src/services/UserService.ts",
     "./src/services/ConfigService": "./src/services/ConfigService.ts",
     "./src/services": "./src/services/index.ts",

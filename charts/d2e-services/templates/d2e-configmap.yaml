@@ -9,6 +9,7 @@ data:
   SERVICE_ROUTES: {{ .Values.config.SERVICE_ROUTES | quote }}
   IDP__RELYING_PARTY: {{ .Values.idp.IDP__RELYING_PARTY | quote }}
   IDP__REQUIRED_CLAIM: {{ .Values.idp.IDP__REQUIRED_CLAIM | quote }}
+  IDP__GROUP_ROLE_MAPPING: {{ .Values.idp.IDP__GROUP_ROLE_MAPPING | default "{}" | quote }}
   LOGTO__SCOPE: {{ .Values.idp.LOGTO__SCOPE | quote }}
   LOGTO__SCOPES: {{ .Values.idp.LOGTO__SCOPES | quote }}
   LOGTO__ROLES: {{ .Values.idp.LOGTO__ROLES | quote }}
