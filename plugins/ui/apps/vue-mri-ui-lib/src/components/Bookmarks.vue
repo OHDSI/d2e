@@ -6,6 +6,20 @@
       v-if="messageStrip.show"
       @closeEv="resetMessageStrip"
     />
+    <VSnackbar
+      v-model="dqdSnackbarVisible"
+      location="top right"
+      :color="dqdSnackbarColor"
+      :timeout="dqdSnackbarTimeout"
+      max-width="380"
+      class="dqd-snackbar"
+      data-testid="pa-dqd-snackbar"
+    >
+      <span class="dqd-snackbar-content">
+        <component :is="dqdSnackbarIcon" class="dqd-snackbar-icon" :class="dqdSnackbarIconClass" />
+        {{ dqdSnackbar.text }}
+      </span>
+    </VSnackbar>
     <messageBox
       dim="true"
       dialogWidth="400px"
@@ -233,6 +247,11 @@ import Button from './Button.vue'
 import UsersIcon from './icons/UsersIcon.vue'
 import LoadErrorIllustration from './icons/LoadErrorIllustration.vue'
 import RefreshIcon from './icons/RefreshIcon.vue'
+import CheckCircleIcon from './icons/CheckCircleIcon.vue'
+import WarningTriangleIcon from './icons/WarningTriangleIcon.vue'
+import VSnackbar from './vuetify/VSnackbar.vue'
+import Constants from '../utils/Constants'
+import { isFlowRunCompleted, isFlowRunInProgress } from '../utils/FlowRunState'
 import ImportAtlasCohortDefinitionDialog from './ImportAtlasCohortDefinitionDialog.vue'
 import { useAtlasStore } from '../stores/atlas'
 import { usePortalContext } from '../composables/usePortalContext'
@@ -274,6 +293,8 @@ export default {
         message: '',
         messageType: '',
       },
+      // Feedback for the "display or generate data quality" cohort action.
+      dqdSnackbar: { visible: false, type: 'success' as 'success' | 'warning' | 'error', text: '' },
       cohortDefinitionType: '',
       atlasCohortDefinitionId: null,
       showImportAtlasCohortDefinition: false,
@@ -299,6 +320,33 @@ export default {
     },
   },
   computed: {
+    dqdSnackbarVisible: {
+      get() {
+        return this.dqdSnackbar.visible
+      },
+      set(val) {
+        this.dqdSnackbar.visible = val
+      },
+    },
+    dqdSnackbarColor() {
+      switch (this.dqdSnackbar.type) {
+        case 'warning':
+          return 'var(--color-mri-warning-bg)'
+        case 'error':
+          return 'var(--color-mri-error-bg)'
+        default:
+          return 'var(--color-mri-success-bg)'
+      }
+    },
+    dqdSnackbarIcon() {
+      return this.dqdSnackbar.type === 'success' ? 'CheckCircleIcon' : 'WarningTriangleIcon'
+    },
+    dqdSnackbarIconClass() {
+      return `dqd-snackbar-icon-${this.dqdSnackbar.type}`
+    },
+    dqdSnackbarTimeout() {
+      return Constants.SnackbarTimeout
+    },
     ...mapGetters([
       'getMriFrontendConfig',
       'getBookmarks',
@@ -632,6 +680,13 @@ export default {
         messageType: '',
       }
     },
+    showDqdSnackbar(type: 'success' | 'warning' | 'error', text: string) {
+      // Re-trigger the enter transition when the same toast fires twice in a row.
+      this.dqdSnackbar = { visible: false, type, text }
+      this.$nextTick(() => {
+        this.dqdSnackbar.visible = true
+      })
+    },
     openDataQualityResultsDialog(flowRun) {
       const job = {
         flowRunId: flowRun.id,
@@ -659,14 +714,10 @@ export default {
     async openDataQualityDialog(cohortDefinition) {
       if (cohortDefinition?.id) {
         const flowRun = await this.fetchDataQualityFlowRun({ cohortDefinitionId: cohortDefinition.id })
-        if (flowRun && flowRun?.state_name === 'Completed') {
+        if (isFlowRunCompleted(flowRun)) {
           this.openDataQualityResultsDialog(flowRun)
-        } else if (flowRun?.state_name === 'Pending' || flowRun?.state_name === 'RUNNING') {
-          this.messageStrip = {
-            show: true,
-            message: `Data Quality Check is already running`,
-            messageType: 'information',
-          }
+        } else if (isFlowRunInProgress(flowRun)) {
+          this.showDqdSnackbar('warning', this.getText('MRI_PA_DATA_QUALITY_CHECK_IN_PROGRESS'))
         } else {
           const GenerateDataQualityFlowRunParams = {
             datasetId: this.getSelectedDataset.id,
@@ -676,19 +727,11 @@ export default {
             vocabSchemaName: '',
           }
           await this.generateDataQualityFlowRun(GenerateDataQualityFlowRunParams)
-            .then(data => {
-              this.messageStrip = {
-                show: true,
-                message: `Data Quality Check created`,
-                messageType: 'success',
-              }
+            .then(() => {
+              this.showDqdSnackbar('success', this.getText('MRI_PA_DATA_QUALITY_CHECK_STARTED'))
             })
             .catch(err => {
-              this.messageStrip = {
-                show: true,
-                message: err,
-                messageType: 'error',
-              }
+              this.showDqdSnackbar('error', this.getText('MRI_PA_DATA_QUALITY_CHECK_FAILED'))
               return err
             })
         }
@@ -802,6 +845,44 @@ export default {
     UsersIcon,
     LoadErrorIllustration,
     RefreshIcon,
+    CheckCircleIcon,
+    WarningTriangleIcon,
+    VSnackbar,
   },
 }
 </script>
+
+<!-- Not scoped: Vuetify teleports the snackbar out of this component's tree. -->
+<style>
+.dqd-snackbar .v-snackbar__wrapper {
+  /* Figma <Alert>: 8px radius, card shadow #0000001A blur 10, no Vuetify min-width floor. */
+  min-width: auto;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.dqd-snackbar .dqd-snackbar-content {
+  display: flex;
+  align-items: flex-start;
+  color: var(--color-black);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.dqd-snackbar .dqd-snackbar-icon {
+  flex: none;
+  margin-right: 12px;
+}
+
+.dqd-snackbar .dqd-snackbar-icon-success {
+  color: var(--color-feedback-success);
+}
+
+.dqd-snackbar .dqd-snackbar-icon-warning {
+  color: var(--color-feedback-warning);
+}
+
+.dqd-snackbar .dqd-snackbar-icon-error {
+  color: var(--color-feedback-alarm);
+}
+</style>
