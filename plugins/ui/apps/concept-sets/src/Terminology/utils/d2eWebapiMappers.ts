@@ -8,6 +8,7 @@ import {
   IWebapiConceptRecordCount,
   TerminologyTableConcept,
   ConceptRecordCount,
+  FhirValueSetExpansionContainsWithExt,
 } from "./types";
 
 export const mapd2eWebapiConcept = (concept: IWebapiConcept): Concept => {
@@ -118,5 +119,22 @@ export const mapd2eWebapiConceptSet = (
       : undefined,
     userName: conceptSet.createdBy.name,
     source: conceptSet.source,
+  };
+};
+
+/**
+ * The d2e-native terminology search returns FHIR ValueSet expansion entries,
+ * which already extend `Concept` -- unlike the WebAPI search, whose UPPER_CASE
+ * payload needs mapd2eWebapiConcept. Normalise the few fields the table reads
+ * under a different name so both search paths hand back the same shape.
+ */
+export const mapTerminologyConcept = (
+  concept: FhirValueSetExpansionContainsWithExt
+): Concept => {
+  return {
+    ...concept,
+    conceptName: concept.conceptName ?? concept.display,
+    conceptCode: concept.conceptCode ?? concept.code,
+    vocabularyId: concept.vocabularyId ?? concept.system,
   };
 };
