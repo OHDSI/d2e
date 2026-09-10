@@ -229,17 +229,18 @@ jobs:
             # the rotating token cannot poison its cache key.
             cache_enabled: "true"
             needs_github_pat_secret: "true"
-            # amd64-only, unlike the rest of the set — a build-time limit now,
-            # not a dependency one: the flow manifests declare linux-aarch64 and
-            # their locks carry the aarch64 leg, so the image itself is
-            # buildable for arm64. What it cannot survive is QEMU. The heavy
-            # stages compile R from source (setup_r.sh restores renv.lock off
-            # the plain CRAN snapshot — there is no binary mirror for any arch),
-            # which already costs ~1h50m natively; emulated, that overruns the
-            # 6h job limit. Lifting this needs the arm64 leg on a native arm
-            # runner (ubuntu-24.04-arm, free on this public repo), each leg
-            # pushed by digest and merged into one manifest list.
-            PLATFORMS: linux/amd64
+            # Multi-arch (inherits the matrix default), with the arm64 leg
+            # emulated on this amd64 runner. Dependencies are ready for it: the
+            # flow manifests declare linux-aarch64 and their locks carry that
+            # leg. Build time is the open risk. The heavy stages compile R from
+            # source (setup_r.sh restores renv.lock off the plain CRAN snapshot
+            # — there is no binary mirror for any arch), ~1h50m natively, and
+            # QEMU typically costs several times that; two arches of a very
+            # large image also share one runner's disk. If this job starts
+            # hitting the 6h limit or running out of space, the fix is to build
+            # the arm64 leg on a native runner (ubuntu-24.04-arm, free on this
+            # public repo) with each leg pushed by digest and a merge step
+            # combining them into one manifest list — not to re-pin amd64.
           - AZ_REG_REPOSITORY: d2e-supabase-storage
             DOCKER_BUILD_FILE_PATH: ./services/supabase-storage/Dockerfile
             DOCKER_BUILD_CONTEXT_PATH: ./services/supabase-storage
