@@ -44,6 +44,7 @@
 | `USERMGMT__ENTITLEMENTS_TIMEOUT_MS`             | number         | Entitlements fetch abort timeout in ms (default `10000`).                           |
 | `USERMGMT__ENTITLEMENTS_TOKEN_CLAIM`            | string         | JWT claim name carrying the upstream access token (default `physionet_access_token`). |
 | `USERMGMT__ENTITLEMENTS_DATASET_MAPPING`        | json           | Fallback map of `token_dataset_code` → PhysioNet `slug/version` used when the `portal.dataset` PhysioNet columns are absent, e.g. `{"mimic-iv":"mimiciv/2.2"}`. |
+| `IDP__GROUP_ROLE_MAPPING`                       | json           | Maps upstream IdP groups to d2e roles for federated logins, keyed by the token's `idp_provider`: `{"<provider>":{"<d2e scope>":"<upstream group id>"}}`, e.g. `{"entra":{"role.systemadmin":"1f0e...","role.researcher.demo":"9ab3..."}}`. The keys must be the scope strings the reconciliation already understands (`role.systemadmin`, `role.useradmin`, `role.dashboardviewer`, `role.researcher.<dataset_code>`), not human-readable role names. Unset/empty or malformed means no group maps to a role. |
 | `LOGTO__SOCIAL_SIGNIN_TARGETS`                  | csv            | Logto social-connector targets to enable on the sign-in screen. Defaults to the target of `LOGTO__CONNECTOR_CONFIG`. |
 | `LOGTO__ENABLE_REGISTRATION`                    | bool           | Show the self-service Register button on the sign-in screen (`SignInAndRegister`). Default `false` so connectors like Entra keep a pure sign-in screen; set `true` for self-registration (e.g. PhysioNet). |
 

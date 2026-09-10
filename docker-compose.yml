@@ -513,6 +513,9 @@ services:
       USERMGMT__ENTITLEMENTS_PHYSIONET_CLIENT_SECRET: ${USERMGMT__ENTITLEMENTS_PHYSIONET_CLIENT_SECRET:-}
       USERMGMT__ENTITLEMENTS_PHYSIONET_TOKEN_PATH: ${USERMGMT__ENTITLEMENTS_PHYSIONET_TOKEN_PATH:-/oauth/token/}
       USERMGMT__ENTITLEMENTS_DATASET_MAPPING: ${USERMGMT__ENTITLEMENTS_DATASET_MAPPING:-}
+      # Upstream idp group id -> d2e scope, keyed by idp_provider (JSON). Read by
+      # the alp-usermgmt function; empty means no federated group maps to a role.
+      IDP__GROUP_ROLE_MAPPING: ${IDP__GROUP_ROLE_MAPPING:-}
       # network-api function (plugins/functions/package.json) stays inactive
       # until these are non-empty.
       NETWORK_COGNITO_DOMAIN: ${NETWORK_COGNITO_DOMAIN:-}

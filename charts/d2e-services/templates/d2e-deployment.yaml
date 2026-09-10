@@ -603,6 +603,11 @@ spec:
                 configMapKeyRef:
                   name: "{{ .Release.Name }}-{{ .Chart.Name }}"
                   key: IDP__REQUIRED_CLAIM
+            - name: IDP__GROUP_ROLE_MAPPING
+              valueFrom:
+                configMapKeyRef:
+                  name: "{{ .Release.Name }}-{{ .Chart.Name }}"
+                  key: IDP__GROUP_ROLE_MAPPING
             - name: IDP__SCOPE
               value: https://alp-default
             - name: IDP_SUBJECT_PROP
