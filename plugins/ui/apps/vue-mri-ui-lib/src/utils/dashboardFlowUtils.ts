@@ -20,6 +20,8 @@ export interface WizardFieldDefinition {
   allowFreeText?: boolean
   placeholder?: string
   excludeDescendantsByDefault?: boolean
+  /** Numeric expressions may contain negative operands only when explicitly enabled. */
+  allowNegative?: boolean
 }
 
 export interface WizardFieldGroupValidation {
@@ -572,6 +574,20 @@ export interface NumericFilterValue {
   op?: string
   value?: number
   and?: Array<{ op: string; value: number }>
+}
+
+/** Detect negative operands in the parsed filter objects returned by the numeric InputParser. */
+export function numericFilterContainsNegativeValue(parsedValue: unknown): boolean {
+  if (typeof parsedValue === 'number') {
+    return parsedValue < 0 || Object.is(parsedValue, -0)
+  }
+  if (Array.isArray(parsedValue)) {
+    return parsedValue.some(numericFilterContainsNegativeValue)
+  }
+  if (parsedValue && typeof parsedValue === 'object') {
+    return Object.values(parsedValue as Record<string, unknown>).some(numericFilterContainsNegativeValue)
+  }
+  return false
 }
 
 export function parseNumericInput(rawValue: string): NumericFilterValue[] {

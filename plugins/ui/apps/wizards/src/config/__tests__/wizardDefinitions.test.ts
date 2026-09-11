@@ -1,11 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   DEFAULT_WIZARD_FORM_NOTE,
+  enrichWizardField,
   getWizardDefinitions,
   getWizardById,
   isWizardVisibleOnSurface,
   resolveWizardFormNote,
 } from "../wizardDefinitions";
+import { getAttributeByPath } from "../cdwConfig";
 
 // Mock cdwConfig - tests run in dev mode so they use hardcoded definitions
 vi.mock("../cdwConfig", () => ({
@@ -17,6 +19,29 @@ vi.mock("../cdwConfig", () => ({
 }));
 
 describe("wizardDefinitions", () => {
+  it("preserves Wizard negative-value policy during CDM enrichment", () => {
+    vi.mocked(getAttributeByPath).mockReturnValueOnce({ name: "CDM numeric attribute", type: "num" });
+
+    const enriched = enrichWizardField(
+      {
+        id: "signed-result",
+        type: "text",
+        label: "Signed result",
+        required: false,
+        configPath: "patient.attributes.signedResult",
+        allowNegative: true,
+      },
+      { patient: { attributes: {} } },
+    );
+
+    expect(enriched).toMatchObject({
+      id: "signed-result",
+      type: "num",
+      label: "Signed result",
+      allowNegative: true,
+    });
+  });
+
   describe("resolveWizardFormNote", () => {
     it("preserves the legacy note when the config omits formNote", () => {
       expect(resolveWizardFormNote(undefined)).toBe(DEFAULT_WIZARD_FORM_NOTE);
@@ -71,6 +96,14 @@ describe("wizardDefinitions", () => {
           expect(typeof field.required).toBe("boolean");
         });
       });
+    });
+
+    it("marks every current development numeric field as non-negative", async () => {
+      const wizards = await getWizardDefinitions();
+      const numericFields = wizards.flatMap((wizard) => wizard.fields.filter((field) => field.type === "num"));
+
+      expect(numericFields.length).toBeGreaterThan(0);
+      expect(numericFields.every((field) => field.allowNegative === false)).toBe(true);
     });
 
     it("should return wizards with hardcoded steps", async () => {

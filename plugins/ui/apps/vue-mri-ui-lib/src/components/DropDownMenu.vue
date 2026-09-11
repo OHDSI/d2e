@@ -1,5 +1,9 @@
 <template>
-  <div class="dropdownmenu-container" v-bind:class="{ 'fixed-right': overflowRight }" :data-testid="testId || 'pa-dropdown-menu'">
+  <div
+    class="dropdownmenu-container"
+    v-bind:class="{ 'fixed-right': overflowRight }"
+    :data-testid="testId || 'pa-dropdown-menu'"
+  >
     <div class="menuWrapper" v-bind:class="{ closed: !opened }" :style="menuWrapperStyle">
       <ul>
         <template v-for="sub in subMenuStub" :key="sub.idx">
@@ -14,6 +18,7 @@
             }"
             v-if="sub.hasSubMenu && !sub.isSeperator"
             :selected="sub.idx === selectedIndex"
+            :toggle="sub.toggle"
             :icon="sub.icon"
             :text="sub.text"
             :hasSubMenu="sub.hasSubMenu"
@@ -27,6 +32,7 @@
             :text="sub.text"
             :selected="sub.selected"
             :disabled="sub.disabled"
+            :toggle="sub.toggle"
             @clickEv="clickEvent(sub.data)"
             @hoverEv="handleHover(sub.idx, false)"
             :isTitle="sub.isTitle"
