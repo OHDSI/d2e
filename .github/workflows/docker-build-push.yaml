@@ -199,6 +199,9 @@ jobs:
       FALLBACK_TAG: ${{ needs.setup.outputs.fallback_tag }}
       # branch-scoped registry-cache suffix (tag-safe)
       CACHE_SLUG: ${{ github.head_ref && format('pr-{0}', github.event.pull_request.number) || 'develop' }}
+      # per-arch legs keep separate caches: each mode=max export would
+      # otherwise overwrite the other arch's
+      ARCH_SUFFIX: ${{ matrix.ARCH && format('-{0}', matrix.ARCH) || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -212,21 +215,46 @@ jobs:
           - AZ_REG_REPOSITORY: d2e-dataflow-gen
             DOCKER_BUILD_FILE_PATH: ./services/alp-dataflow-gen/Dockerfile
             DOCKER_BUILD_CONTEXT_PATH: ./services/alp-dataflow-gen
+          # d2e-dataflow-gen-worker: one entry per arch, each its own job on an
+          # amd64 runner (arm64 under QEMU), pushed by digest;
+          # merge_worker_image joins the digests into the multi-arch RUN_TAG.
+          # Not one two-platform buildx call: the heavy RUNs share one
+          # sharing=locked pixi cache mount, which BuildKit applies across
+          # platforms, so a single builder queued every heavy stage behind the
+          # emulated arm64 R compile and hit the 6h limit (run 34521212583).
+          # Under QEMU (~15x slower) the arm64 leg fits only because its R
+          # stack comes from binaries: conda-forge (plugins/flows/*/pyproject.toml
+          # linux-aarch64 target + renv.aarch64.lock) and, for duckdb, Posit
+          # Package Manager (hades/setup_r.sh).
+          #
+          # Slowest entries in the matrix and they rebuilt on every run,
+          # including changes they cannot possibly bake. Gated on the paths the
+          # image actually COPYs; a skipped run still gets its tag from
+          # merge_worker_image, so the image set stays complete.
+          #
+          # Registry build cache (mode=max exports every stage, including the
+          # expensive env stages): unchanged groups become blob downloads
+          # instead of renv compiles. PRs write to a per-branch cache tag and
+          # fall back to reading develop's; develop pushes write the shared
+          # tag. The hades stage reads GITHUB_PAT from a BuildKit secret so the
+          # rotating token cannot poison its cache key.
           - AZ_REG_REPOSITORY: d2e-dataflow-gen-worker
-            # Slowest job in the matrix (~1h50m) and it rebuilt on every run,
-            # including changes it cannot possibly bake. Gate it on the paths it
-            # actually COPYs; a skipped run still publishes the tag from the
-            # canonical image, so the image set stays complete.
+            ARCH: amd64
+            PLATFORMS: linux/amd64
+            push_by_digest: "true"
             build_disable: ${{ (needs.setup.outputs.changes_dataflow != 'true') && 'true' || 'false' }}
             DOCKER_BUILD_FILE_PATH: ./services/alp-dataflow-gen-worker/Dockerfile
             # repo-root context: the image bakes plugins/flows (pixi envs + R)
             DOCKER_BUILD_CONTEXT_PATH: .
-            # Registry build cache (mode=max exports every stage, including the
-            # expensive env stages): unchanged groups become blob downloads
-            # instead of renv compiles. PRs write to a per-branch cache tag and
-            # fall back to reading develop's; develop pushes write the shared
-            # tag. The hades stage reads GITHUB_PAT from a BuildKit secret so
-            # the rotating token cannot poison its cache key.
+            cache_enabled: "true"
+            needs_github_pat_secret: "true"
+          - AZ_REG_REPOSITORY: d2e-dataflow-gen-worker
+            ARCH: arm64
+            PLATFORMS: linux/arm64
+            push_by_digest: "true"
+            build_disable: ${{ (needs.setup.outputs.changes_dataflow != 'true') && 'true' || 'false' }}
+            DOCKER_BUILD_FILE_PATH: ./services/alp-dataflow-gen-worker/Dockerfile
+            DOCKER_BUILD_CONTEXT_PATH: .
             cache_enabled: "true"
             needs_github_pat_secret: "true"
           - AZ_REG_REPOSITORY: d2e-supabase-storage
@@ -258,6 +286,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Cross-arch legs run under binfmt/QEMU on the amd64 runner. Skipped for
+      # the amd64-only entries so they pay nothing for it.
+      - name: Set up QEMU
+        if: ${{ contains(matrix.PLATFORMS || 'linux/amd64,linux/arm64', 'arm64') }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v3
         id: builder
 
@@ -269,30 +305,53 @@ jobs:
           builder: ${{ steps.builder.outputs.name }}
           context: ${{ matrix.DOCKER_BUILD_CONTEXT_PATH }}
           file: ${{ matrix.DOCKER_BUILD_FILE_PATH }}
-          platforms: linux/amd64
-          push: true
+          platforms: ${{ matrix.PLATFORMS || 'linux/amd64,linux/arm64' }}
+          # push_by_digest entries push an untagged image via `outputs`;
+          # merge_worker_image tags the combined manifest list.
+          push: ${{ matrix.push_by_digest != 'true' }}
+          outputs: ${{ matrix.push_by_digest == 'true' && 'type=image,push-by-digest=true,name-canonical=true,push=true' || '' }}
           pull: ${{ matrix.pull_base == 'true' || false }}
-          tags: ${{ env.REG_URL }}/${{ matrix.AZ_REG_REPOSITORY }}:${{ env.RUN_TAG }}
+          tags: ${{ env.REG_URL }}/${{ matrix.AZ_REG_REPOSITORY }}${{ matrix.push_by_digest != 'true' && format(':{0}', env.RUN_TAG) || '' }}
           provenance: false
           sbom: false
           cache-from: |
-            ${{ matrix.cache_enabled == 'true' && format('type=registry,ref={0}/{1}:buildcache-{2}', env.REG_URL, matrix.AZ_REG_REPOSITORY, env.CACHE_SLUG) || '' }}
-            ${{ matrix.cache_enabled == 'true' && format('type=registry,ref={0}/{1}:buildcache', env.REG_URL, matrix.AZ_REG_REPOSITORY) || '' }}
-          cache-to: ${{ matrix.cache_enabled == 'true' && format('type=registry,ref={0}/{1}:buildcache{2},mode=max', env.REG_URL, matrix.AZ_REG_REPOSITORY, needs.setup.outputs.is_publish_push == 'true' && '' || format('-{0}', env.CACHE_SLUG)) || '' }}
+            ${{ matrix.cache_enabled == 'true' && format('type=registry,ref={0}/{1}:buildcache-{2}{3}', env.REG_URL, matrix.AZ_REG_REPOSITORY, env.CACHE_SLUG, env.ARCH_SUFFIX) || '' }}
+            ${{ matrix.cache_enabled == 'true' && format('type=registry,ref={0}/{1}:buildcache{2}', env.REG_URL, matrix.AZ_REG_REPOSITORY, env.ARCH_SUFFIX) || '' }}
+          # Publish pushes write the shared `buildcache` tag that PRs fall back
+          # to; everything else writes its branch-scoped tag. (`cond && '' || x`
+          # always yields x — '' is falsy — so develop used to write only
+          # buildcache-develop and every PR's first build started cold.)
+          cache-to: ${{ matrix.cache_enabled == 'true' && format('type=registry,ref={0}/{1}:buildcache{2}{3},mode=max', env.REG_URL, matrix.AZ_REG_REPOSITORY, needs.setup.outputs.is_publish_push != 'true' && format('-{0}', env.CACHE_SLUG) || '', env.ARCH_SUFFIX) || '' }}
           secrets: ${{ matrix.needs_github_pat_secret == 'true' && format('github_pat={0}', secrets.GITHUB_TOKEN) || '' }}
           build-args: |
             GIT_COMMIT_ARG=${{ github.sha }}
             BUILD_TYPE=OSS
             ${{ env.DOCKER_BUILD_ARG1 }}
 
+      - name: Export digest
+        if: matrix.push_by_digest == 'true' && steps.build.outcome == 'success'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.push_by_digest == 'true' && steps.build.outcome == 'success'
+        with:
+          name: digest-${{ matrix.AZ_REG_REPOSITORY }}-${{ matrix.ARCH }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
       # A skipped build (build_disable) pushes no RUN_TAG, but consumers ask for
       # ONE tag across the whole image set — docker compose pulls every service
       # at DOCKER_TAG_NAME — so a single hole fails the whole pull with
       # "manifest unknown" on an image nobody touched. imagetools copies the
       # manifest server-side, so this costs a registry call, not a rebuild, and
-      # keeps multi-arch lists intact.
+      # keeps multi-arch lists intact. push_by_digest entries get theirs from
+      # merge_worker_image instead.
       - name: Publish run tag for skipped build
-        if: steps.build.outcome == 'skipped'
+        if: steps.build.outcome == 'skipped' && matrix.push_by_digest != 'true'
         run: |
           DST=${REG_URL}/${{ matrix.AZ_REG_REPOSITORY }}:${RUN_TAG}
           for SRC_TAG in "${FALLBACK_TAG}" develop; do
@@ -309,6 +368,64 @@ jobs:
       - name: Prune system
         if: always()
         run: docker system prune -af
+
+  # Joins the per-arch d2e-dataflow-gen-worker digests from build_images into
+  # the multi-arch RUN_TAG, or — when the build was skipped — publishes RUN_TAG
+  # from an existing image so the tag set stays complete.
+  merge_worker_image:
+    needs: [setup, build_images]
+    if: |
+      needs.setup.outputs.is_publish_push == 'true' ||
+      contains(github.base_ref, 'release/') ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'merge_group' ||
+      (github.event_name == 'pull_request' && (needs.setup.outputs.changes_src == 'true' || needs.setup.outputs.changes_plugins == 'true' || needs.setup.outputs.changes_e2e == 'true'))
+    runs-on: ubuntu-latest
+    env:
+      RUN_TAG: ${{ needs.setup.outputs.run_tag }}
+      FALLBACK_TAG: ${{ needs.setup.outputs.fallback_tag }}
+      # Must match the worker entries' Build and Push condition in build_images.
+      WORKER_BUILT: ${{ needs.setup.outputs.changes_dataflow == 'true' || github.event_name == 'workflow_dispatch' || needs.setup.outputs.is_develop_push == 'true' || contains(github.ref_name, 'release/') || github.event_name == 'merge_group' }}
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/download-artifact@v4
+        if: env.WORKER_BUILT == 'true'
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-d2e-dataflow-gen-worker-*
+          merge-multiple: true
+
+      - name: Create manifest list
+        if: env.WORKER_BUILT == 'true'
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          IMAGE=${REG_URL}/d2e-dataflow-gen-worker
+          [ "$(ls | wc -l)" -eq 2 ] || { echo "::error::expected 2 digests, got: $(ls)"; exit 1; }
+          docker buildx imagetools create -t "${IMAGE}:${RUN_TAG}" $(printf "${IMAGE}@sha256:%s " *)
+          docker buildx imagetools inspect "${IMAGE}:${RUN_TAG}"
+
+      - name: Publish run tag for skipped build
+        if: env.WORKER_BUILT != 'true'
+        run: |
+          DST=${REG_URL}/d2e-dataflow-gen-worker:${RUN_TAG}
+          for SRC_TAG in "${FALLBACK_TAG}" develop; do
+            SRC=${REG_URL}/d2e-dataflow-gen-worker:${SRC_TAG}
+            if docker manifest inspect "$SRC" >/dev/null 2>&1; then
+              echo "Build skipped; publishing $DST from $SRC"
+              docker buildx imagetools create -t "$DST" "$SRC"
+              exit 0
+            fi
+          done
+          echo "::error::no source tag available to publish ${DST} from"
+          exit 1
 
   # Lockfile discipline for pixi-managed flow plugin environments: manifests
   # must not change without their committed pixi.lock, and locks must stay
@@ -632,6 +749,11 @@ jobs:
             echo "$(basename "$f"): $(tar -xzOf "$f" package/package.json | jq -r '.name + " " + .version')"
           done
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v3
         id: builder
 
@@ -712,6 +834,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v3
         id: builder
 
@@ -721,7 +848,7 @@ jobs:
           builder: ${{ steps.builder.outputs.name }}
           context: ./tests/e2e
           file: ./tests/e2e/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.REG_URL }}/d2e-e2e:${{ env.RUN_TAG }}
           provenance: false
@@ -772,7 +899,7 @@ jobs:
     # env + DB-bootstrap gating wired into the chart. Re-enabled in a follow-up PR.
     # When skipped, test_helm_kind_gate skips and docker-success treats it as OK.
     if: false
-    needs: [setup, build_images, build_trex_image]
+    needs: [setup, build_images, merge_worker_image, build_trex_image]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -935,7 +1062,7 @@ jobs:
         run: helm uninstall "$RELEASE" -n "$NAMESPACE" || true
 
   test_demosetup_dev:
-    needs: [setup, build_images, build_trex_image, build_plugins, build_e2e_image]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins, build_e2e_image]
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -1231,7 +1358,7 @@ jobs:
         run: docker system prune -af
 
   test_demosetup_hana:
-    needs: [setup, build_images, build_trex_image, build_plugins]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins]
     runs-on: ${{ needs.setup.outputs.random_runner }}
     strategy:
       fail-fast: false
@@ -1394,7 +1521,7 @@ jobs:
         run: docker system prune -af
 
   test_http_duckdb:
-    needs: [setup, build_images, build_trex_image, build_plugins]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins]
     if: |
       needs.setup.outputs.is_publish_push == 'true' ||
       contains(github.base_ref, 'release/') ||
@@ -1412,7 +1539,7 @@ jobs:
     secrets: inherit
 
   test_http_duckdb_retry:
-    needs: [setup, build_images, build_trex_image, build_plugins, test_http_duckdb]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins, test_http_duckdb]
     if: |
       always() && needs.test_http_duckdb.result == 'failure' && (
         needs.setup.outputs.is_publish_push == 'true' ||
@@ -1432,7 +1559,7 @@ jobs:
     secrets: inherit
 
   test_http_hana:
-    needs: [setup, build_images, build_trex_image, build_plugins]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins]
     if: |
       needs.setup.outputs.is_publish_push == 'true' ||
       contains(github.base_ref, 'release/') ||
@@ -1449,7 +1576,7 @@ jobs:
     secrets: inherit
 
   test_http_hana_retry:
-    needs: [setup, build_images, build_trex_image, build_plugins, test_http_hana]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins, test_http_hana]
     if: |
       always() && needs.test_http_hana.result == 'failure' && (
         needs.setup.outputs.is_publish_push == 'true' ||
@@ -1468,7 +1595,7 @@ jobs:
     secrets: inherit
 
   test_regression:
-    needs: [setup, build_images, build_trex_image, build_plugins]
+    needs: [setup, build_images, merge_worker_image, build_trex_image, build_plugins]
     if: |
       needs.setup.outputs.is_publish_push == 'true' ||
       contains(github.base_ref, 'release/') ||
@@ -1593,10 +1720,11 @@ jobs:
           exit 1
 
   promote:
-    needs: [setup, build_images, build_trex_image]
+    needs: [setup, build_images, merge_worker_image, build_trex_image]
     if: |
       always() &&
       needs.build_images.result == 'success' &&
+      needs.merge_worker_image.result == 'success' &&
       needs.build_trex_image.result == 'success' &&
       needs.setup.outputs.is_publish_push == 'true'
     runs-on: ubuntu-latest
@@ -1668,13 +1796,14 @@ jobs:
           validate: true
 
   docker-success:
-    needs: [build_images, build_trex_image, build_plugins, build_e2e_image, helm_lint, test_helm_kind_gate, test_demosetup_dev_gate, test_demosetup_hana_gate, test_http_duckdb_gate, test_http_hana_gate, test_regression_gate]
+    needs: [build_images, merge_worker_image, build_trex_image, build_plugins, build_e2e_image, helm_lint, test_helm_kind_gate, test_demosetup_dev_gate, test_demosetup_hana_gate, test_http_duckdb_gate, test_http_hana_gate, test_regression_gate]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results
         env:
           R_BUILD_IMAGES: ${{ needs.build_images.result }}
+          R_BUILD_WORKER: ${{ needs.merge_worker_image.result }}
           R_BUILD_TREX: ${{ needs.build_trex_image.result }}
           R_BUILD_PLUGINS: ${{ needs.build_plugins.result }}
           R_BUILD_E2E: ${{ needs.build_e2e_image.result }}
@@ -1687,7 +1816,7 @@ jobs:
           R_REGRESSION: ${{ needs.test_regression_gate.result }}
         run: |
           fail=0
-          for r in "$R_BUILD_IMAGES" "$R_BUILD_TREX" "$R_BUILD_PLUGINS" "$R_BUILD_E2E" "$R_HELM_LINT" "$R_HELM_KIND" "$R_DEMO_DEV" "$R_DEMO_HANA" "$R_HTTP_DUCKDB" "$R_HTTP_HANA" "$R_REGRESSION"; do
+          for r in "$R_BUILD_IMAGES" "$R_BUILD_WORKER" "$R_BUILD_TREX" "$R_BUILD_PLUGINS" "$R_BUILD_E2E" "$R_HELM_LINT" "$R_HELM_KIND" "$R_DEMO_DEV" "$R_DEMO_HANA" "$R_HTTP_DUCKDB" "$R_HTTP_HANA" "$R_REGRESSION"; do
             case "$r" in
               success|skipped) ;;
               *) fail=1 ;;

@@ -31,6 +31,41 @@ install_hana() { # $1 = plugin dir
     pip install --quiet "sqlalchemy-hana==${SQLALCHEMY_HANA_VERSION:-2.2.0}"
 }
 
+# A named environment need not be declared for every platform this image is
+# built for: data_transformation's `ner` env is linux-64 only, because torch is
+# pinned to an x86_64 wheel URL and nmslib-metabrainz ships no aarch64 wheel
+# (see that plugin's pyproject.toml). Ask pixi which platforms the environment
+# declares instead of assuming, so an unsupported env is skipped loudly rather
+# than failing the whole provision.
+env_declared_here() { # $1 = manifest, $2 = env name
+  pixi info --json --manifest-path "$1" 2>/dev/null | python3 -c '
+import json, platform, sys
+mach = platform.machine()
+here = {"x86_64": "linux-64", "aarch64": "linux-aarch64"}.get(mach, mach)
+try:
+    info = json.load(sys.stdin)
+except ValueError:
+    sys.exit(2)
+for env in info.get("environments_info", []):
+    if env.get("name") == sys.argv[1]:
+        names = [p.get("name") for p in env.get("platforms", [])]
+        sys.exit(0 if here in names else 1)
+sys.exit(1)
+' "$2"
+}
+
+install_named_env() { # $1 = manifest, $2 = env name
+  env_declared_here "$1" "$2"
+  case $? in
+    0) pixi install --frozen -e "$2" --manifest-path "$1" || return 1 ;;
+    1) log "env '$2' is not declared for $(uname -m); skipping" ;;
+    # Undeterminable (pixi info failed, unreadable JSON): install anyway, so a
+    # broken probe surfaces as the real error instead of a silently missing env.
+    *) log "could not read platforms for env '$2'; installing anyway"
+       pixi install --frozen -e "$2" --manifest-path "$1" || return 1 ;;
+  esac
+}
+
 install_env() { # $1 = plugin dir
   local dir="$1" manifest="$1/pyproject.toml"
   [ -f "$manifest" ] || { log "no pyproject.toml in $dir"; return 1; }
@@ -41,11 +76,11 @@ install_env() { # $1 = plugin dir
   # Additional named environments some plugins declare (e.g. the NER stack's
   # self-contained env in data_transformation).
   if grep -qE '^ner *= \{' "$manifest"; then
-    pixi install --frozen -e ner --manifest-path "$manifest" || return 1
+    install_named_env "$manifest" ner || return 1
   fi
   # Cohort Discovery isolates Hutch Bunny in a Python 3.13 child env.
   if grep -qE '^bunny *= \{' "$manifest"; then
-    pixi install --frozen -e bunny --manifest-path "$manifest" || return 1
+    install_named_env "$manifest" bunny || return 1
   fi
   if grep -q '^setup-assets' "$manifest"; then
     (cd "$dir" && pixi run --frozen --manifest-path "$manifest" setup-assets) || return 1
@@ -172,7 +207,7 @@ EOF
 
 case "${1:-}" in
   --artifact) provision_artifact "$2" ;;
-  --dir) provision_dir "$2" "${3:-$(cat "$2/pixi.lock" "$2/renv.lock" 2>/dev/null | sha256sum | cut -d' ' -f1)}" ;;
+  --dir) provision_dir "$2" "${3:-$(cat "$2/pixi.lock" "$2/renv.lock" "$2/renv.aarch64.lock" 2>/dev/null | sha256sum | cut -d' ' -f1)}" ;;
   --watch) watch_loop ;;
   *) echo "usage: provision-envs.sh --artifact '<json>' | --dir <dir> | --watch" >&2; exit 2 ;;
 esac
