@@ -17,7 +17,7 @@
 # stack never runs; TREX_DX_ENABLED only gates it at runtime, it is in the image
 # either way. Pinned by tag AND index digest — `image:tag@digest` is valid, so
 # one arg carries both.
-ARG TREXSQL_REF=prod-sha-5ce42757279f969bca123f0128a5c967ff2e3bd4@sha256:e162d8282df32231b58297fd31fef8567272468c86a82c64d36ec76d0de0d6ca
+ARG TREXSQL_REF=prod-sha-5c5bbca29351c04f338f86d48cbce253fd77d301@sha256:7699b05b0ea205964f7c17e99e9d0ceaa84956eb887dec67a28ac266ca17d584
 FROM ghcr.io/ohdsi/trexsql:${TREXSQL_REF} AS base
 
 USER root
