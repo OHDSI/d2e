@@ -17,6 +17,7 @@ interface SqlQueryTemplate {
 interface DatasetMetadata {
   id: string;
   databaseCode: string;
+  cacheId?: string;
   schemaName: string;
   vocabSchemaName: string;
   resultsSchemaName: string;
@@ -30,7 +31,7 @@ function isValidUUID(str: unknown): str is string {
 }
 
 function isValidCohortId(val: unknown): val is number {
-  return typeof val === "number" && Number.isInteger(val);
+  return typeof val === "number" && Number.isInteger(val) && val > 0;
 }
 
 function isValidTemplateId(str: unknown): str is string {
@@ -121,7 +122,7 @@ const RESERVED_PLACEHOLDERS = new Set([
 function substituteTemplateParams(
   sqlTemplate: string,
   params: {
-    cohortId: number;
+    cohortId?: number;
     schema: string;
     vocabSchema: string;
     resultsSchema: string;
@@ -129,9 +130,6 @@ function substituteTemplateParams(
   additionalParams: Record<string, string>,
   conceptIds?: number[],
 ): string {
-  if (!isValidCohortId(params.cohortId)) {
-    throw new Error("Invalid cohortId");
-  }
   if (!isValidSqlIdentifier(params.schema)) {
     throw new Error("Invalid schema name");
   }
@@ -169,7 +167,10 @@ function substituteTemplateParams(
   }
 
   let result = sqlTemplate
-    .replace(/\{\{COHORT_ID\}\}/g, String(params.cohortId))
+    .replace(
+      /\{\{COHORT_ID\}\}/g,
+      params.cohortId !== undefined ? String(params.cohortId) : "",
+    )
     .replace(/\{\{SCHEMA\}\}/g, params.schema)
     .replace(/\{\{VOCAB_SCHEMA\}\}/g, params.vocabSchema || "")
     .replace(/\{\{RESULTS_SCHEMA\}\}/g, params.resultsSchema || "")
@@ -424,10 +425,10 @@ router.post("/", async (req: Request, res: Response) => {
     const type =
       (req.body.type as string | undefined) || env.DEFAULT_QUERY_TYPE;
 
-    if (!datasetId || !cohortId || !templateId) {
+    if (!datasetId || !templateId) {
       return res.status(400).json({
         error: "Missing required parameters",
-        message: "datasetId, cohortId, and templateId are required",
+        message: "datasetId and templateId are required",
       });
     }
 
@@ -442,12 +443,6 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({
         error: "Invalid parameter",
         message: "datasetId must be a valid UUID",
-      });
-    }
-    if (typeof cohortId !== "number" || !Number.isInteger(cohortId)) {
-      return res.status(400).json({
-        error: "Invalid parameter",
-        message: "cohortId must be an integer",
       });
     }
     if (!isValidTemplateId(templateId)) {
@@ -518,6 +513,77 @@ router.post("/", async (req: Request, res: Response) => {
         error: "Invalid parameter",
         message: "format must be 'parquet' or 'json'",
       });
+    }
+
+    // Check if template requires COHORT_ID
+    if (template.sqlText.includes("{{COHORT_ID}}")) {
+      if (!isValidCohortId(cohortId)) {
+        return res.status(400).json({
+          error: "Missing or invalid parameter",
+          message: "cohortId is required and must be a positive integer",
+        });
+      }
+
+      if (!isValidSqlIdentifier(dataset.resultsSchemaName)) {
+        return res.status(400).json({
+          error: "Invalid dataset configuration",
+          message: "resultsSchema is not a valid identifier",
+        });
+      }
+
+      // @ts-ignore Trex global
+      const cohortCheckDbm = Trex.databaseManager();
+      const cohortCheckConn = cohortCheckDbm.getConnection(
+        dataset.cacheId ?? dataset.databaseCode,
+        dataset.schemaName,
+        dataset.vocabSchemaName,
+        dataset.resultsSchemaName,
+        { duckdb: (e: unknown) => e, hana: (e: unknown) => e },
+      );
+
+      try {
+        if (cohortCheckConn.dialect === "hana") {
+          const userObj = getUser(req);
+          await applySessionVariables(cohortCheckConn, {
+            APPLICATION: `${env.PROJECT_NAME}-WIZARD_${type}_${name}_${templateId}`,
+            APPLICATIONUSER:
+              userObj.getEmail() ||
+              userObj.userObject.name ||
+              userObj.getUser(),
+          });
+        }
+
+        const cohortCheckSql =
+          `select count(distinct subject_id) as patient_count from ` +
+          `${dataset.resultsSchemaName}.cohort where cohort_definition_id = ${cohortId}`;
+        const cohortRows = await new Promise<Record<string, unknown>[]>(
+          (resolve, reject) => {
+            cohortCheckConn.execute(
+              cohortCheckSql,
+              [],
+              (err: Error | null, result: Record<string, unknown>[]) => {
+                err ? reject(err) : resolve(result);
+              },
+            );
+          },
+        );
+        const patientCount = Number(Object.values(cohortRows[0] ?? {})[0] ?? 0);
+        if (!patientCount) {
+          return res.status(400).json({
+            error: "Empty cohort",
+            message: "No patients found for the specified cohortId",
+          });
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error(`[${requestId}] Cohort validation query failed: ${msg}`);
+        return res.status(500).json({
+          error: "Query execution failed",
+          message: "Failed to validate cohort",
+        });
+      } finally {
+        cohortCheckConn.close();
+      }
     }
 
     const conceptIds = req.body.conceptIds as unknown | undefined;
@@ -636,6 +702,30 @@ router.post("/", async (req: Request, res: Response) => {
             },
           );
         });
+
+        if (!rows || rows.length === 0) {
+          return res.status(404).json({
+            error: "No data",
+            message: "No data returned for this query",
+            parameters: {
+              cdmSchema: dataset.schemaName,
+              vocabSchema: dataset.vocabSchemaName,
+              resultsSchema: dataset.resultsSchemaName,
+              cohortId: {
+                requiredByTemplate: template.sqlText.includes("{{COHORT_ID}}"),
+                value: cohortId ?? null,
+              },
+              conceptIds: {
+                requiredByTemplate: template.sqlText.includes(
+                  "{{CONCEPT_IDS}}",
+                ),
+                value: conceptIds ?? null,
+              },
+              ...additionalParams,
+            },
+          });
+        }
+
         res.setHeader("Content-Type", "application/json");
         res.setHeader(
           "Content-Disposition",
