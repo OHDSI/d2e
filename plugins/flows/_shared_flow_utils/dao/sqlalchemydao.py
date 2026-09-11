@@ -206,6 +206,21 @@ class SqlAlchemyDao(DaoBase):
         else:
             return int(last_record_id) + 1
 
+    def select_rows_where_in(
+        self, schema: str, table: str, columns: list[str], where_column: str, where_values: list
+    ) -> list[dict]:
+        """
+        Select `columns` from `table` where `where_column` is in `where_values`.
+        Returns one dict per row, keyed by the requested column names.
+        """
+        with self.engine.connect() as connection:
+            metadata_obj = sql.MetaData(schema=schema)
+            table_obj = sql.Table(table, metadata_obj, autoload_with=connection)
+            select_cols = [table_obj.c[col] for col in columns]
+            stmt = sql.select(*select_cols).where(table_obj.c[where_column].in_(where_values))
+            result = connection.execute(stmt).mappings().all()
+        return [dict(row) for row in result]
+
     # --- Update methods ---
 
     def update_cdm_version(self, schema: str, cdm_version: str):
@@ -231,6 +246,48 @@ class SqlAlchemyDao(DaoBase):
             table_obj = sql.Table(table, metadata_obj, autoload_with=connection)
             res = connection.execute(table_obj.insert(), column_value_mapping)
             connection.commit()
+
+    def delete_and_insert_rows(
+        self,
+        schema: str,
+        table: str,
+        delete_column: str,
+        delete_value,
+        insert_rows: list[dict],
+        id_column: str = None,
+    ) -> list[dict]:
+        """
+        Atomically (single transaction): delete every row where delete_column ==
+        delete_value, then insert insert_rows. If id_column is given, each inserted
+        row is assigned a sequential id continuing from the table's current max
+        (computed after the delete, in the same transaction) - the returned rows
+        carry that assigned id_column value. Use this instead of a separate
+        delete_records()/insert_values_into_table() pair when the delete and
+        insert must not be observable as two separate commits (e.g. an
+        overwrite-on-rerun that must never leave the table with the old rows
+        deleted and nothing inserted in their place).
+        """
+        with self.engine.begin() as connection:
+            metadata_obj = sql.MetaData(schema=schema)
+            table_obj = sql.Table(table, metadata_obj, autoload_with=connection)
+
+            connection.execute(
+                table_obj.delete().where(table_obj.c[delete_column] == delete_value)
+            )
+
+            if id_column:
+                last_id = connection.execute(
+                    sql.select(sql.func.max(table_obj.c[id_column]))
+                ).scalar()
+                next_id = (int(last_id) + 1) if last_id is not None else 1
+                insert_rows = [
+                    {**row, id_column: next_id + i} for i, row in enumerate(insert_rows)
+                ]
+
+            if insert_rows:
+                connection.execute(table_obj.insert(), insert_rows)
+
+        return insert_rows
 
     def update_data_ingestion_date(self, schema: str):
         with self.engine.connect() as connection:
@@ -309,6 +366,10 @@ class SqlAlchemyDao(DaoBase):
     @staticmethod
     def return_affected_rowcounts(result) -> int:
         return result.rowcount
+
+    @staticmethod
+    def get_single_value(result):
+        return result.scalar()
 
     def dispose_engine_after_use(func):
         """

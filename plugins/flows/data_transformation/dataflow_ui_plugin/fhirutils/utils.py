@@ -18,6 +18,7 @@ class omop_transform_utils:
     target_field_types = {
         "observation": {
             "observation_date": "date",
+            "observation_datetime": "datetime",
             "observation_id": "id",
             "person_id": "referenceToId",
         },

@@ -1,0 +1,46 @@
+******************************************************************
+*STATA syntax code for the computation of index*
+*values with the Ethiopian value set (DCE and TTO hybrid)*
+*Reference: Welie AG, Gebretekle GB, Stolk E, Mukuria C, Krahn MD, Enquoselassie F, Fenta TG. Valuing Health State: An EQ-5D-5L Value Set for Ethiopians. Value Health Reg Issues. 2020 Sep;22:7-14.
+*Source: https://euroqol.org/information-and-support/resources/value-sets/
+******************************************************************;
+gen disut_mo = .
+replace disut_mo = 0 if missing(disut_mo) & mobility == 1
+replace disut_mo = 0.0337 if missing(disut_mo) & mobility == 2
+replace disut_mo = 0.0644 if missing(disut_mo) & mobility == 3
+replace disut_mo = 0.2276 if missing(disut_mo) & mobility == 4
+replace disut_mo = 0.3598 if missing(disut_mo) & mobility == 5
+
+gen disut_sc = .
+replace disut_sc = 0 if missing(disut_sc) & selfcare == 1
+replace disut_sc = 0.0235 if missing(disut_sc) & selfcare == 2
+replace disut_sc = 0.0395 if missing(disut_sc) & selfcare == 3
+replace disut_sc = 0.1419 if missing(disut_sc) & selfcare == 4
+replace disut_sc = 0.2223 if missing(disut_sc) & selfcare == 5
+
+gen disut_ua = .
+replace disut_ua = 0 if missing(disut_ua) & activity == 1
+replace disut_ua = 0.0323 if missing(disut_ua) & activity == 2
+replace disut_ua = 0.0483 if missing(disut_ua) & activity == 3
+replace disut_ua = 0.1574 if missing(disut_ua) & activity == 4
+replace disut_ua = 0.2721 if missing(disut_ua) & activity == 5
+
+gen disut_pd = .
+replace disut_pd = 0 if missing(disut_pd) & pain == 1
+replace disut_pd = 0.0361 if missing(disut_pd) & pain == 2
+replace disut_pd = 0.0516 if missing(disut_pd) & pain == 3
+replace disut_pd = 0.2703 if missing(disut_pd) & pain == 4
+replace disut_pd = 0.4064 if missing(disut_pd) & pain == 5
+
+gen disut_ad = .
+replace disut_ad = 0 if missing(disut_ad) & anxiety == 1
+replace disut_ad = 0.0259 if missing(disut_ad) & anxiety == 2
+replace disut_ad = 0.0848 if missing(disut_ad) & anxiety == 3
+replace disut_ad = 0.2987 if missing(disut_ad) & anxiety == 4
+replace disut_ad = 0.4578 if missing(disut_ad) & anxiety == 5
+
+gen disut_total = disut_mo + disut_sc + disut_ua + disut_pd + disut_ad 
+
+gen EQ_index = . 
+replace EQ_index = 1 - disut_total
+replace EQ_index = round(EQ_index, .001)

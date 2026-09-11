@@ -17,6 +17,7 @@ jobs:
           - plugins/flows/base
           - plugins/flows/data_management
           - plugins/flows/data_transformation
+          - plugins/flows/eq5d5l_index_calculation
           - plugins/flows/hades
           - plugins/flows/i2b2
           - plugins/flows/loyalty_score

@@ -1,0 +1,42 @@
+[project]
+name = "eq5d5l-index-calculation"
+version = "0.1.0"
+description = "Calculates EQ-5D-5L utility index values from FHIR QuestionnaireResponse data and writes them to the OMOP measurement table"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "httpx==0.27.2",
+    "ibis-framework[duckdb,postgres]==10.0.0",
+    # Undeclared prefect 3.6.x dependency: prefect/workers/base.py imports the
+    # importlib_metadata backport, which opentelemetry-api>=1.43 no longer
+    # provides transitively.
+    "importlib-metadata==8.7.0",
+    # fastapi 0.129+ router internals break prefect.server's PrefectRouter
+    # (ephemeral server, prefect_test_harness); 0.128.0 is what the
+    # prefecthq/prefect:3.6.10 image ships.
+    "fastapi==0.128.0",
+    "pandas==2.2.2",
+    "prefect[docker,shell]==3.6.10",
+    "psycopg2-binary==2.9.9",
+    "pydantic==2.10.6",
+    "pyjwt==2.13.0",
+    "python-dotenv==1.2.2",
+    "sqlalchemy==2.0.38",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.3",
+    "ruff==0.12.7",
+    "uv==0.11.15",
+]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.dependencies]
+python = "3.12.*"
+
+[tool.pixi.activation.env]
+PYTHONPATH = "$PIXI_PROJECT_ROOT"
