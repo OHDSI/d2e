@@ -20,16 +20,76 @@ export type ConstraintValue =
   // conceptSetId may arrive as a number — d2e-mcp create_concept_set returns numeric ids.
   | { conceptSetId: string | number; includeDescendants?: boolean; displayValue?: string }
 
+/** Which date of an interaction a temporal relation is measured from. */
+export type TimeAnchor = 'start' | 'end'
+
+/**
+ * How the day count is interpreted. `within` is the one clinical questions
+ * almost always mean ("a prescription within 90 days of the diagnosis") and is
+ * the default — see buildDaysExpression for why it is NOT the same as `exactly`.
+ */
+export type TimeRelationMode = 'within' | 'exactly' | 'at_least' | 'at_most' | 'between' | 'overlaps'
+
+export interface SetTimeRelationOp {
+  op: 'set_time_relation'
+  /** The card the relation is attached to — the "this" side of the comparison. */
+  card: string
+  /** The card it is measured against. Must be alone in its own AND-group. */
+  relativeTo: string
+  /** Default 'within'. */
+  mode?: TimeRelationMode
+  /** Day count for within / exactly / at_least / at_most. */
+  days?: number
+  /** Lower/upper bound for mode:"between". */
+  minDays?: number
+  maxDays?: number
+  /** Whether `card` happens after or before `relativeTo`. Default 'after'. */
+  direction?: 'after' | 'before'
+  /** Which date of `card` is compared. Default 'start'. */
+  fromDate?: TimeAnchor
+  /** Which date of `relativeTo` it is compared to. Default 'start'. */
+  toDate?: TimeAnchor
+}
+
+/** Which end of the observation window a card anchors. */
+export type EntryExitRole = 'entry' | 'exit'
+
 export type PatchOp =
   | { op: 'add_card'; cardConfigPath: string; exclude?: boolean; ref?: string; orWith?: string }
   | { op: 'add_constraint'; card: string; attributePath: string; value: ConstraintValue; operator?: string }
   | { op: 'remove_card'; card: string }
   | { op: 'remove_constraint'; card: string; attributePath: string }
   | { op: 'set_card_join'; card: string; join: 'AND' | 'OR' }
+  | SetTimeRelationOp
+  | { op: 'clear_time_relation'; card: string; relativeTo?: string }
+  | { op: 'set_entry_exit'; card: string; role: EntryExitRole }
+  | { op: 'clear_entry_exit'; role?: EntryExitRole }
 
 /** One OR-group of filter cards. Groups are AND-ed with each other. */
 export interface CardGroup {
   cards: Array<{ filterCardId: string; name: string; exclude?: boolean }>
+}
+
+/** A temporal relation as it stands on the cohort, read back from the store. */
+export interface TimeRelationSummary {
+  card: string
+  relativeTo: string
+  /** Plain English, for the caller to report to the user. */
+  description: string
+}
+
+/** The cohort's observation window, as the Entry/Exit buttons express it. */
+export interface CohortEntryExit {
+  /**
+   * False when this dataset's PA config has `panelOptions.cohortEntryExit` off —
+   * the buttons are hidden and the query ignores the flags entirely, so an
+   * entry/exit window cannot be expressed here at all.
+   */
+  supported: boolean
+  /** The card whose interaction START opens the window, or null for none. */
+  entry: { filterCardId: string; name: string } | null
+  /** The card whose interaction END closes the window, or null for none. */
+  exit: { filterCardId: string; name: string } | null
 }
 
 export interface ApplyCohortPatchResult {
@@ -43,6 +103,27 @@ export interface ApplyCohortPatchResult {
   appliedConstraints?: Array<{ card: string; attributePath: string; value: any }>
   /** The resulting AND/OR structure: cards within a group are OR-ed, groups AND-ed. */
   cardGroups?: CardGroup[]
+  /**
+   * Every temporal (Advanced Time) relation on the cohort after the patch. Like
+   * cardGroups this is read back from the store, not echoed from the ops: a
+   * relation whose target went away is silently dropped from the query, so the
+   * caller must report what is actually there.
+   */
+  timeRelations?: TimeRelationSummary[]
+  /**
+   * The observation window (Entry/Exit) after the patch, read back from the
+   * store. Omitted on a dataset that neither supports entry/exit nor has a flag
+   * left over from one that did — there is nothing to report and every byte here
+   * is resent on each agent turn.
+   */
+  cohortEntryExit?: CohortEntryExit
+  /**
+   * Things the patch DID apply that the caller has to justify or undo — currently
+   * every date range it landed. See describeDateRangeWarning: an invented date
+   * range is a filter the user never asked for, and nothing else in the result
+   * makes it stand out from the filters they did ask for.
+   */
+  warnings?: string[]
   error?: string
 }
 
@@ -79,6 +160,20 @@ interface Rollback {
    * finding its container again at revert time is what makes the inverse exact.
    */
   joinChanges: Array<{ card: string; undo: 'split' | 'merge' }>
+  /**
+   * Advanced-time filter arrays as they were before this patch touched them,
+   * newest last. Deep-copied on capture: the store holds the array by reference,
+   * so a shallow snapshot would track the very edit it is meant to undo.
+   */
+  priorTimeFilters: Array<{ filterCardId: string; timeFilters: StoredTimeFilter[] }>
+  /**
+   * Which card held each entry/exit role before this patch touched it, newest
+   * last. A whole-cohort snapshot rather than a per-card one because each role is
+   * single-valued: setting entry on B clears it from A, so undoing the write on B
+   * alone would leave the cohort with NO entry event — a different observation
+   * window from the one the user had.
+   */
+  priorEntryExit: EntryExitSnapshot[]
 }
 
 interface AxisSnapshot {
@@ -188,6 +283,379 @@ function assertNotBasicData(cards: string[], what: string): void {
         'the filter would stop filtering. OR interaction cards (Condition Occurrence, Drug Exposure, …) with ' +
         'each other; demographics stay on Basic Data, which is always AND-ed with the rest.'
     )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Temporal relations (the builder's "Advanced Time" panel)
+//
+// AND/OR says WHETHER two interactions must both be present; it says nothing
+// about WHEN. "A T2D diagnosis followed by a statin within 90 days" is two
+// AND-ed cards PLUS a temporal relation — without the relation the cohort is
+// "ever diagnosed and ever prescribed", a materially wider and different cohort.
+//
+// The relation lives on the filter card, not on a constraint:
+//
+//   filterCard.props.layout.advancedTimeLayout.props.timeFilterModel.timeFilters
+//     [{ originSelection, targetSelection, targetInteraction, days }]
+//
+// and getIFR (store/modules/query.ts) turns it into the card's
+// `advanceTimeFilter`. Two things about that conversion drive the design here:
+//
+//  1. `days` is a small expression language, not a number, and a BARE NUMBER
+//     MEANS "EXACTLY N DAYS" (AdvancedTimeFilterModel.getRequest emits
+//     `>= n AND <= n`). "within 90 days" is the range `[0-90]`. Handing the
+//     model a raw string field would make that the default mistake, so this op
+//     takes `mode` + `days` and builds the expression here.
+//  2. A time filter whose `targetInteraction` is empty — or whose `days` fails
+//     validateText — is SKIPPED by getIFR without an error. A relation that
+//     never reaches the query is exactly the failure this op exists to prevent,
+//     so everything is validated up front and read back afterwards.
+// ---------------------------------------------------------------------------
+
+/** One entry of `timeFilterModel.timeFilters`, in the store's own vocabulary. */
+interface StoredTimeFilter {
+  originSelection: 'startdate' | 'enddate' | 'overlap'
+  targetSelection: 'before_startdate' | 'after_startdate' | 'before_enddate' | 'after_enddate'
+  targetInteraction: string
+  days: string
+}
+
+const timeFiltersOf = (store: Store<any>, filterCardId: string): StoredTimeFilter[] =>
+  store.getters.getFilterCard?.(filterCardId)?.props?.layout?.advancedTimeLayout?.props?.timeFilterModel
+    ?.timeFilters ?? []
+
+const cloneTimeFilters = (filters: StoredTimeFilter[]): StoredTimeFilter[] => filters.map(f => ({ ...f }))
+
+const cardName = (store: Store<any>, filterCardId: string): string =>
+  store.getters.getFilterCard?.(filterCardId)?.props?.name ?? filterCardId
+
+const anchorField = (anchor: TimeAnchor): 'startdate' | 'enddate' => (anchor === 'end' ? 'enddate' : 'startdate')
+
+/**
+ * Build the `days` expression from the op's intent.
+ *
+ * The mapping is AdvancedTimeFilterModel.getRequest read backwards:
+ *   "[a-b]" -> a <= diff <= b      "n" -> diff == n
+ *   ">=n"   -> diff >= n           "<=n" -> diff <= n
+ * `within` is a RANGE from zero, which is why it cannot be expressed as the
+ * bare number a caller would naturally reach for.
+ *
+ * `at_most` deliberately emits the same `[0-n]` as `within` rather than the
+ * `<=n` it reads like. A single `<=n` is ONE inequality, and getRequest flips it
+ * to `>=-n` for an "after" relation — a bound on one side of the anchor only, so
+ * "at most 7 days after" also matched every patient whose card came BEFORE the
+ * target, by any amount. Both modes name a direction and a ceiling, so both need
+ * the window closed at zero. Only `at_least` is genuinely one-sided.
+ */
+function buildDaysExpression(op: SetTimeRelationOp, mode: TimeRelationMode): string {
+  const whole = (label: string, n: unknown): number => {
+    if (typeof n !== 'number' || !Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+      throw new Error(
+        `set_time_relation: ${label} must be a whole number of days (0 or more), got ${JSON.stringify(n)}.`
+      )
+    }
+    return n
+  }
+  switch (mode) {
+    case 'within':
+    case 'at_most':
+      return `[0-${whole('days', op.days)}]`
+    case 'exactly':
+      return `${whole('days', op.days)}`
+    case 'at_least':
+      return `>=${whole('days', op.days)}`
+    case 'between': {
+      const min = whole('minDays', op.minDays)
+      const max = whole('maxDays', op.maxDays)
+      if (min > max) {
+        throw new Error(`set_time_relation: minDays (${min}) must not be greater than maxDays (${max}).`)
+      }
+      return `[${min}-${max}]`
+    }
+    default:
+      throw new Error(
+        `set_time_relation: unknown mode ${JSON.stringify(mode)}. Use within | exactly | at_least | at_most | ` +
+          'between | overlaps.'
+      )
+  }
+}
+
+/**
+ * Reject a relation the builder itself could not express, before anything is
+ * written. Mirrors the target list AdvancedTime.vue offers (getList /
+ * getFilteredList) plus the cards it renders the panel on at all.
+ */
+function assertTimeRelationIsExpressible(store: Store<any>, cardId: string, targetId: string): void {
+  if (cardId === targetId) {
+    throw new Error('set_time_relation: a card cannot be timed against itself — pass the OTHER card as relativeTo.')
+  }
+  for (const [id, role] of [
+    [cardId, 'card'],
+    [targetId, 'relativeTo'],
+  ] as const) {
+    if (id === BASIC_DATA_CARD) {
+      throw new Error(
+        `set_time_relation: ${role} "${id}" is the Basic Data card, which has no start/end dates to compare — ` +
+          'temporal relations connect interaction cards (Condition Occurrence, Drug Exposure, …). Put the ' +
+          'relation on the interaction cards and leave demographics on Basic Data.'
+      )
+    }
+    if (isExclusionCard(store, id)) {
+      throw new Error(
+        `set_time_relation: ${role} "${id}" is an exclusion card. The builder does not offer Advanced Time on ` +
+          'excluded cards, so this relation would never reach the query. Express the timing between the ' +
+          'included cards.'
+      )
+    }
+  }
+
+  const targetProps = store.getters.getFilterCard?.(targetId)?.props ?? {}
+  if (targetProps.allowAdvancedTimeFilter === false && targetProps.allowSuccessorConstraint === false) {
+    throw new Error(
+      `set_time_relation: card "${targetId}" cannot be the target of a temporal relation on this dataset.`
+    )
+  }
+
+  const cardLoc = locateCard(store, cardId)
+  if (!cardLoc) {
+    throw new Error(`set_time_relation: card "${cardId}" is not in the cohort's filter tree.`)
+  }
+  const targetLoc = locateCard(store, targetId)
+  if (!targetLoc) {
+    throw new Error(`set_time_relation: relativeTo "${targetId}" is not in the cohort's filter tree.`)
+  }
+  if (targetLoc.containerId === cardLoc.containerId) {
+    throw new Error(
+      `set_time_relation: "${cardId}" and "${targetId}" are OR-ed together in the same group, so there is no ` +
+        '"one then the other" to time — the cohort only requires that ONE of them matched. Split them with ' +
+        'set_card_join { card, join:"AND" } first, then set the relation.'
+    )
+  }
+  if (targetLoc.cards.length > 1) {
+    throw new Error(
+      `set_time_relation: relativeTo "${targetId}" is OR-ed with ${targetLoc.cards
+        .filter(id => id !== targetId)
+        .map(id => `"${id}"`)
+        .join(', ')}, and the builder cannot time against an OR group (which interaction would the days be ` +
+        'measured from?). Time against a card that is alone in its group.'
+    )
+  }
+}
+
+/** Render a stored time filter as the sentence the caller should report. */
+function describeTimeFilter(store: Store<any>, cardId: string, filter: StoredTimeFilter): string {
+  const self = cardName(store, cardId)
+  const other = cardName(store, filter.targetInteraction)
+  if (filter.originSelection === 'overlap') {
+    return `${self} overlaps in time with ${other}`
+  }
+  const selfDate = filter.originSelection === 'enddate' ? 'end' : 'start'
+  const otherDate = filter.targetSelection.endsWith('enddate') ? 'end' : 'start'
+  const direction = filter.targetSelection.startsWith('after') ? 'after' : 'before'
+  const range = /^\[(\d+)-(\d+)\]$/.exec(filter.days)
+  const bound = /^(>=|<=|>|<|=)(\d+)$/.exec(filter.days)
+  const window = range
+    ? range[1] === '0'
+      ? `within ${range[2]} days`
+      : `${range[1]}–${range[2]} days`
+    : bound
+      ? `${{ '>=': 'at least', '>': 'more than', '<=': 'at most', '<': 'less than', '=': 'exactly' }[bound[1]]} ${
+          bound[2]
+        } days`
+      : /^\d+$/.test(filter.days)
+        ? `exactly ${filter.days} days`
+        : `${filter.days} days`
+  return `${self} ${selfDate}s ${window} ${direction} ${other} ${otherDate}s`
+}
+
+/**
+ * Every temporal relation currently on the cohort. Relations whose target card
+ * is gone are reported with `relativeTo: ""` rather than dropped — getIFR skips
+ * them, so the caller needs to see that the timing it asked for is not in force.
+ */
+export function describeTimeRelations(store: Store<any>): TimeRelationSummary[] {
+  const summaries: TimeRelationSummary[] = []
+  for (const cardId of Object.keys(store.getters.getFilterCards?.() ?? {})) {
+    for (const filter of timeFiltersOf(store, cardId)) {
+      if (!filter?.targetInteraction) continue
+      summaries.push({
+        card: cardId,
+        relativeTo: filter.targetInteraction,
+        description: describeTimeFilter(store, cardId, filter),
+      })
+    }
+  }
+  return summaries
+}
+
+// ---------------------------------------------------------------------------
+// Cohort entry / exit (the chart toolbar's "Entry" and "Exit" buttons —
+// CohortEntryExit.vue / CohortEntryExitButton.vue)
+//
+// Entry/exit does not decide WHO is in the cohort; it defines the OBSERVATION
+// WINDOW the query measures over. query-gen-svc builds a separate
+// PatientRequestEntryExit ("PEE") request whose window runs from the entry
+// card's interaction *startdate* to the exit card's interaction *enddate*; with
+// neither set, both default to `obsperiod` — the patient's whole observation
+// period (createEntryExitCriteria, query-gen-svc InternalFilterRepresentation).
+// So it is a different tool from set_time_relation: that constrains the gap
+// BETWEEN two interactions, this re-anchors the window everything is observed in.
+//
+// Three properties make it worth typed ops rather than prose:
+//
+//  1. It is GATED PER DATASET (`panelOptions.cohortEntryExit`). With the flag off
+//     the buttons are not rendered and the backend skips the override entirely,
+//     so the flags would round-trip through the bookmark and change nothing about
+//     the result. Every seeded D2E config currently ships the flag OFF, which
+//     makes "unsupported" the common path, not an edge case.
+//  2. Each role is SINGLE-VALUED. The button resets the role on every card before
+//     flagging the chosen one (CohortEntryExitButton.handleClick), so "make B the
+//     entry" also means "A is no longer the entry".
+//  3. Only a CHARTABLE card can carry it: the menu lists getChartableFilterCards
+//     minus Basic Data, and BMGetChartableCards drops exclusion cards, inactive
+//     cards, and every card that shares an OR group. A flag on any of those is
+//     written to the store, ignored by the query, and displayed nowhere.
+// ---------------------------------------------------------------------------
+
+/** The store prop / mutation key behind each role (Constants.CohortEntryExit). */
+const ENTRY_EXIT_KEY: Record<EntryExitRole, 'isEntry' | 'isExit'> = {
+  entry: 'isEntry',
+  exit: 'isExit',
+}
+
+/** Which card holds each role, or null. Cohort-wide: both roles are single-valued. */
+interface EntryExitSnapshot {
+  entry: string | null
+  exit: string | null
+}
+
+function normalizeEntryExitRole(role: unknown, opName: string): EntryExitRole {
+  const normalized = String(role ?? '').toLowerCase()
+  if (normalized === 'entry' || normalized === 'exit') return normalized
+  throw new Error(
+    `${opName}: role must be "entry" (the card that OPENS the observation window) or "exit" (the card that ` +
+      `CLOSES it), got ${JSON.stringify(role)}.`
+  )
+}
+
+const entryExitCardFor = (store: Store<any>, key: 'isEntry' | 'isExit'): string | null => {
+  const cards = store.getters.getFilterCards?.() ?? {}
+  return Object.keys(cards).find(id => cards[id]?.props?.[key]) ?? null
+}
+
+const snapshotEntryExit = (store: Store<any>): EntryExitSnapshot => ({
+  entry: entryExitCardFor(store, 'isEntry'),
+  exit: entryExitCardFor(store, 'isExit'),
+})
+
+/**
+ * Whether this dataset exposes entry/exit at all — read from the same config the
+ * toolbar reads (ChartController.vue's displayShowCohortEntryExit), so the op is
+ * available exactly when the buttons are.
+ */
+function cohortEntryExitSupported(store: Store<any>): boolean {
+  const config = store.getters.getMriFrontendConfig
+  if (!config) return false
+  try {
+    if (typeof config.getPanelOptions === 'function') {
+      return !!config.getPanelOptions('cohortEntryExit')
+    }
+  } catch {
+    // getPanelOptions indexes panelOptions unguarded, so it throws on a
+    // partially-loaded config. Fall through to the raw read the toolbar uses.
+  }
+  return !!config._internalConfig?.panelOptions?.cohortEntryExit
+}
+
+/**
+ * Refuse to write a flag the query will ignore. Failing closed is the point: the
+ * alternative is a cohort that reports an observation window it does not have,
+ * which computes and renders exactly like a correct one.
+ */
+function assertCohortEntryExitSupported(store: Store<any>, opName: string): void {
+  if (cohortEntryExitSupported(store)) return
+  const reason = store.getters.getMriFrontendConfig
+    ? "its PA config has panelOptions.cohortEntryExit off, so the builder's Entry/Exit buttons are hidden"
+    : 'the PA frontend config is not loaded yet, so support cannot be confirmed'
+  throw new Error(
+    `${opName}: this dataset does not support cohort entry/exit — ${reason}. query-gen-svc only applies the ` +
+      "override when that flag is on, so the observation window would stay the patient's full observation " +
+      'period no matter what this op wrote. Tell the user the cohort cannot be anchored to an entry/exit event ' +
+      'on this dataset rather than reporting a window that is not in force. If they want the TIMING BETWEEN two ' +
+      'interactions, that is set_time_relation and it works here; if they want a fixed calendar window, put a ' +
+      'date-range constraint on the card.'
+  )
+}
+
+/**
+ * Reject a card the builder's own Entry/Exit menu would not offer, before
+ * anything is written. Mirrors CohortEntryExitButton's menu (getChartableFilterCards
+ * minus Basic Data, with cards already holding the other role disabled) plus the
+ * cards BMGetChartableCards drops on the way to that list.
+ */
+function assertEntryExitIsExpressible(store: Store<any>, filterCardId: string, role: EntryExitRole): void {
+  if (filterCardId === BASIC_DATA_CARD) {
+    throw new Error(
+      'set_entry_exit: the Basic Data card cannot be the entry or exit event — it holds demographics, not an ' +
+        'interaction with start/end dates, and the builder leaves it out of the Entry/Exit menu. Anchor the ' +
+        'window to an interaction card (Condition Occurrence, Drug Exposure, …).'
+    )
+  }
+  const props = store.getters.getFilterCard?.(filterCardId)?.props ?? {}
+  if (props.excludeFilter) {
+    throw new Error(
+      `set_entry_exit: card "${filterCardId}" is an exclusion card. An event the cohort requires NOT to have ` +
+        'cannot date the observation window, and the builder does not offer it — anchor the window to an ' +
+        'included card.'
+    )
+  }
+  if (props.inactive) {
+    throw new Error(
+      `set_entry_exit: card "${filterCardId}" is inactive, so it is not part of the query and cannot date the ` +
+        'observation window. Activate it first, or anchor the window to an active card.'
+    )
+  }
+  const loc = locateCard(store, filterCardId)
+  if (!loc) {
+    throw new Error(`set_entry_exit: card "${filterCardId}" is not in the cohort's filter tree.`)
+  }
+  if (loc.cards.length > 1) {
+    throw new Error(
+      `set_entry_exit: card "${filterCardId}" is OR-ed with ${loc.cards
+        .filter(id => id !== filterCardId)
+        .map(id => `"${id}"`)
+        .join(', ')}, and an OR group cannot date the window (which interaction's date would it use?). The ` +
+        'builder only offers cards that are alone in their group — split it out with set_card_join ' +
+        '{ card, join:"AND" } first.'
+    )
+  }
+  const otherRole: EntryExitRole = role === 'entry' ? 'exit' : 'entry'
+  if (props[ENTRY_EXIT_KEY[otherRole]]) {
+    throw new Error(
+      `set_entry_exit: card "${filterCardId}" is already the cohort ${otherRole} event, and the builder disables ` +
+        `a card that already holds a role. Use two different cards, or clear_entry_exit { role:"${otherRole}" } ` +
+        'first if the window really should start and end on the same interaction.'
+    )
+  }
+}
+
+/**
+ * The observation window as it stands, read back from the store.
+ *
+ * Reported alongside cardGroups/timeRelations for the same reason: the caller is
+ * an LLM that has to tell the user what the cohort now means, and a window
+ * anchored to an event is invisible in the constraint list.
+ */
+export function describeCohortEntryExit(store: Store<any>): CohortEntryExit {
+  const flagged = (role: EntryExitRole) => {
+    const id = entryExitCardFor(store, ENTRY_EXIT_KEY[role])
+    return id ? { filterCardId: id, name: cardName(store, id) } : null
+  }
+  return {
+    supported: cohortEntryExitSupported(store),
+    entry: flagged('entry'),
+    exit: flagged('exit'),
   }
 }
 
@@ -321,6 +789,116 @@ function assertValueLanded(store: Store<any>, filterCardId: string, key: string,
   )
 }
 
+// ---------------------------------------------------------------------------
+// Date-range warnings
+//
+// A date range is the one constraint the model can fabricate out of nothing. Every
+// other value has to come from a lookup — a concept set from list_concept_sets, a
+// catalog token from pa_search_attribute_values, a number the user said — and a
+// wrong one usually fails the patch or matches nothing. Dates need no lookup, so
+// "2010-01-01 → 2015-12-31" applies cleanly, computes, renders, and quietly drops
+// every patient outside a window nobody asked for.
+//
+// The failure this closes: asked for a prior-observation or follow-up requirement,
+// the model adds the Observation Period card (right) and then puts an invented
+// range on its start date (wrong) — the duration it was asked for belongs in
+// set_time_relation, and the window in set_entry_exit. Neither is a calendar filter.
+//
+// The applier cannot know what the user said, so this does not reject: it makes
+// the range impossible to leave unmentioned. Keyed on the constraint's DATE SLOT
+// (props.fromDate/toDate — the { from, to } assertValueLanded reads back), not on
+// any card or attribute path, so it holds on every dataset config.
+// ---------------------------------------------------------------------------
+
+/** A value that landed in the constraint's date slot — see assertValueLanded. */
+const isDateRangeValue = (value: any): value is { from?: unknown; to?: unknown } =>
+  !!value && typeof value === 'object' && !Array.isArray(value) && ('from' in value || 'to' in value)
+
+// The bounds the OP asked for, not the Date objects read back from the store. The
+// store deliberately shifts a date by the local timezone offset so that it
+// SERIALISES to the intended calendar day (DateUtils.toUTCDate), which means
+// formatting one back gives the neighbouring day in a negative-offset timezone —
+// and a warning that misquotes the window is worse than none. The op's own strings
+// are also what the model has to justify, so they are what it should see.
+function requestedBounds(op: AddConstraintOp): { from: string; to: string } {
+  const asText = (value: unknown): string => {
+    const text = value == null ? '' : String(value)
+    return text.trim() || 'unset'
+  }
+  const value: any = op.value
+  if (isDateRangeValue(value)) {
+    // applyConstraintValue falls back to the populated bound when only one is given.
+    return { from: asText(value.from ?? value.to), to: asText(value.to ?? value.from) }
+  }
+  // A scalar date pins both ends of the range to the same day.
+  const single = asText(typeof value === 'object' ? value?.value : value)
+  return { from: single, to: single }
+}
+
+const attributeName = (store: Store<any>, attributePath: string): string => {
+  try {
+    return store.getters.getMriFrontendConfig?.getAttributeByPath?.(attributePath)?.getName?.() || attributePath
+  } catch {
+    return attributePath
+  }
+}
+
+function describeDateRangeWarning(store: Store<any>, filterCardId: string, op: AddConstraintOp): string {
+  const { from, to } = requestedBounds(op)
+  return (
+    `Date range ${from} → ${to} is now filtering "${attributeName(store, op.attributePath)}" (${
+      op.attributePath
+    }) on card "${cardName(store, filterCardId)}". That is an ABSOLUTE calendar filter: every patient whose ` +
+    'record falls outside those dates is dropped from the cohort. Keep it ONLY if the user named those dates. ' +
+    'If you added it to express a DURATION ("at least a year of prior observation", "within 90 days", ' +
+    '"followed up for 6 months") or a vague period ("recent", "historical"), it is wrong and it is silently ' +
+    'narrowing the cohort — remove it with remove_constraint and use set_time_relation for the gap between two ' +
+    'interactions, or set_entry_exit for the observation window. Adding the card with NO date constraint is ' +
+    'the correct way to say "the patient has such a record at all". If you do keep it, state the exact dates ' +
+    'in your reply so the user can see the window you applied.'
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Bounded-window warnings
+//
+// `within` is the second value the model can get wrong without anything stopping
+// it, and for the same reason dates are the first: the op applies cleanly and the
+// cohort computes. `mode` is optional and defaults to `within`, every worked
+// example in the tool schema and the agent prompts reads `mode:"within",
+// days:90`, and the readback renders `[0-90]` as "within 90 days" — which looks
+// like a faithful echo of a user who said "90 days".
+//
+// The failure this closes: "two eGFR values, the 2nd at least 90 days after the
+// 1st" becomes `[0-90]` — the exact COMPLEMENT of the request. Every patient the
+// user wanted (gap of 90 days or more) is dropped, and every patient they
+// excluded (the two labs drawn a week apart) is kept. "≥", "at least", "or
+// more", "apart" are all `at_least`; only an upper bound is `within`.
+//
+// Like the date warning this does not reject — the applier cannot know what the
+// user said, so it makes the bound impossible to leave unmentioned.
+// ---------------------------------------------------------------------------
+
+function describeBoundedWindowWarning(
+  store: Store<any>,
+  filterCardId: string,
+  targetId: string,
+  days: number,
+  modeWasDefaulted: boolean
+): string {
+  return (
+    `Time relation "${cardName(store, filterCardId)}" → "${cardName(store, targetId)}" landed as the CLOSED ` +
+    `window 0–${days} days${modeWasDefaulted ? ' (no `mode` was given, so it defaulted to "within")' : ''}. ` +
+    `It requires the two interactions to be AT MOST ${days} days apart: a patient whose gap is ${days + 1} days ` +
+    'or more is DROPPED. That is the right reading of "within N days" / "in the N days following" and nothing ' +
+    'else. If the user said "at least", "≥", "or more", "no sooner than", "N days apart" or "after N days", ' +
+    `this is the COMPLEMENT of what they asked for — re-issue the op with mode:"at_least", days:${days}. For a ` +
+    'floor AND a ceiling use mode:"between" with minDays/maxDays. If 0–' +
+    `${days} really is the window they described, say "within ${days} days" in your reply so they can see the ` +
+    'bound you applied.'
+  )
+}
+
 /**
  * Apply a list of typed patch ops to the live cohort in `store`.
  *
@@ -348,6 +926,8 @@ export async function applyCohortPatch(store: Store<any>, patchOps: PatchOp[]): 
     removedCardIds: [],
     priorAxes: snapshotAxes(store),
     joinChanges: [],
+    priorTimeFilters: [],
+    priorEntryExit: [],
   }
 
   const resolveCard = (card: string): string => {
@@ -360,11 +940,12 @@ export async function applyCohortPatch(store: Store<any>, patchOps: PatchOp[]): 
   }
 
   const appliedConstraints: NonNullable<ApplyCohortPatchResult['appliedConstraints']> = []
+  const warnings: string[] = []
 
   await dispatch('holdFireRequest')
   try {
     for (const rawOp of patchOps) {
-      await applyOne(dispatch, store, rawOp, refMap, rollback, resolveCard, appliedConstraints)
+      await applyOne(dispatch, store, rawOp, refMap, rollback, resolveCard, appliedConstraints, warnings)
     }
   } catch (err) {
     await revert(dispatch, rollback, store)
@@ -383,11 +964,23 @@ export async function applyCohortPatch(store: Store<any>, patchOps: PatchOp[]): 
   await dispatch('releaseFireRequest')
   await dispatch('setFireRequest')
   await dispatch('refreshPatientCount')
+  const cohortEntryExit = describeCohortEntryExit(store)
+  // Report the window when there is something to say — see ApplyCohortPatchResult.
+  // `priorEntryExit` is part of that test, not just the current state: a patch that
+  // CLEARED the last flag on an unsupported dataset ends with nothing set, and the
+  // caller still needs to see that its op landed.
+  const reportEntryExit =
+    cohortEntryExit.supported || !!cohortEntryExit.entry || !!cohortEntryExit.exit || rollback.priorEntryExit.length > 0
   return {
     applied: true,
     createdCards: [...rollback.createdCardIds],
     appliedConstraints,
     cardGroups: describeCardGroups(store),
+    timeRelations: describeTimeRelations(store),
+    ...(reportEntryExit ? { cohortEntryExit } : {}),
+    // Omitted when there is nothing to warn about — this result is resent on
+    // every agent turn, so an always-present empty array is pure context burn.
+    ...(warnings.length ? { warnings } : {}),
   }
 }
 
@@ -437,7 +1030,8 @@ async function applyOne(
   refMap: Map<string, string>,
   rollback: Rollback,
   resolveCard: (card: string) => string,
-  applied: NonNullable<ApplyCohortPatchResult['appliedConstraints']>
+  applied: NonNullable<ApplyCohortPatchResult['appliedConstraints']>,
+  warnings: string[]
 ): Promise<void> {
   switch (op.op) {
     case 'add_card': {
@@ -587,11 +1181,14 @@ async function applyOne(
       } else {
         await applyConstraintValue(dispatch, constraint, op.value, op.operator ?? '=')
       }
-      applied.push({
-        card: filterCardId,
-        attributePath: op.attributePath,
-        value: assertValueLanded(store, filterCardId, key, op),
-      })
+      const landed = assertValueLanded(store, filterCardId, key, op)
+      applied.push({ card: filterCardId, attributePath: op.attributePath, value: landed })
+      // Read the KIND off what landed (the date slot), not off the op — a scalar
+      // date and a { from, to } both end up here, and neither the card nor the
+      // attribute path is a reliable tell across dataset configs.
+      if (isDateRangeValue(landed)) {
+        warnings.push(describeDateRangeWarning(store, filterCardId, op))
+      }
       return
     }
     case 'remove_constraint': {
@@ -606,6 +1203,113 @@ async function applyOne(
         rollback.removedConstraints.push({ filterCardId, key, snapshot: snapshotConstraintValue(constraint) })
         await dispatch('deleteFilterCardConstraint', { filterCardId, constraintId: constraint.id })
       }
+      return
+    }
+    case 'set_time_relation': {
+      if (!op.relativeTo) {
+        throw new Error(
+          'set_time_relation needs `relativeTo`: the card the timing is measured against. `card` is the later ' +
+            'interaction, `relativeTo` the index one — e.g. card: the prescription, relativeTo: the diagnosis.'
+        )
+      }
+      const filterCardId = resolveCard(op.card)
+      const targetId = resolveCard(op.relativeTo)
+      assertTimeRelationIsExpressible(store, filterCardId, targetId)
+
+      const modeWasDefaulted = op.mode == null
+      const mode = (op.mode ?? 'within') as TimeRelationMode
+      const direction = op.direction ?? 'after'
+      if (direction !== 'after' && direction !== 'before') {
+        throw new Error(`set_time_relation: direction must be "after" or "before" (got ${JSON.stringify(direction)}).`)
+      }
+      const isOverlap = mode === 'overlaps'
+      const next: StoredTimeFilter = {
+        originSelection: isOverlap ? 'overlap' : anchorField(op.fromDate ?? 'start'),
+        // Overlap ignores the target anchor, but the field must still hold a
+        // value the panel can look up: AdvancedTime.vue resolves it against its
+        // option list on mount and throws on an unknown key. This is the same
+        // placeholder AdvancedTimeFilterModel.createAdvancedTimeFilterModel uses.
+        targetSelection: isOverlap
+          ? 'before_startdate'
+          : (`${direction}_${anchorField(op.toDate ?? 'start')}` as StoredTimeFilter['targetSelection']),
+        targetInteraction: targetId,
+        days: isOverlap ? '' : buildDaysExpression(op, mode),
+      }
+
+      const current = timeFiltersOf(store, filterCardId)
+      rollback.priorTimeFilters.push({ filterCardId, timeFilters: cloneTimeFilters(current) })
+      // Replace the relation to THIS target and keep the others: a card can be
+      // timed against several interactions, and each op should only speak for
+      // the pair it names. Entries the panel left half-filled (no target) are
+      // dropped — getIFR ignores them anyway.
+      const timeFilters = current
+        .filter(f => f?.targetInteraction && f.targetInteraction !== targetId)
+        .map(f => ({ ...f }))
+      timeFilters.push(next)
+      await dispatch('updateFilterCardTimeFilter', { filterCardId, timeFilters })
+
+      // Post-condition: getIFR drops a relation with an empty target or an
+      // unparseable `days` silently, so confirm it is really on the card.
+      const landed = timeFiltersOf(store, filterCardId).find(f => f?.targetInteraction === targetId)
+      if (!landed) {
+        throw new Error(
+          `set_time_relation: the relation between "${filterCardId}" and "${targetId}" did not land on the card.`
+        )
+      }
+      // Both modes build the same closed 0–N window, so both get it disclosed.
+      if (mode === 'within' || mode === 'at_most') {
+        warnings.push(describeBoundedWindowWarning(store, filterCardId, targetId, op.days as number, modeWasDefaulted))
+      }
+      return
+    }
+    case 'clear_time_relation': {
+      const filterCardId = resolveCard(op.card)
+      const current = timeFiltersOf(store, filterCardId)
+      if (current.length === 0) return
+      const targetId = op.relativeTo ? resolveCard(op.relativeTo) : undefined
+      rollback.priorTimeFilters.push({ filterCardId, timeFilters: cloneTimeFilters(current) })
+      const timeFilters = targetId
+        ? current.filter(f => f?.targetInteraction !== targetId).map(f => ({ ...f }))
+        : []
+      await dispatch('updateFilterCardTimeFilter', { filterCardId, timeFilters })
+      return
+    }
+    case 'set_entry_exit': {
+      // Support first: on a dataset with the flag off this is the only outcome,
+      // and it costs nothing to reach before touching the store.
+      assertCohortEntryExitSupported(store, 'set_entry_exit')
+      const role = normalizeEntryExitRole((op as any).role, 'set_entry_exit')
+      const filterCardId = resolveCard(op.card)
+      assertEntryExitIsExpressible(store, filterCardId, role)
+      const key = ENTRY_EXIT_KEY[role]
+
+      rollback.priorEntryExit.push(snapshotEntryExit(store))
+      // Exactly what the menu dispatches (CohortEntryExitButton.handleClick):
+      // clear the role everywhere, then flag the chosen card. The reset is not
+      // redundant — the role is single-valued, and skipping it would leave two
+      // cards claiming it, which the query resolves by whichever it walks last.
+      await dispatch('resetAllFilterCardEntryExit', { key })
+      await dispatch('updateCohortEntryExit', { filterCardId, key, toggle: true })
+
+      // Post-condition, as for set_time_relation: a flag that did not land would
+      // otherwise be reported as an observation window the cohort does not have.
+      if (!store.getters.getFilterCard?.(filterCardId)?.props?.[key]) {
+        throw new Error(`set_entry_exit: the ${role} flag did not land on card "${filterCardId}".`)
+      }
+      return
+    }
+    case 'clear_entry_exit': {
+      // Deliberately NOT gated on dataset support: clearing can only remove a
+      // window, never assert one that isn't in force, and a bookmark saved while
+      // the flag was on still carries the flags after it is turned off.
+      const role =
+        (op as any).role === undefined ? undefined : normalizeEntryExitRole((op as any).role, 'clear_entry_exit')
+      const before = snapshotEntryExit(store)
+      if (role ? !before[role] : !before.entry && !before.exit) return
+      rollback.priorEntryExit.push(before)
+      // key:null is the store's "clear both" (FILTERCARD_RESET_ALL_ENTRY_EXIT),
+      // the same call BoolFilterContainer makes when the tree is rebuilt.
+      await dispatch('resetAllFilterCardEntryExit', { key: role ? ENTRY_EXIT_KEY[role] : null })
       return
     }
     case 'remove_card': {
@@ -646,6 +1350,37 @@ async function revert(
       }
     } catch (e) {
       console.error('[cohortPatch] revert join change failed', e)
+    }
+  }
+  // Temporal relations before the cards they point at are torn down: restoring
+  // in reverse leaves the OLDEST snapshot applied last, i.e. the state this
+  // patch found.
+  for (const { filterCardId, timeFilters } of rollback.priorTimeFilters.reverse()) {
+    try {
+      await dispatch('updateFilterCardTimeFilter', { filterCardId, timeFilters: cloneTimeFilters(timeFilters) })
+    } catch (e) {
+      console.error('[cohortPatch] revert updateFilterCardTimeFilter failed', e)
+    }
+  }
+  // Entry/exit likewise before the cards are torn down, and oldest-snapshot-last
+  // so the cohort ends on the window this patch found. Each restore rewrites both
+  // roles from scratch (clear, then re-flag) because a role is single-valued: a
+  // partial restore would silently leave the window open at one end.
+  for (const { entry, exit } of rollback.priorEntryExit.reverse()) {
+    try {
+      await dispatch('resetAllFilterCardEntryExit', { key: null })
+      for (const [filterCardId, key] of [
+        [entry, 'isEntry'],
+        [exit, 'isExit'],
+      ] as const) {
+        // Skip a card this patch created (revert deletes it below) or removed:
+        // flagging a card that is about to vanish leaves no window at all, which
+        // is the same state as not restoring it.
+        if (!filterCardId || !(store.getters.getFilterCards?.() ?? {})[filterCardId]) continue
+        await dispatch('updateCohortEntryExit', { filterCardId, key, toggle: true })
+      }
+    } catch (e) {
+      console.error('[cohortPatch] revert entry/exit failed', e)
     }
   }
   for (const snapshot of rollback.priorConstraintValues.reverse()) {

@@ -150,28 +150,7 @@ export default {
     if (this.model.props.timeFilterModel.timeFilters.length === 0) {
       this.addTimeFilter()
     } else {
-      // recreate this.model[key, text] object with this.advancedTimeLayout[key]
-      this.model.props.timeFilterModel.timeFilters = this.model.props.timeFilterModel.timeFilters.map(tf => {
-        const originSelection = {
-          key: tf.originSelection,
-          text: this.originSelectionOptions.find(o => o.key === tf.originSelection).text,
-        }
-        const targetSelection = {
-          key: tf.targetSelection,
-          text: this.targetSelectionOptions.find(t => t.key === tf.targetSelection).text,
-        }
-        const ti = this.getList.find(t => t.key === tf.targetInteraction)
-        const targetInteraction = {
-          key: ti ? ti.targetInteraction : '',
-          text: ti ? ti.text : '',
-        }
-        return {
-          originSelection,
-          targetSelection,
-          targetInteraction,
-          days: tf.days,
-        }
-      })
+      this.syncModelFromStore()
     }
   },
   computed: {
@@ -227,6 +206,13 @@ export default {
         ...optionsList,
       ]
     },
+    // What the stored relations are, in the form the rows represent them. Every edit
+    // made through this panel writes the same value into the row and into the store,
+    // so the two signatures only diverge when the store moved on its own — the
+    // assistant's set_time_relation, or a cohort loaded under an already-open panel.
+    storedTimeFilterSignature() {
+      return this.timeFilterSignature(this.advancedTimeLayout.props.timeFilterModel.timeFilters)
+    },
     getTargetInteractionText() {
       const lookup = this.getMap()
       lookup.delete('')
@@ -249,10 +235,65 @@ export default {
         timeFilter.targetInteraction = lookup.has(timeFilter.targetInteraction.key) ? timeFilter.targetInteraction : ''
       })
     },
+    // The rows are a CLONE of the stored relations, so they have to follow the store.
+    // Only the panel used to change a relation; set_time_relation changes it from
+    // outside, without adding or removing one — so neither the panel's mount nor its
+    // parent's filter count notices, and the rows would go on showing the relation
+    // they were built from while the query ran the replacement.
+    storedTimeFilterSignature(signature) {
+      if (signature === this.timeFilterSignature(this.model.props.timeFilterModel.timeFilters)) {
+        return
+      }
+      this.syncModelFromStore()
+    },
   },
   methods: {
     ...mapActions(['updateFilterCardTimeFilter']),
     ...mapMutations([ADVANCEDTIME_SET_TIMEFILTER_TITLE]),
+    // Comparable across both shapes: the store keeps bare keys, a row keeps the
+    // { key, text } pair the dropdowns bind to — and a bare '' where the getList
+    // watcher has cleared a target whose card is gone.
+    timeFilterSignature(timeFilters) {
+      const keyOf = value => (value && typeof value === 'object' ? value.key : value) ?? ''
+      return timeFilters
+        .map(tf =>
+          [keyOf(tf.originSelection), keyOf(tf.targetSelection), keyOf(tf.targetInteraction), tf.days].join('|')
+        )
+        .join(';')
+    },
+    // Rebuild the rows from the stored relations. Read-only on the store: writing
+    // back from here would bounce a dispatch off the watcher that calls it, and would
+    // put a relation back that an op had just cleared.
+    syncModelFromStore() {
+      // recreate this.model[key, text] object with this.advancedTimeLayout[key]
+      this.model.props.timeFilterModel.timeFilters = this.advancedTimeLayout.props.timeFilterModel.timeFilters.map(
+        tf => {
+          const originSelection = {
+            key: tf.originSelection,
+            text: this.originSelectionOptions.find(o => o.key === tf.originSelection).text,
+          }
+          const targetSelection = {
+            key: tf.targetSelection,
+            text: this.targetSelectionOptions.find(t => t.key === tf.targetSelection).text,
+          }
+          // getList items are { key, text } (see getFilterCardsByBoolFilterContainerId's
+          // allowedSuccessors) — reading `ti.targetInteraction` here left the key
+          // undefined, so the getList watcher above then reset the dropdown to
+          // "None" on the next card add/remove while the store kept the relation.
+          const ti = this.getList.find(t => t.key === tf.targetInteraction)
+          const targetInteraction = {
+            key: ti ? ti.key : '',
+            text: ti ? ti.text : '',
+          }
+          return {
+            originSelection,
+            targetSelection,
+            targetInteraction,
+            days: tf.days,
+          }
+        }
+      )
+    },
     getHelpId(index) {
       return `visible${index}`
     },

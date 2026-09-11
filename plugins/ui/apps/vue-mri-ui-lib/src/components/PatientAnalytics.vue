@@ -280,13 +280,29 @@ export default {
     // Two consumers, one tool set: an external browser agent via Chrome's
     // modelContext, and an in-page consumer via the window registry. Both wrap
     // the same createPaTools() array.
-    this._unregisterPaTools = registerPaTools(this.$store, paToolHooks)
+    //
+    // The in-page registry goes up first and the two are isolated on purpose.
+    // registerPaTools talks to an experimental browser API that can reject a
+    // call, and Vue swallows a throw out of a lifecycle hook — so sharing a fate
+    // with it meant a failed registration silently skipped publishPaTools, and
+    // the in-page consumer spent the rest of the session with no tools at all.
     this._unpublishPaTools = publishPaTools(this.$store, paToolHooks)
+    try {
+      this._unregisterPaTools = registerPaTools(this.$store, paToolHooks)
+    } catch (error) {
+      console.warn('[WebMCP] Browser tool registration failed; the in-page tools are unaffected', error)
+    }
     this.updateMinSplitterWidth()
     window.addEventListener('resize', this.updateMinSplitterWidth)
   },
   beforeUnmount() {
-    this._unregisterPaTools?.()
+    // Same isolation in reverse: a failed unregister must not leave the in-page
+    // registry published for a PA that is no longer on screen.
+    try {
+      this._unregisterPaTools?.()
+    } catch (error) {
+      console.warn('[WebMCP] Browser tool unregistration failed', error)
+    }
     this._unpublishPaTools?.()
     window.removeEventListener('resize', this.updateMinSplitterWidth)
     this.chartBusy = false

@@ -28,9 +28,16 @@ unmount — the tools exist **only while PA is on screen**, and no tool can moun
 ```ts
 // PatientAnalytics.vue, mounted()
 const paToolHooks = { showBuilder: () => this.toggleCohorts(false) }
-this._unregisterPaTools = registerPaTools(this.$store, paToolHooks)  // browser agent
 this._unpublishPaTools  = publishPaTools(this.$store, paToolHooks)   // portal drawer
+this._unregisterPaTools = registerPaTools(this.$store, paToolHooks)  // browser agent
 ```
+
+The drawer's registry goes up **first**, and the two calls are isolated from each
+other (both here and in `beforeUnmount`). `registerPaTools` talks to an
+experimental browser API that can reject a call, and Vue swallows a throw out of a
+lifecycle hook — so when the two shared a fate, a failed registration silently
+skipped `publishPaTools` and the drawer spent the rest of the session telling the
+user to open a builder that was already on screen.
 
 **One tool array, two consumers** — a tool can never exist for one and not the other:
 
@@ -39,6 +46,11 @@ this._unpublishPaTools  = publishPaTools(this.$store, paToolHooks)   // portal d
    `navigator.modelContext` (Chrome 146–149, deprecated). Requires
    `chrome://flags/#enable-webmcp-testing`; without it the register call warns and
    no-ops. Do **not** import the `@mcp-b/global` polyfill when the flag is on.
+   Registration is idempotent across remounts: it parks its teardown on the
+   `modelContext` object and releases a previous mount's tools before claiming the
+   names again, because a build that hands back no `unregister` handle would
+   otherwise leave the names taken and make the *second* mount's `registerTool`
+   throw. A tool the browser rejects is warned about, not raised.
 2. **Portal AI assistant drawer** via the `window.__d2ePaTools` registry
    (`{ version, datasetId, list(), call() }`). The drawer runs in a different
    single-spa bundle with no shared module graph, hence a `window` registry rather
@@ -60,13 +72,13 @@ All return the MCP envelope `{ content: [{ type: 'text', text: '<json>' }] }`.
 | Tool | Args | Returns |
 |---|---|---|
 | `pa_new_cohort` | `name?` | Resets the builder to a blank cohort and switches to the builder view. |
-| `pa_get_current_cohort` | — | `{ bookmarkData, ifr, cardGroups, cardGroupsNote }` — the definition, plus the real `filterCardId`s and the AND/OR grouping. |
+| `pa_get_current_cohort` | — | `{ bookmarkData, ifr, cardGroups, timeRelations, cohortEntryExit, …Note }` — the definition, plus the real `filterCardId`s, the AND/OR grouping, the temporal relations, and the observation window (with `supported`). |
 | `pa_list_cohorts` | `forceRefresh?` | `{ cohorts: [{ bmkId, name }] }`. The default path can serve a stale cache — force after a save. |
 | `pa_open_cohort` | `name` \| `bmkId`, `chartType?` | Loads a saved cohort and renders it. Reports `ambiguous` when a name matches several. |
-| `pa_apply_cohort_patch` | `patchOps[]`, `bookmark?` (legacy), `chartType?` | Applies typed ops in place; result carries `appliedConstraints` + `cardGroups`. On failure: `{ applied:false, error, validFilterOptions }`. |
+| `pa_apply_cohort_patch` | `patchOps[]`, `bookmark?` (legacy), `chartType?` | Applies typed ops in place; result carries `appliedConstraints`, `cardGroups`, `timeRelations` and `cohortEntryExit` (omitted when the dataset has no entry/exit and none is set). On failure: `{ applied:false, error, validFilterOptions }`. |
 | `pa_list_filter_options` | `card?` | `{ filterCards:[{ cardConfigPath, cardName, attributes:[{ attributePath, name, type, valueKind, conceptDomain? }] }], valueKindGuide, note }`. |
 | `pa_search_attribute_values` | `attributePath`, `query?`, `attributeType?`, `limit?` | `{ matchedVia, total, returned, truncated, loadedStatus, domainTotal?, values, note? }`. |
-| `pa_get_cohort_result` | — | `{ currentPatientCount, totalPatientCount, chartType, chart }` — the **live computed** result, not the definition. |
+| `pa_get_cohort_result` | — | `{ currentPatientCount, totalPatientCount, chartType, chart }` — the **live computed** result, not the definition. **Blocks** while a recompute is in flight (`setFireRequest` raises the query module's `isCurrentPatientCountStale`, a side-channel flag nothing renders — the displayed count deliberately stays on the previous cohort's number), up to 60s; on timeout adds `{ pending:true, error }` and the counts are the previous cohort's, not a result. |
 | `pa_save_current_cohort` | `name?`, `share?`, `bookmarkId?`, `method?`, `params?` | Inserts or updates via `fireBookmarkQuery`, refreshes the list, adopts the saved record as active. |
 
 ### Patch ops
@@ -80,11 +92,50 @@ All return the MCP envelope `{ content: [{ type: 'text', text: '<json>' }] }`.
 { op:"remove_card", card }
 { op:"remove_constraint", card, attributePath }
 { op:"set_card_join", card, join:"AND"|"OR" }
+{ op:"set_time_relation", card, relativeTo, mode?, days?, minDays?, maxDays?, direction?, fromDate?, toDate? }
+{ op:"clear_time_relation", card, relativeTo? }
+{ op:"set_entry_exit", card, role:"entry"|"exit" }
+{ op:"clear_entry_exit", role? }
 ```
 
 Cards in the same group are OR-ed; groups are AND-ed. `orWith` puts a new card in
 an existing card's group; `set_card_join` regroups the **later** card of a pair.
 The Basic Data card (`patient`) always exists — constrain it, never `add_card` it.
+
+Three things the tree expresses separately, and the ops keep separate:
+
+| Question | Op | Reported as |
+|---|---|---|
+| Must both interactions be present? | `add_card` grouping / `set_card_join` | `cardGroups` |
+| How far apart may they be? | `set_time_relation` | `timeRelations` |
+| Over what window is the cohort measured? | `set_entry_exit` | `cohortEntryExit` |
+
+### Entry / exit — the observation window
+
+The chart toolbar's **Entry** and **Exit** buttons (`CohortEntryExit.vue`) pick the
+cards that date the window the query measures over: from the entry card's
+interaction `startdate` to the exit card's interaction `enddate`, defaulting to
+`obsperiod` — the patient's whole observation period — when unset. The flags ride
+`props.isEntry` / `props.isExit` → `getIFR` → `IFR2Bookmark` → the `mriquery`
+payload, and query-gen-svc turns them into a separate `PatientRequestEntryExit`
+request (`createEntryExitCriteria`).
+
+`set_entry_exit` mirrors `CohortEntryExitButton.handleClick` exactly — reset the
+role on every card, then flag the chosen one — because each role is single-valued.
+Three refusals keep a written flag from diverging from what the query honours:
+
+- **Dataset gate.** Both the buttons and the backend override are conditional on
+  `panelOptions.cohortEntryExit`, and **every seeded D2E config ships it off**, so
+  "unsupported" is the common path. `set_entry_exit` fails closed there rather than
+  writing a flag the query ignores; `clear_entry_exit` is *not* gated, since a
+  bookmark saved while the flag was on still carries the flags afterwards.
+- **Only cards the menu offers**: an interaction card (never Basic Data), active,
+  not an exclusion card, and alone in its AND-group — exactly what
+  `BMGetChartableCards` leaves in `getChartableFilterCards`. A flag on any of the
+  others lands in the store, is dropped on the way to the query, and shows nowhere.
+- **Read-back**: the flag is confirmed on the card after the write, and the window
+  is reported as `cohortEntryExit` (with `supported`) by both the patch result and
+  `pa_get_current_cohort`.
 
 The legacy `{ bookmark }` argument takes a full tree and is kept for back-compat
 with backend builders only. A hand-authored tree is rejected and the previous
