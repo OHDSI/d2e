@@ -1009,8 +1009,9 @@ services:
   alp-logto:
     container_name: &c8 ${PROJECT_NAME:-d2e}-logto-1
     depends_on:
-      # Only Postgres: the wait for trex's bootstrap is the beacon poll in the
-      # entrypoint below, not a depends_on edge (that would be circular).
+      # Only Postgres: the wait for trex's bootstrap is the health-endpoint
+      # poll in the entrypoint below, not a depends_on edge (that would be
+      # circular).
       alp-minerva-postgres:
         condition: service_healthy
     healthcheck:
@@ -1061,22 +1062,57 @@ services:
         export HTTPS_CERT_PATH=/tmp/cert/cert.pem
         export HTTPS_KEY_PATH=/tmp/cert/key.pem
         export NODE_EXTRA_CA_CERTS=/tmp/cert/ca.pem
-        # Wait for trex's DB bootstrap to create logto_postgres and the logto
-        # schema before migrating. This is a poll rather than a depends_on
-        # because trex -> alp-logto-post-init -> alp-logto already exists, so an
-        # edge back to trex would be a circular dependency.
-        # The gate has to be the privilege, not the schema. trex creates the schema
-        # owned by postgres and grants logto_postgres CREATE on it as a separate
-        # step, so a gate on existence alone lets logto start inside that window;
-        # it then half-seeds and dies, and because the seed is not idempotent for
-        # its logto_tenant_* roles, every later restart fails on "role already
-        # exists" - a permanent crash loop from one early start.
+        # Wait for trex to FINISH provisioning the database before migrating.
+        # This is a poll rather than a depends_on because
+        # trex -> alp-logto-post-init -> alp-logto already exists, so an edge
+        # back to trex would be a circular dependency.
+        #
+        # The gate has to be an event, not catalog state. This used to poll
+        # has_database_privilege/has_schema_privilege for CREATE on the logto
+        # schema, which is only false while the database is unprovisioned: on a
+        # restart the privileges are already there, the first poll passes, and
+        # the seed chain below runs concurrently with trex re-applying its 459
+        # bootstrap statements. Both sides then GRANT on all tables in schema
+        # logto - d2e-grants.mjs for the logto_tenant_* roles, trex's bootstrap
+        # for alp_pg_admin_user - which rewrites the same pg_class.relacl rows.
+        # Postgres has no lock that serialises that, so one side loses with
+        # "tuple concurrently updated", and because provisioning is fatal by
+        # design, trex aborts boot and never comes back healthy.
+        #
+        # trex's health endpoint is that event. Its provisioning is a top-level
+        # await that calls Deno.exit(1) on failure (core/server/index.ts
+        # L544-556) and the express listener only starts afterwards (L1463), so
+        # a 200 here implies the bootstrap completed - on a fresh database and
+        # on a restart alike. Acyclic: trex depends only on Postgres, and
+        # nothing in its boot path ahead of listen touches logto (the one thing
+        # that waits for logto.users, atlas-db-init, runs after listen).
+        #
+        # node is used deliberately: this image has neither curl nor wget, but
+        # it does ship the http and pg clients logto itself runs on.
+        until node -e "
+          const req = require('http').get('http://${PROJECT_NAME:-d2e}-trex:33001/trex/_internal/health', (res) => {
+            res.resume();
+            process.exit(res.statusCode === 200 ? 0 : 1);
+          });
+          // Before the listener exists the request can sit unanswered rather
+          // than being refused, so cap it and let the loop retry.
+          req.setTimeout(5000, () => req.destroy());
+          req.on('error', () => process.exit(1));
+        "; do
+          echo "waiting for trex to finish provisioning the database ..."
+          sleep 2
+        done
+        # Second, narrower gate, kept from the privilege poll this replaced: the
+        # health endpoint proves trex booted, but trex also boots healthy when
+        # POSTGRES_MANAGE_CONFIG/USERS are unset and it skips provisioning
+        # entirely (assertD2eProvisioned). In that deployment the grants below
+        # are somebody else's job, and waiting here rather than half-seeding is
+        # the behaviour this gate has always had: the seed is not idempotent for
+        # its logto_tenant_* roles, so one early start crash-loops forever on
+        # "role already exists".
         # The seed opens with `create schema if not exists logto`, and Postgres
         # checks CREATE on the database before it checks whether the schema
-        # exists, so database CREATE is part of the gate too.
-        # Connecting proves the login exists, the privilege checks prove the
-        # grants landed. node is used deliberately: this image has neither curl nor
-        # wget, but it does ship the pg client logto itself runs on.
+        # exists, so database CREATE is part of the check too.
         until node -e "
           const { Client } = require('pg');
           const c = new Client({ connectionString: process.env.DB_URL });
@@ -1085,7 +1121,7 @@ services:
             .then(r => { c.end(); process.exit(r.rows[0].ok ? 0 : 1); })
             .catch(() => { try { c.end(); } catch (_) {} process.exit(1); });
         "; do
-          echo "waiting for the trex database bootstrap ..."
+          echo "waiting for the logto database privileges ..."
           sleep 2
         done
         npm run cli db seed -- --swe && npm run cli db alteration deploy latest && node packages/core/d2e-grants.mjs && npm start

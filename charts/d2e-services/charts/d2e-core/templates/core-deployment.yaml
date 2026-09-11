@@ -157,10 +157,37 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh"]
           args:
-            [
-              "-c",
-              "npm run cli db seed -- --swe && npm run cli db alteration deploy latest && node packages/core/d2e-grants.mjs",
-            ]
+            - "-c"
+            - |
+              # Wait for trex to FINISH provisioning the database before seeding.
+              # d2e-grants.mjs below grants on all tables in schema logto for the
+              # logto_tenant_* roles, while trex's bootstrap grants on the same
+              # tables for alp_pg_admin_user. Both rewrite the same
+              # pg_class.relacl rows and Postgres has no lock that serialises
+              # that, so running them concurrently loses one side to
+              # "tuple concurrently updated" - and trex treats a provisioning
+              # failure as fatal, so it aborts boot and never comes back.
+              #
+              # trex's health endpoint is the event to wait on: its provisioning
+              # is a top-level await that exits non-zero on failure and the
+              # express listener only starts afterwards, so a 200 implies the
+              # bootstrap completed, on a fresh database and on a restart alike.
+              # This init container is in a different Deployment from trex, so
+              # nothing else orders the two.
+              #
+              # node is used deliberately: this image has neither curl nor wget.
+              until node -e "
+                const req = require('http').get('http://trex-http.{{ .Release.Namespace }}.svc.cluster.local:443/trex/_internal/health', (res) => {
+                  res.resume();
+                  process.exit(res.statusCode === 200 ? 0 : 1);
+                });
+                req.setTimeout(5000, () => req.destroy());
+                req.on('error', () => process.exit(1));
+              "; do
+                echo "waiting for trex to finish provisioning the database ..."
+                sleep 2
+              done
+              npm run cli db seed -- --swe && npm run cli db alteration deploy latest && node packages/core/d2e-grants.mjs
           resources:
             {{- toYaml .Values.global.resources.logtoSeedInit | nindent 12 }}
       containers:
