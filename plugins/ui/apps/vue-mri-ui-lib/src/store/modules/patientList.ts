@@ -137,21 +137,28 @@ const getters = {
 
     let index = -1
     const menu = []
-    const selectedAttributes = Object.keys(state.dataModel.resultDefinition.selected_attributes)
+    const selectedAttributes = new Set(Object.keys(state.dataModel.resultDefinition.selected_attributes))
 
     Object.keys(state.columnSelectionMenu).forEach(key => {
-      if (key !== 'patient') {
-        menu.push({
-          ...state.columnSelectionMenu[key],
-          idx: (index += 1),
-          hasSubMenu: false,
-          subMenu: [],
-          disabled: selectedAttributes.filter(attrKey => attrKey.indexOf(key) > -1).length > 0,
-          data: {
-            path: key,
-          },
-        })
-      }
+      const interaction = state.columnSelectionMenu[key]
+      const isBasicData = interaction.isBasicData === true
+      const selected = isBasicData || interaction.subMenu.some(attribute => selectedAttributes.has(attribute.path))
+
+      menu.push({
+        ...interaction,
+        idx: (index += 1),
+        hasSubMenu: false,
+        subMenu: [],
+        toggle: true,
+        selected,
+        disabled: isBasicData,
+        data: isBasicData
+          ? undefined
+          : {
+              path: key,
+              selected: !selected,
+            },
+      })
     })
 
     menu.push({ idx: (index += 1), hasSubMenu: false, isSeperator: true })
@@ -281,6 +288,58 @@ const actions = {
       })
     }
   },
+  setInteractionSelected({ commit, state, rootGetters }, { configPath, selected }) {
+    const interaction = state.columnSelectionMenu[configPath]
+    if (!interaction || interaction.isBasicData) {
+      return
+    }
+
+    const interactionAttributes = interaction.subMenu
+    const selectedAttributes = {
+      ...state.dataModel.resultDefinition.selected_attributes,
+    }
+    const hasInitialAttribute = interactionAttributes.some(
+      attribute => attribute.data?.oInternalConfigAttribute?.patientlist?.initial === true
+    )
+
+    if (selected) {
+      const selectedSequences = Object.values(selectedAttributes)
+        .map(value => Number(value))
+        .filter(value => Number.isFinite(value))
+      let nextSequence = selectedSequences.length > 0 ? Math.max(...selectedSequences) + 1 : 0
+
+      interactionAttributes.forEach(attribute => {
+        const isInitial = attribute.data?.oInternalConfigAttribute?.patientlist?.initial === true
+        if ((!hasInitialAttribute || isInitial) && !(attribute.path in selectedAttributes)) {
+          selectedAttributes[attribute.path] = nextSequence
+          nextSequence += 1
+        }
+      })
+    } else {
+      interactionAttributes.forEach(attribute => {
+        delete selectedAttributes[attribute.path]
+      })
+    }
+
+    let nextResultDefinition = {
+      ...state.dataModel.resultDefinition,
+      selected_attributes: selectedAttributes,
+    }
+    const sortedAttributeRemoved =
+      !selected && interactionAttributes.some(attribute => attribute.path === nextResultDefinition.sorted_attributes)
+
+    if (sortedAttributeRemoved) {
+      nextResultDefinition = applyDefaultSort(rootGetters.getMriFrontendConfig.getPatientListConfig(), {
+        ...nextResultDefinition,
+        sorted_attributes: '',
+        sorting_directions: '',
+      })
+    }
+
+    commit(types.PL_INIT_DATAMODEL, {
+      resultDefinition: nextResultDefinition,
+    })
+  },
   removeSelectedAttribute({ commit, state, dispatch }, { configPath }) {
     if (state.dataModel.resultDefinition.sorted_attributes === configPath) {
       commit(types.PL_UPDATE_SORT_ATTRIBUTE, {
@@ -328,6 +387,7 @@ const actions = {
     const menu: any = {
       [basicDataCols.path]: {
         path: basicDataCols.path,
+        isBasicData: true,
         idx: (index += 1),
         text: rootGetters.getText('MRI_PA_MENUITEM_INTERACTIONS_GENERAL'),
         hasSubMenu: true,

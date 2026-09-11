@@ -1,16 +1,18 @@
 <template>
   <div class="patientlist-container" ref="patientlistContainer" data-testid="pa-patient-list-table">
-    <template v-if="errorMessage">
-      <chartErrorMessage :errorMessage="errorMessage"></chartErrorMessage>
-    </template>
-    <template v-else>
+    <template v-if="!isLoading">
       <menuButton
         :parentContainer="$refs.patientlistContainer"
         :placeholder="getText('MRI_PA_PATIENT_LIST_EDIT_COLUMNS')"
         :menuData="getColumnSelectionMenu"
-        @clickItem="addColumn"
+        @clickItem="handleColumnMenuAction"
       ></menuButton>
       <div style="height: 14px; flex-shrink: 0"></div>
+    </template>
+    <template v-if="errorMessage">
+      <chartErrorMessage :errorMessage="errorMessage"></chartErrorMessage>
+    </template>
+    <template v-else>
       <div class="patientlist-control-wrapper" style="flex: 1; min-height: 0; overflow: auto">
         <patientListControl
           :columns="getSelectedAttributes"
@@ -19,6 +21,7 @@
           :currentPage="currentPage"
           @addColumn="addColumn"
           @removeColumn="removeColumn"
+          @toggleInteraction="toggleInteraction"
           @sort="sort"
           @refreshColumnMenu="populateColumnMenu"
           @fireRequest="setFireRequest"
@@ -63,6 +66,7 @@ export default {
       requestId: 0,
       requestCancel: null as (() => void) | null,
       isUnmounted: false,
+      isLoading: true,
     }
   },
   watch: {
@@ -75,7 +79,11 @@ export default {
         return
       }
       if (Object.keys(this.getSelectedAttributes).length === 0) {
-        return (this.errorMessage = this.getText('MRI_PA_PATIENT_LIT_NO_COLUMNS_SELECTED_MESSAGE'))
+        this.errorMessage = this.getText('MRI_PA_PATIENT_LIT_NO_COLUMNS_SELECTED_MESSAGE')
+        this.isLoading = false
+        this.$emit('busyEv', false)
+        this.$emit('requestError', false)
+        return
       }
       this.errorMessage = ''
 
@@ -173,6 +181,7 @@ export default {
     this.isUnmounted = true
     this.cancelRequest()
     this.$emit('busyEv', false)
+    this.$emit('requestError', false)
   },
   mounted() {
     this.populateColumnMenu()
@@ -197,6 +206,7 @@ export default {
       'changePage',
       'populateColumnMenu',
       'addSelectedAttribute',
+      'setInteractionSelected',
     ]),
     startRequest(fire, onSuccess, onError) {
       this.requestId += 1
@@ -211,20 +221,25 @@ export default {
         this.requestCancel = () => c('cancel')
       })
 
+      this.isLoading = true
       this.$emit('busyEv', true)
+      this.$emit('requestError', false)
 
       fire({ cancelToken })
         .then(data => {
           if (this.isUnmounted || requestId !== this.requestId) return
           onSuccess(data)
+          this.$emit('requestError', false)
         })
         .catch(error => {
           if (this.isUnmounted || requestId !== this.requestId) return
           onError(error)
+          this.$emit('requestError', true)
         })
         .finally(() => {
           if (this.isUnmounted || requestId !== this.requestId) return
           this.requestCancel = null
+          this.isLoading = false
           this.$emit('busyEv', false)
         })
     },
@@ -252,12 +267,23 @@ export default {
       return this.translate(data)
     },
     addColumn(arg) {
-      if (typeof arg === 'string' && arg === 'RESET') {
+      this.addSelectedAttribute({ configPath: arg.path })
+      this.populateColumnMenu()
+      this.setFireRequest()
+    },
+    handleColumnMenuAction(arg) {
+      if (arg === 'RESET') {
         this.initPLModel({ loadDefault: true })
       } else {
-        this.addSelectedAttribute({ configPath: arg.path })
-        this.populateColumnMenu()
+        this.setInteractionSelected({
+          configPath: arg.path,
+          selected: arg.selected,
+        })
       }
+      this.setFireRequest()
+    },
+    toggleInteraction({ path, selected }) {
+      this.setInteractionSelected({ configPath: path, selected })
       this.setFireRequest()
     },
   },

@@ -49,6 +49,47 @@ const mountComponent = (datasetReloadInProgress: boolean) =>
     },
   })
 
+const mountPatientListMinCohort = () =>
+  shallowMount(ChartController as any, {
+    props: {
+      chartBusy: false,
+      shouldRerenderChart: false,
+      showLeftPane: true,
+    },
+    global: {
+      plugins: [
+        createStore({
+          getters: {
+            getActiveChart: () => 'list',
+            getAllAxes: () => [],
+            getAllChartProperties: () => () => ({}),
+            getAllChartConfigs: () => ({ minCohortSize: 10 }),
+            getMriFrontendConfig: () => ({ _internalConfig: { panelOptions: {} } }),
+            getText: () => (key: string) => key,
+            getChartCover: () => false,
+            getChartSelection: () => () => [],
+            getKMDisplayInfo: () => ({}),
+            getActiveBookmark: () => null,
+            getDatasetReloadInProgress: () => false,
+            getBarChartType: () => 'stack',
+            getColorAxisIndex: () => null,
+            getCurrentPatientCount: () => '--',
+          },
+          actions,
+        }),
+      ],
+      stubs: {
+        patientListContainer: true,
+        axisMenuButton: true,
+        xAxisColorButton: true,
+        sortMenuButton: true,
+        cohortEntryExit: true,
+        messageBox: true,
+        appButton: true,
+      },
+    },
+  })
+
 const buildColorAxisStore = (axes: any[], colorAxisIndex: number | null, colorActions: any) =>
   createStore({
     state: { axes },
@@ -194,5 +235,14 @@ describe('ChartController loading precedence', () => {
     const wrapper = mountComponent(false)
 
     expect((wrapper.vm as any).showChartLoadingAnimation).toBe(true)
+  })
+
+  it('keeps a settled patient-list request error above the minimum-cohort placeholder', () => {
+    const wrapper = mountPatientListMinCohort()
+
+    expect((wrapper.vm as any).showMinCohortPlaceholder).toBe(true)
+    ;(wrapper.vm as any).setPatientListRequestError(true)
+
+    expect((wrapper.vm as any).showMinCohortPlaceholder).toBe(false)
   })
 })

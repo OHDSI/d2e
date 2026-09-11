@@ -7,7 +7,182 @@ vi.mock('axios')
 vi.mock('../../../utils/QueryString')
 
 describe('store - patientList', () => {
+  describe('getters', () => {
+    it('derives interaction toggles from exact selected attribute paths', () => {
+      const state = {
+        columnSelectionMenu: {
+          patient: {
+            path: 'patient',
+            text: 'Basic data',
+            isBasicData: true,
+            subMenu: [{ path: 'patient.attributes.pid' }],
+          },
+          'patient.interactions.condition': {
+            path: 'patient.interactions.condition',
+            text: 'Condition occurrence',
+            subMenu: [
+              { path: 'patient.interactions.condition.attributes.code' },
+              { path: 'patient.interactions.condition.attributes.startDate' },
+            ],
+          },
+          'patient.interactions.conditionEra': {
+            path: 'patient.interactions.conditionEra',
+            text: 'Condition era',
+            subMenu: [{ path: 'patient.interactions.conditionEra.attributes.code' }],
+          },
+        },
+        dataModel: {
+          resultDefinition: {
+            selected_attributes: {
+              'patient.attributes.pid': 0,
+              'patient.interactions.condition.attributes.code': 1,
+            },
+          },
+        },
+      }
+
+      const menu = patientList.getters.getColumnSelectionMenu(state, {
+        getText: (key: string) => key,
+      })
+
+      expect(menu.slice(0, 3)).toMatchObject([
+        {
+          path: 'patient',
+          toggle: true,
+          selected: true,
+          disabled: true,
+        },
+        {
+          path: 'patient.interactions.condition',
+          toggle: true,
+          selected: true,
+          disabled: false,
+          data: {
+            path: 'patient.interactions.condition',
+            selected: false,
+          },
+        },
+        {
+          path: 'patient.interactions.conditionEra',
+          toggle: true,
+          selected: false,
+          disabled: false,
+          data: {
+            path: 'patient.interactions.conditionEra',
+            selected: true,
+          },
+        },
+      ])
+    })
+  })
+
   describe('actions', () => {
+    describe('setInteractionSelected', () => {
+      const createAttribute = (path: string, initial = false) => ({
+        path,
+        data: {
+          oInternalConfigAttribute: {
+            patientlist: { initial },
+          },
+        },
+      })
+
+      const createRootGetters = (basicAttributePaths: string[]) => ({
+        getMriFrontendConfig: {
+          getPatientListConfig: () => ({
+            getBasicDataCols: () => ({
+              attributes: basicAttributePaths.map(path => ({
+                getConfigPath: () => path,
+              })),
+            }),
+            getAllAttributes: () =>
+              basicAttributePaths.map(path => ({
+                getConfigPath: () => path,
+                isInitialInPatientList: () => true,
+              })),
+          }),
+        },
+      })
+
+      const findDataModelCommit = (commit: any) =>
+        commit.mock.calls.find(([mutationType]) => mutationType === types.PL_INIT_DATAMODEL)?.[1]
+
+      it('adds the configured initial attributes in one state update', () => {
+        const commit = vi.fn()
+        const state = {
+          columnSelectionMenu: {
+            condition: {
+              path: 'condition',
+              subMenu: [createAttribute('condition.code', true), createAttribute('condition.startDate')],
+            },
+          },
+          dataModel: {
+            currentPage: 4,
+            resultDefinition: {
+              selected_attributes: { 'patient.pid': 0 },
+              sorted_attributes: 'patient.pid',
+              sorting_directions: 'A',
+            },
+          },
+        }
+
+        patientList.actions.setInteractionSelected(
+          { commit, state, rootGetters: createRootGetters(['patient.pid']) },
+          { configPath: 'condition', selected: true }
+        )
+
+        expect(findDataModelCommit(commit)).toEqual({
+          resultDefinition: {
+            selected_attributes: {
+              'patient.pid': 0,
+              'condition.code': 1,
+            },
+            sorted_attributes: 'patient.pid',
+            sorting_directions: 'A',
+          },
+        })
+        expect(commit).toHaveBeenCalledTimes(1)
+      })
+
+      it('removes the complete interaction and repairs a removed sort', () => {
+        const commit = vi.fn()
+        const state = {
+          columnSelectionMenu: {
+            condition: {
+              path: 'condition',
+              subMenu: [createAttribute('condition.code', true), createAttribute('condition.startDate')],
+            },
+          },
+          dataModel: {
+            currentPage: 3,
+            resultDefinition: {
+              selected_attributes: {
+                'patient.pid': 0,
+                'condition.code': 1,
+                'condition.startDate': 2,
+              },
+              sorted_attributes: 'condition.code',
+              sorting_directions: 'D',
+            },
+          },
+        }
+
+        patientList.actions.setInteractionSelected(
+          { commit, state, rootGetters: createRootGetters(['patient.pid']) },
+          { configPath: 'condition', selected: false }
+        )
+
+        expect(findDataModelCommit(commit)).toEqual({
+          resultDefinition: {
+            selected_attributes: { 'patient.pid': 0 },
+            sorted_attributes: 'patient.pid',
+            sorting_directions: 'A',
+          },
+        })
+        expect(commit).toHaveBeenCalledTimes(1)
+      })
+    })
+
     describe('getPatientCount', () => {
       it('calls a backendservice', () => {
         QueryString.prototype = vi.fn().mockImplementationOnce(() => '') as any
