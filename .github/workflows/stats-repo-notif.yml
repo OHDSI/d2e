@@ -201,3 +201,77 @@ jobs:
           region: ${{ vars.AWS_REGION }}
           table: ${{ vars.AWS_D2E_STATS_DYNAMODB }}
           items: ${{ steps.npm_metrics_daily.outputs.npm_downloads_db }}
+
+      # Release stats
+      - name: Get release download counts (cumulative)
+        id: release_stats
+        run: |
+          # Project each page inside the pipe: release bodies carry raw control characters
+          # that jq rejects once the whole payload has been through a shell variable.
+          # The releases API pages at 100, so walk every page to keep the totals cumulative.
+          page=1
+          releases='[]'
+          while :; do
+            page_json=$(curl -sL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GHA_TRAFFIC_TOKEN }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/OHDSI/Data2Evidence/releases?per_page=100&page=${page}" \
+              | jq -c 'map({
+                  release: .tag_name,
+                  published: (.published_at // "" | split("T")[0]),
+                  assets: (.assets | length),
+                  downloads: ([.assets[].download_count] | add // 0)
+                })')
+
+            count=$(echo "$page_json" | jq 'length')
+            [ "$count" -eq 0 ] && break
+            releases=$(jq -nc --argjson acc "$releases" --argjson page "$page_json" '$acc + $page')
+            [ "$count" -lt 100 ] && break
+            page=$((page + 1))
+          done
+
+          echo "release_downloads=${releases}" >> $GITHUB_OUTPUT
+
+          total_releases=$(echo "$releases" | jq 'length')
+          total_downloads=$(echo "$releases" | jq '[.[].downloads] | add // 0')
+          echo "release_summary=total_releases:${total_releases}, total_downloads:${total_downloads}" >> $GITHUB_OUTPUT
+
+          # One row per release version. Download counts are cumulative, so each run stores a
+          # fresh snapshot dated when it was collected.
+          # The table is keyed on date (partition) + type (sort), so the version goes in the
+          # sort key ("release#<version>") to keep versions distinct within a day and
+          # contiguous for begins_with(type, "release#") queries.
+          # `version` repeats it as a plain attribute so consumers don't have to split on "#".
+          release_stats_db=$(echo "$releases" | jq -c \
+            --arg date "$(date -u +'%Y-%m-%d')" \
+            'map({type: ("release#" + .release),
+                  date: $date,
+                  version: .release,
+                  total_count: .downloads})')
+          echo "release_stats_db=${release_stats_db}" >> $GITHUB_OUTPUT
+
+      - name: json to markdown
+        uses: buildingcash/json-to-markdown-table-action@v1
+        id: release_stats_table
+        with:
+          json: ${{ steps.release_stats.outputs.release_downloads }}
+
+      - name: Discord notification release download stats
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_STATISTICS }}
+          username: ${{ github.actor }}
+          content: "### d2e Repo Release Download Stats\n${{ steps.release_stats.outputs.release_summary }}\n```${{ steps.release_stats_table.outputs.table }}```"
+
+      - name: Put DynamoDB Item for release download stats (cumulative)
+        uses: mooyoul/dynamodb-actions@v1.2.1
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        with:
+          operation: batch-put
+          region: ${{ vars.AWS_REGION }}
+          table: ${{ vars.AWS_D2E_STATS_DYNAMODB }}
+          items: ${{ steps.release_stats.outputs.release_stats_db }}
