@@ -182,6 +182,7 @@
     "pyproject.toml",
     "pixi.lock",
     "renv.lock",
+    "renv.aarch64.lock",
     "setup_assets.sh",
     "setup_r.sh",
     "rprofile_java.R"

@@ -6,4 +6,9 @@
 set -euo pipefail
 R CMD javareconf
 Rscript -e 'if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv", repos = "https://packagemanager.posit.co/cran/2025-09-22")'
-Rscript -e 'renv::restore(lockfile = "renv.lock", library = .Library, prompt = FALSE)'
+# linux-aarch64: the CRAN packages conda-forge ships are already installed as
+# conda binaries (pyproject.toml's linux-aarch64 target); renv restores only
+# the rest (renv.aarch64.lock, see build/sync_aarch64_renv_lock.py).
+lockfile=renv.lock
+[ "$(uname -m)" = "aarch64" ] && lockfile=renv.aarch64.lock
+Rscript -e "renv::restore(lockfile = \"${lockfile}\", library = .Library, prompt = FALSE)"

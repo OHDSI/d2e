@@ -47,7 +47,7 @@ cd "/src/plugins/flows/$g"
 bash ../build/stage_package.sh
 dest="/staged/$short/baked"; mkdir -p "$dest"
 cp -a flows _shared_flow_utils __init__.py pyproject.toml pixi.lock "$dest/"
-for extra in renv.lock setup_assets.sh setup_r.sh rprofile_java.R; do
+for extra in renv.lock renv.aarch64.lock setup_assets.sh setup_r.sh rprofile_java.R; do
   [ -f "$extra" ] && cp "$extra" "$dest/" || true
 done
 EOF

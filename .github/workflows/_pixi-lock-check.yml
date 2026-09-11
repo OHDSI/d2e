@@ -30,6 +30,13 @@ jobs:
           run-install: false
       - name: Lockfile up to date
         run: pixi lock --check --manifest-path ${{ matrix.manifest }}/pyproject.toml
+      # linux-aarch64 restores renv.aarch64.lock = renv.lock minus the R
+      # packages pinned as conda-forge binaries; a renv.lock or pin change
+      # without regenerating it would silently skip or double-install packages.
+      - name: renv.aarch64.lock in sync
+        if: hashFiles(format('{0}/renv.aarch64.lock', matrix.manifest)) != ''
+        working-directory: plugins/flows
+        run: python3 build/sync_aarch64_renv_lock.py --check "$(basename '${{ matrix.manifest }}')"
       - name: No compiled sdists in lock
         run: |
           if grep -E 'pypi: https.*\.tar\.gz' "${{ matrix.manifest }}/pixi.lock" \

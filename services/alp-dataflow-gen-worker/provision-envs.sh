@@ -207,7 +207,7 @@ EOF
 
 case "${1:-}" in
   --artifact) provision_artifact "$2" ;;
-  --dir) provision_dir "$2" "${3:-$(cat "$2/pixi.lock" "$2/renv.lock" 2>/dev/null | sha256sum | cut -d' ' -f1)}" ;;
+  --dir) provision_dir "$2" "${3:-$(cat "$2/pixi.lock" "$2/renv.lock" "$2/renv.aarch64.lock" 2>/dev/null | sha256sum | cut -d' ' -f1)}" ;;
   --watch) watch_loop ;;
   *) echo "usage: provision-envs.sh --artifact '<json>' | --dir <dir> | --watch" >&2; exit 2 ;;
 esac
