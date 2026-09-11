@@ -253,15 +253,91 @@ export function buildBootstrapStatements(cfg: BootstrapConfig): string[] {
   return out;
 }
 
+// ── Concurrent catalog writers ────────────────────────────────────────────
+//
+// Postgres offers no lock that serialises two sessions granting on the same
+// catalog row. `GRANT ... ON ALL TABLES IN SCHEMA x` rewrites pg_class.relacl
+// for every table in the schema, so when a second client touches the same
+// tables at the same instant one of the two loses the race and gets
+// `XX000 tuple concurrently updated` out of simple_heap_update.
+//
+// That is not hypothetical: alp-logto's entrypoint runs
+// `node packages/core/d2e-grants.mjs`, which grants on all tables in schema
+// `logto` to its logto_tenant_* roles, while this bootstrap grants on the same
+// tables to alp_pg_admin_user. On a first boot the logto entrypoint waits for
+// this bootstrap to create the schema and privileges it polls for, so the two
+// are ordered by accident; on a restart those privileges already exist, the
+// poll passes immediately and the two run concurrently.
+//
+// Every statement built above is idempotent, so replaying the loser is safe,
+// and retry is the only remedy Postgres offers. Deliberately scoped to exactly
+// this error: any other failure still aborts on the first attempt, because a
+// half-provisioned database must never reach trex's server.listen.
+const CONCURRENT_UPDATE_ATTEMPTS = 5;
+const CONCURRENT_UPDATE_BACKOFF_MS = 100;
+
+/** True only for Postgres' `XX000 tuple concurrently updated`. The executor
+ *  trex hands us is node-postgres' `pool.query`, which carries the server's
+ *  SQLSTATE on `.code`; both halves must match so a different XX000
+ *  (internal_error covers more than this) is never retried. */
+export function isConcurrentCatalogUpdate(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const { code, message } = err as { code?: unknown; message?: unknown };
+  return code === "XX000" && typeof message === "string" &&
+    message.includes("tuple concurrently updated");
+}
+
+/** Statement text for the retry warning. Role statements carry
+ *  `ENCRYPTED PASSWORD <literal>`, so everything from the keyword on is
+ *  dropped rather than written to stdout, and the rest is capped — the log
+ *  only has to say which statement lost the race. */
+export function redactStatement(sql: string): string {
+  const cut = sql.search(/\bPASSWORD\b/i);
+  const head = cut === -1 ? sql : sql.slice(0, cut);
+  const capped = head.slice(0, 120);
+  return capped.length < sql.length ? `${capped.trimEnd()} ...` : capped;
+}
+
+export interface RunBootstrapOptions {
+  /** Total attempts per statement, including the first. */
+  attempts?: number;
+  /** Delay before the first retry; doubled for each further attempt. */
+  backoffMs?: number;
+  /** Injectable for tests so they do not pay the real backoff. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 /** Execute the built statements in order. Rejects on the first failure — the
- *  caller treats a bootstrap failure as fatal. */
+ *  caller treats a bootstrap failure as fatal — except for a concurrent
+ *  catalog update, which is retried a bounded number of times first. */
 export async function runBootstrapStatements(
   exec: (sql: string) => Promise<unknown>,
   cfg: BootstrapConfig,
+  opts: RunBootstrapOptions = {},
 ): Promise<number> {
+  const attempts = opts.attempts ?? CONCURRENT_UPDATE_ATTEMPTS;
+  const backoffMs = opts.backoffMs ?? CONCURRENT_UPDATE_BACKOFF_MS;
+  const sleep = opts.sleep ?? defaultSleep;
   const statements = buildBootstrapStatements(cfg);
   for (const sql of statements) {
-    await exec(sql);
+    for (let attempt = 1;; attempt++) {
+      try {
+        await exec(sql);
+        break;
+      } catch (err) {
+        if (attempt >= attempts || !isConcurrentCatalogUpdate(err)) throw err;
+        // Logged, not swallowed: a bootstrap that quietly races another writer
+        // on every restart is worth seeing in the boot log.
+        console.warn(
+          `[d2e-bootstrap] concurrent catalog update on attempt ${attempt}/${attempts}, retrying: ${
+            redactStatement(sql)
+          }`,
+        );
+        await sleep(backoffMs * 2 ** (attempt - 1));
+      }
+    }
   }
   return statements.length;
 }
