@@ -50,6 +50,7 @@ jobs:
         filters: |
           vue_mri_ui_lib_changed:
             - 'plugins/ui/apps/vue-mri-ui-lib/**'
+            - 'plugins/ui/libs/d2e-ui/**'
             - '.github/workflows/ui-test-vue.yml'
 
     - name: Setup bun if vue files have changed
@@ -77,3 +78,14 @@ jobs:
       run: |
         bun install
         bunx nx run vue-mri:test:ci
+
+    - name: Run @d2e/ui library checks
+      if: github.ref_name == 'develop' || github.event_name == 'merge_group' || steps.check_vue_files_changed.outputs.vue_mri_ui_lib_changed == 'true'
+      run: |
+        cd libs/d2e-ui
+        # fails if tokens.css has drifted from tokens.ts
+        bun run tokens:check
+        bun run test
+        # build the distributable and check its contract
+        bun run build
+        bun run verify:dist

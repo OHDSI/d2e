@@ -1,0 +1,4 @@
+# plugins/ui/.gitignore ignores each package-lock.json, because CI writes a
+# temporary one into apps/vue-mri-ui-lib. This sub-project uses npm, so keep
+# its lockfile in git.
+!package-lock.json

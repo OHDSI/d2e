@@ -84,16 +84,20 @@ volumes:
 
 ### Theme Configuration
 
-The application supports two built-in themes configured in `src/main.ts`:
+The application has a single theme. There is no theme switch and no
+`applyTheme()` call — the Atlas theme was removed.
 
-- **`atlas`** - Default ATLAS theme
-- **`d2e`** - Data2Evidence theme
+Colours come from two places:
 
-To change the theme, modify the `applyTheme()` call in `src/main.ts`:
+- `src/styles/themes/_main.scss` defines the `--color-*` palette on `:root`.
+  Both entry points (`src/main.ts`, `src/lifecycles.ts`) import it directly.
+- `src/plugins/vuetify.ts` builds the Vuetify `d2e` theme from the design
+  tokens in `@d2e/ui` (`buildD2eVuetifyOptions()` plus `@d2e/ui/tokens.css`).
 
-```typescript
-applyTheme('atlas')  // or applyTheme('d2e')
-```
+New styles should use the `@d2e/ui` tokens. The `--color-*` palette is a
+legacy layer that is being retired; see
+`docs/projects/vue-mri-ui/design-system/TOKEN-AUDIT-2026-09-01.md` in the
+workspace for the consolidation plan.
 
 ## Local Development Setup
 

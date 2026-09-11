@@ -6,6 +6,7 @@ import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
 import path from 'path'
+import { vueDir, vuetifyDir } from './vite.resolve-deps'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -129,13 +130,30 @@ export default defineConfig(({ command, mode }) => {
     },
 
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
+      alias: [
+        // @d2e/ui is private and unpublished, so the CI atlas build (npm install
+        // --workspaces=false) cannot resolve it from the registry. Source-export it
+        // from the lib and keep vue/vuetify on the app's installed copy so the
+        // library's own bare imports resolve during the isolated install.
+        { find: '@d2e/ui/tokens.css', replacement: path.resolve(__dirname, '../../libs/d2e-ui/src/tokens/tokens.css') },
+        { find: '@d2e/ui', replacement: path.resolve(__dirname, '../../libs/d2e-ui/src/index.ts') },
         // Dedupe Vue to prevent multiple instances (matching webpack alias)
-        vue: path.resolve(__dirname, 'node_modules/vue'),
+        { find: 'vue', replacement: vueDir },
+        // Vuetify ships its entries under lib/ and routes subpaths through its
+        // exports map. Resolve the JS entries the library (and app) use to the
+        // app's installed copy; leave Sass subpaths (vuetify/settings) alone so
+        // the Sass node importer can find them via the package's partials.
+        { find: 'vuetify/styles', replacement: path.join(vuetifyDir, 'lib/styles/main.css') },
+        {
+          find: /^vuetify\/(components|directives)(\/(.+))?$/,
+          replacement: path.join(vuetifyDir, 'lib/$1$2'),
+        },
+        { find: /^vuetify$/, replacement: path.join(vuetifyDir, 'lib/framework.js') },
         // D3 v3 wrapper - provides access to window.d3 (loaded from public/vendor)
-        d3: path.resolve(__dirname, './src/lib/d3.ts'),
-      },
+        { find: 'd3', replacement: path.resolve(__dirname, './src/lib/d3.ts') },
+        // App-local imports (matching webpack alias)
+        { find: '@', replacement: path.resolve(__dirname, './src') },
+      ],
     },
 
     css: {
@@ -146,7 +164,9 @@ export default defineConfig(({ command, mode }) => {
           {
             postcssPlugin: 'remove-color-adjust',
             Declaration: {
-              'color-adjust': (decl) => { decl.remove() },
+              'color-adjust': decl => {
+                decl.remove()
+              },
             },
           },
         ],

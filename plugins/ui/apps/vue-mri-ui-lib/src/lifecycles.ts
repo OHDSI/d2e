@@ -11,7 +11,7 @@ import { installPortalPropsListener } from './bootstrap/portalPropsListener'
 import { initGlobalsOnce, registerDirectivesAndComponents } from './bootstrap/registerGlobals'
 import { useUnsavedChanges } from './composables/useUnsavedChanges'
 import type { PortalContextState } from './types/portal-props'
-import { applyAppTheme } from './bootstrap/themeBootstrap'
+import './styles/themes/_main.scss'
 
 let watcherStop: (() => void) | null = null
 let propsListenerStop: (() => void) | null = null
@@ -41,8 +41,7 @@ const lifecycles = singleSpaVue({
   },
   async handleInstance(app: any, props: PortalContextState) {
     await initGlobalsOnce()
-    applyAppTheme('d2e')
-
+  
     const pinia = createPinia()
     app.use(pinia)
     setActivePinia(pinia)

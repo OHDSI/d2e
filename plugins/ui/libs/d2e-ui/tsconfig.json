@@ -12,14 +12,12 @@
     "baseUrl": ".",
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@/*": ["src/*"],
-      "@d2e/ui": ["../../libs/d2e-ui/src/index.ts"],
-      "@d2e/ui/tokens.css": ["../../libs/d2e-ui/src/tokens/tokens.css"]
+      "@/*": ["src/*"]
     },
     "lib": ["esnext", "dom", "dom.iterable", "scripthost"],
     "skipLibCheck": true,
     "noErrorTruncation": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "tests/**/*.ts", "tests/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.vue", "scripts/**/*.ts"],
   "exclude": ["node_modules"]
 }

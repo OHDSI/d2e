@@ -7,7 +7,7 @@ import { createPinia } from 'pinia'
 import { createStore } from './store'
 import { initializeApps } from './utils/AppRegistry'
 import { initializeComponents } from './utils/ComponentRegistry'
-import { applyAppTheme } from './bootstrap/themeBootstrap'
+import './styles/themes/_main.scss'
 import { createPortalContextStore } from './stores/portalContext'
 import { initGlobalsOnce, registerDirectivesAndComponents } from './bootstrap/registerGlobals'
 import type { PortalContextState } from './types/portal-props'
@@ -20,17 +20,12 @@ const isAtlas = import.meta.env.VITE_STANDALONE_ATLAS === 'true'
 
 if (isAtlas) {
   app = createApp(RootLayout as unknown as Component)
-  applyAppTheme('atlas')
-
-  // For local development, uncomment to use D2E theme
-  // applyAppTheme('d2e')
 
   // Initialize registries
   initializeApps()
   initializeComponents()
 } else {
   app = createApp(App as unknown as Component)
-  applyAppTheme('d2e')
 }
 
 const pinia = createPinia()

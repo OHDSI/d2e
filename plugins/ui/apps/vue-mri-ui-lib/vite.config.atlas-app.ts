@@ -4,6 +4,7 @@ import vue from '@vitejs/plugin-vue'
 import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 import path from 'path'
 import { copyFileSync, mkdirSync, readdirSync } from 'fs'
+import { vueDir, vuetifyDir } from './vite.resolve-deps'
 
 // The d4l web components use Stencil lazy loading: entry chunks are resolved at
 // runtime relative to the importing chunk's URL, invisible to Rollup's static
@@ -65,12 +66,27 @@ export default defineConfig({
   },
 
   resolve: {
-    alias: {
-      '@d4l/web-components-library/dist/loader': path.resolve(__dirname, 'src/bootstrap/d4lLoaderNativeEsm.ts'),
-      '@': path.resolve(__dirname, './src'),
-      vue: path.resolve(__dirname, 'node_modules/vue'),
-      d3: path.resolve(__dirname, './src/lib/d3.ts'),
-    },
+    alias: [
+      {
+        find: '@d4l/web-components-library/dist/loader',
+        replacement: path.resolve(__dirname, 'src/bootstrap/d4lLoaderNativeEsm.ts'),
+      },
+      // @d2e/ui is private and unpublished, so the CI atlas build (npm install
+      // --workspaces=false) cannot resolve it from the registry. Source-export it
+      // from the lib and keep vue/vuetify on the app's installed copy so the
+      // library's own bare imports resolve during the isolated install.
+      { find: '@d2e/ui/tokens.css', replacement: path.resolve(__dirname, '../../libs/d2e-ui/src/tokens/tokens.css') },
+      { find: '@d2e/ui', replacement: path.resolve(__dirname, '../../libs/d2e-ui/src/index.ts') },
+      { find: 'vue', replacement: vueDir },
+      { find: 'vuetify/styles', replacement: path.join(vuetifyDir, 'lib/styles/main.css') },
+      {
+        find: /^vuetify\/(components|directives)(\/(.+))?$/,
+        replacement: path.join(vuetifyDir, 'lib/$1$2'),
+      },
+      { find: /^vuetify$/, replacement: path.join(vuetifyDir, 'lib/framework.js') },
+      { find: 'd3', replacement: path.resolve(__dirname, './src/lib/d3.ts') },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
 
   css: {
