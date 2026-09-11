@@ -52,6 +52,35 @@ Search the JSON response for the interaction name to find available attribute na
 1. Download the appropriate template (`wizards-config.json` or `wizards-config-hana-lean.json`)
 2. Replace attribute paths using the names discovered in the previous step
 
+## Numeric Fields and Negative Values
+
+CDW attributes continue to use `"type": "num"` for all numeric data. Wizard
+configuration adds a field-level `allowNegative` option so each form can apply
+the domain rule it needs without changing the CDW config:
+
+```json
+{
+  "id": "signedLabResult",
+  "type": "num",
+  "label": "Signed lab result",
+  "required": false,
+  "allowNegative": true
+}
+```
+
+- Missing or `false` means negative operands are rejected. The numeric tooltip
+  also omits its negative-value guidance.
+- `true` accepts negative scalars, comparisons, and interval endpoints and shows
+  the corresponding tooltip guidance.
+- Positive scalars (`60`), comparisons (`>=60`), and intervals (`[50-80]`) are
+  supported by both policies.
+
+The checked-in templates explicitly mark their age, anthropometric, and vital
+fields with `"allowNegative": false`. If an active PA Wizard config contains a
+field whose domain legitimately includes signed values, set `allowNegative` to
+`true` before rollout. Updating these repository templates does not modify
+already persisted PA configurations.
+
 ## Form Notes
 
 Use `formNote` on an individual wizard to customize the italic note displayed with its form:

@@ -50,6 +50,7 @@
         {
           "id": "age",
           "type": "num",
+          "allowNegative": false,
           "label": "Age Range",
           "required": true,
           "configPath": "patient.attributes.Age"
@@ -78,6 +79,7 @@
         {
           "id": "height",
           "type": "num",
+          "allowNegative": false,
           "label": "Height",
           "placeholder": "cm",
           "required": false,
@@ -94,6 +96,7 @@
         {
           "id": "weight",
           "type": "num",
+          "allowNegative": false,
           "label": "Weight",
           "placeholder": "kg",
           "required": false,
@@ -110,6 +113,7 @@
         {
           "id": "bmi",
           "type": "num",
+          "allowNegative": false,
           "label": "BMI",
           "placeholder": "kg/m\u00b2",
           "required": false,
@@ -126,6 +130,7 @@
         {
           "id": "respRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Resp Rate",
           "placeholder": "bpm",
           "required": true,
@@ -142,6 +147,7 @@
         {
           "id": "pulseRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Pulse Rate",
           "placeholder": "bpm",
           "required": true,
@@ -158,6 +164,7 @@
         {
           "id": "systolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Systolic Blood Pressure",
           "placeholder": "mmHg",
           "required": true,
@@ -174,6 +181,7 @@
         {
           "id": "diastolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Diastolic Blood Pressure",
           "placeholder": "mmHg",
           "required": true,
@@ -291,6 +299,7 @@
         {
           "id": "age",
           "type": "num",
+          "allowNegative": false,
           "label": "Age Range",
           "required": true,
           "configPath": "patient.attributes.Age"
@@ -319,6 +328,7 @@
         {
           "id": "height",
           "type": "num",
+          "allowNegative": false,
           "label": "Height",
           "placeholder": "cm",
           "required": false,
@@ -335,6 +345,7 @@
         {
           "id": "weight",
           "type": "num",
+          "allowNegative": false,
           "label": "Weight",
           "placeholder": "kg",
           "required": false,
@@ -351,6 +362,7 @@
         {
           "id": "bmi",
           "type": "num",
+          "allowNegative": false,
           "label": "BMI",
           "placeholder": "kg/m\u00b2",
           "required": false,
@@ -367,6 +379,7 @@
         {
           "id": "respRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Resp Rate",
           "placeholder": "bpm",
           "required": true,
@@ -383,6 +396,7 @@
         {
           "id": "pulseRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Pulse Rate",
           "placeholder": "bpm",
           "required": true,
@@ -399,6 +413,7 @@
         {
           "id": "systolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Systolic Blood Pressure",
           "placeholder": "mmHg",
           "required": true,
@@ -415,6 +430,7 @@
         {
           "id": "diastolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Diastolic Blood Pressure",
           "placeholder": "mmHg",
           "required": true,
@@ -532,6 +548,7 @@
         {
           "id": "age",
           "type": "num",
+          "allowNegative": false,
           "label": "Age Range",
           "required": true,
           "configPath": "patient.attributes.Age"
@@ -560,6 +577,7 @@
         {
           "id": "height",
           "type": "num",
+          "allowNegative": false,
           "label": "Height",
           "placeholder": "cm",
           "required": false,
@@ -576,6 +594,7 @@
         {
           "id": "weight",
           "type": "num",
+          "allowNegative": false,
           "label": "Weight",
           "placeholder": "kg",
           "required": false,
@@ -592,6 +611,7 @@
         {
           "id": "bmi",
           "type": "num",
+          "allowNegative": false,
           "label": "BMI",
           "placeholder": "kg/m\u00b2",
           "required": false,
@@ -608,6 +628,7 @@
         {
           "id": "respRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Resp Rate",
           "placeholder": "bpm",
           "required": true,
@@ -624,6 +645,7 @@
         {
           "id": "pulseRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Pulse Rate",
           "placeholder": "bpm",
           "required": true,
@@ -640,6 +662,7 @@
         {
           "id": "systolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Systolic Blood Pressure",
           "placeholder": "mmHg",
           "required": true,
@@ -656,6 +679,7 @@
         {
           "id": "diastolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Diastolic Blood Pressure",
           "placeholder": "mmHg",
           "required": true,
@@ -782,6 +806,7 @@
         {
           "id": "age",
           "type": "num",
+          "allowNegative": false,
           "label": "Age Range",
           "required": false,
           "configPath": "patient.attributes.Age"
@@ -817,6 +842,7 @@
         {
           "id": "height",
           "type": "num",
+          "allowNegative": false,
           "label": "Height",
           "placeholder": "cm",
           "required": false,
@@ -833,6 +859,7 @@
         {
           "id": "weight",
           "type": "num",
+          "allowNegative": false,
           "label": "Weight",
           "placeholder": "kg",
           "required": false,
@@ -849,6 +876,7 @@
         {
           "id": "bmi",
           "type": "num",
+          "allowNegative": false,
           "label": "BMI",
           "placeholder": "kg/m\u00b2",
           "required": false,
@@ -865,6 +893,7 @@
         {
           "id": "respRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Resp Rate",
           "placeholder": "bpm",
           "required": false,
@@ -881,6 +910,7 @@
         {
           "id": "pulseRate",
           "type": "num",
+          "allowNegative": false,
           "label": "Pulse Rate",
           "placeholder": "bpm",
           "required": false,
@@ -897,6 +927,7 @@
         {
           "id": "systolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Systolic Blood Pressure",
           "placeholder": "mmHg",
           "required": false,
@@ -913,6 +944,7 @@
         {
           "id": "diastolicBp",
           "type": "num",
+          "allowNegative": false,
           "label": "Diastolic Blood Pressure",
           "placeholder": "mmHg",
           "required": false,

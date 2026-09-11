@@ -41,7 +41,7 @@ export function isWizardVisibleOnSurface(wizard: Pick<WizardConfig, "surfaces">,
 /**
  * Enrich a field definition using CDW config data looked up via configPath.
  */
-function enrichField(field: FieldDefinition, cdwConfig: CdwConfig): FieldDefinition {
+export function enrichWizardField(field: FieldDefinition, cdwConfig: CdwConfig): FieldDefinition {
   if (!field.configPath) return field;
 
   const attr = getAttributeByPath(cdwConfig, field.configPath);
@@ -61,7 +61,7 @@ function enrichField(field: FieldDefinition, cdwConfig: CdwConfig): FieldDefinit
 function toWizardDefinition(config: WizardConfig, cdwConfig: CdwConfig): WizardDefinition {
   return {
     ...config,
-    fields: config.fields.map((field) => enrichField(field, cdwConfig)),
+    fields: config.fields.map((field) => enrichWizardField(field, cdwConfig)),
     steps: DEFAULT_STEPS,
   };
 }
@@ -73,6 +73,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "age",
     type: "num",
+    allowNegative: false,
     label: "Age Range",
     required: false,
     configPath: "patient.attributes.Age",
@@ -116,6 +117,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "height",
     type: "num",
+    allowNegative: false,
     label: "Height",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",
@@ -131,6 +133,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "weight",
     type: "num",
+    allowNegative: false,
     label: "Weight",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",
@@ -146,6 +149,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "bmi",
     type: "num",
+    allowNegative: false,
     label: "BMI",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",
@@ -161,6 +165,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "respRate",
     type: "num",
+    allowNegative: false,
     label: "Resp Rate",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",
@@ -176,6 +181,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "pulseRate",
     type: "num",
+    allowNegative: false,
     label: "Pulse Rate",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",
@@ -191,6 +197,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "systolicBp",
     type: "num",
+    allowNegative: false,
     label: "Systolic Blood Pressure",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",
@@ -206,6 +213,7 @@ const WIZARD_FIELDS: FieldDefinition[] = [
   {
     id: "diastolicBp",
     type: "num",
+    allowNegative: false,
     label: "Diastolic Blood Pressure",
     required: false,
     configPath: "patient.interactions.measurement.attributes.numval",

@@ -53,6 +53,8 @@ export interface FieldDefinition {
   allowFreeText?: boolean;
   /** If true, condition fields exclude descendant concepts by default */
   excludeDescendantsByDefault?: boolean;
+  /** If true, numeric expressions may contain negative operands. Missing defaults to false. */
+  allowNegative?: boolean;
 }
 
 /**
