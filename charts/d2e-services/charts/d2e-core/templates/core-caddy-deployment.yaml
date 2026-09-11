@@ -95,10 +95,18 @@ spec:
         - name: caddy-local-pki
           secret:
             secretName: "{{ .Release.Name }}-{{ .Chart.Name }}-caddy"
-        # Internal CA for `tls_trust_pool file` on the trex upstreams. Note this
-        # is the chart-level secret, not the -caddy one above: the -caddy secret
-        # holds Caddy's own edge PKI, not the internal CA. CA only -- Caddy is a
-        # client on these hops, never the server.
+        # Internal TLS material from the chart-level secret, not the -caddy one
+        # above: the -caddy secret holds Caddy's own edge PKI (SERVER__CRT, the
+        # environment's real public certificate), not the internal CA.
+        #
+        # ca.pem  -- Caddy as a *client*, for `tls_trust_pool file` when proxying
+        #            to the trex/idp upstreams.
+        # cert.pem/key.pem -- Caddy as a *server*, for the
+        #            https://gateway.<ns>.svc.cluster.local site block. Internal
+        #            callers (WebAPI fetching the advertised jwks_uri) dial the
+        #            gateway by its cluster name, which SERVER__CRT does not
+        #            cover; without a certificate for it Caddy aborts the
+        #            handshake and WebAPI's OIDC bean fails to build.
         - name: d2e-tls
           secret:
             secretName: "{{ .Release.Name }}-{{ .Chart.Name }}"
@@ -106,3 +114,10 @@ spec:
               - key: TLS__INTERNAL__CA_CRT
                 path: ca.pem
                 mode: 0444
+              - key: TLS__INTERNAL__CRT
+                path: cert.pem
+                mode: 0444
+              # Owner-only: this is a private key, and Caddy runs as root here.
+              - key: TLS__INTERNAL__KEY
+                path: key.pem
+                mode: 0400

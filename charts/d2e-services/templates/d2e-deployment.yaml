@@ -90,6 +90,9 @@ spec:
             requests:
               cpu: 50m
               memory: 50Mi
+            limits: 
+              cpu: 100m
+              memory: 100Mi
           volumeMounts:
             - mountPath: /etc/d2e/tls
               name: d2e-tls
@@ -123,7 +126,10 @@ spec:
               cp -rfv /data/plugins/bunfig.toml /usr/src/data/plugins/bunfig.toml && exit 0",
             ]
         - name: logto-check
-          image: busybox:latest
+          # Not busybox: its wget has no --ca-certificate, only the
+          # --no-check-certificate bypass. The trex image is already pulled for
+          # this pod and ships curl, which verifies chain and hostname by default.
+          image: ghcr.io/ohdsi/d2e-trex:{{ .Values.global.image.tag }}
           resources:
             {{- toYaml .Values.global.resources.logtoCheck | nindent 12 }}
           volumeMounts:
@@ -134,7 +140,7 @@ spec:
             [
               "sh",
               "-c",
-              "while :;do sleep 20 && wget --ca-certificate=/etc/d2e/tls/ca.pem -O success https://idp.{{ .Release.Namespace }}.svc.cluster.local:443/api/status && if test -f success; then exit 0; fi; done",
+              "until curl -sf --cacert /etc/d2e/tls/ca.pem https://idp.{{ .Release.Namespace }}.svc.cluster.local:443/api/status >/dev/null; do echo 'waiting for logto ...'; sleep 20; done",
             ]
         - name: logto-post-init
           env:
@@ -441,11 +447,39 @@ spec:
               # Three runtimes share this container and each finds its trust
               # anchors somewhere different. The OS store covers shell/curl and,
               # via DENO_TLS_CA_STORE=system, the Deno edge functions. GraalVM
-              # WebAPI ignores the OS store entirely and reads WEBAPI_TRUST_CERTS.
-              # All three are required: a pod-level curl check passes while the
-              # other two runtimes still fail.
-              cp /etc/d2e/tls/ca.pem /usr/local/share/ca-certificates/d2e-internal-ca.crt
+              # WebAPI ignores the OS store entirely and reads WEBAPI_TRUST_CERTS
+              # (which points at this same file). All three are required: a
+              # pod-level curl check passes while the other two runtimes fail.
+              #
+              # Assert rather than hope. This copy previously ran against a path
+              # the container did not mount: the cp failed, update-ca-certificates
+              # had nothing to add, and the process started with public roots only.
+              # Every internal TLS call then failed -- UnknownIssuer from rustls,
+              # PKIX from GraalVM -- while the `curl -fk` liveness probe still went
+              # green, so the pod reported Ready. Starting untrusted is worse than
+              # not starting, so each step below is checked.
+              ca=/etc/d2e/tls/ca.pem
+              if [ ! -s "$ca" ]; then
+                echo "FATAL: $ca is missing or empty -- the d2e-tls volume is not mounted, or global.secrets.TLS__INTERNAL__CA_CRT is empty. Refusing to start without the internal trust anchor." >&2
+                exit 1
+              fi
+              if ! grep -q '^-----BEGIN CERTIFICATE-----$' "$ca"; then
+                echo "FATAL: $ca is not a PEM certificate. Refusing to start without the internal trust anchor." >&2
+                exit 1
+              fi
+              cp "$ca" /usr/local/share/ca-certificates/d2e-internal-ca.crt || {
+                echo "FATAL: could not install $ca into the OS trust store." >&2
+                exit 1
+              }
               update-ca-certificates
+              # The anchor is self-signed, so verifying it against the freshly
+              # rebuilt bundle proves it is actually in the store -- not merely
+              # that the file was copied and the rebuild exited 0.
+              if ! openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt "$ca" >/dev/null 2>&1; then
+                echo "FATAL: the internal CA is not present in the OS trust store after update-ca-certificates. Refusing to start untrusted." >&2
+                exit 1
+              fi
+              echo "internal CA installed into OS trust store: $(openssl x509 -in "$ca" -noout -subject)"
               exec /usr/src/entrypoint.sh ${TREX_OTEL_ENABLED:+--enable-otel}
           env:
             - name: RUST_BACKTRACE
@@ -1168,6 +1202,12 @@ spec:
             # webapi-init container, which ran the same files through psql.
             - mountPath: /usr/src/atlas-db-init
               name: atlas-db-init
+            # The internal CA, read by the args above (OS trust store, for
+            # shell/curl and DENO_TLS_CA_STORE=system) and by the GraalVM WebAPI
+            # via WEBAPI_TRUST_CERTS. Without this mount all three go untrusted.
+            - mountPath: /etc/d2e/tls
+              name: d2e-tls
+              readOnly: true
             {{- if .Values.features.materializeCohorts }}
             - mountPath: /usr/src/cert/client.crt
               name: materialize-cohorts-client-pki

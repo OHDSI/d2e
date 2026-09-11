@@ -33,12 +33,16 @@ spec:
       #       claimName: trex-pvc
       initContainers:
         - name: dependencies-check
-          image: busybox:latest
+          # Not busybox: its wget has no --ca-certificate, only the
+          # --no-check-certificate bypass. The worker image is already pulled for
+          # this pod and ships curl (see its Dockerfile), which verifies chain and
+          # hostname by default.
+          image: ghcr.io/ohdsi/d2e-dataflow-gen-worker:{{ .Values.global.image.tag }}
           command:
             [
               "sh",
               "-c",
-              "while :;do sleep {{ .Values.dataflowWorker.readinessSleep }} && wget --ca-certificate=/etc/d2e/tls/ca.pem -O success-trex https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/trex/_internal/health && wget --ca-certificate=/etc/d2e/tls/ca.pem -O success-dataflow https://dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local:443/d2e/api/health && if test -f success-trex; then if test -f success-dataflow; then exit 0; fi; fi; done",
+              "until curl -sf --cacert /etc/d2e/tls/ca.pem https://trex.{{ .Release.Namespace }}.svc.cluster.local:443/trex/_internal/health >/dev/null && curl -sf --cacert /etc/d2e/tls/ca.pem https://dataflow-gen.{{ .Release.Namespace }}.svc.cluster.local:443/d2e/api/health >/dev/null; do echo 'waiting for trex and dataflow-gen ...'; sleep {{ .Values.dataflowWorker.readinessSleep }}; done",
             ]
           volumeMounts:
             - mountPath: /etc/d2e/tls
@@ -301,6 +305,21 @@ spec:
               value: "10"
             - name: ROUNDING_TARGET
               value: "10"
+            # Trust the internal self-signed CA across every Python HTTP stack,
+            # matching docker-compose (alp-dataflow-gen-worker). The args above
+            # put the CA into the OS bundle; these point urllib/requests/httpx at
+            # that bundle. Without them only clients that explicitly pass
+            # certifi.where() are covered -- stdlib urlopen (run-flow.sh's
+            # deployment lookup) and websockets (the prefect events subscriber)
+            # read OpenSSL's defaults, which under `pixi run` resolve inside the
+            # env prefix (<env>/ssl/cert.pem) and never see the CA. Flows also
+            # exec in their own per-plugin pixi env provisioned at run time, so a
+            # startup-time append to this env's certifi cannot reach them; an
+            # inherited env var can.
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/ca-certificates.crt
+            - name: REQUESTS_CA_BUNDLE
+              value: /etc/ssl/certs/ca-certificates.crt
           command:
             - /entrypoint.sh
             - pixi
@@ -312,8 +331,11 @@ spec:
           args:
             - >-
               rm -rf /root/.prefect/storage/run_cache.db /root/.prefect/storage/events.db;
-              cp /etc/d2e/tls/ca.pem /usr/local/share/ca-certificates/d2e-internal-ca.crt;
+              if [ ! -s /etc/d2e/tls/ca.pem ]; then echo "FATAL: /etc/d2e/tls/ca.pem is missing or empty -- the d2e-tls volume is not mounted, or global.secrets.TLS__INTERNAL__CA_CRT is empty. Refusing to start without the internal trust anchor." >&2; exit 1; fi;
+              grep -q '^-----BEGIN CERTIFICATE-----$' /etc/d2e/tls/ca.pem || { echo "FATAL: /etc/d2e/tls/ca.pem is not a PEM certificate. Refusing to start untrusted." >&2; exit 1; };
+              cp /etc/d2e/tls/ca.pem /usr/local/share/ca-certificates/d2e-internal-ca.crt || { echo "FATAL: could not install the internal CA into the OS trust store." >&2; exit 1; };
               update-ca-certificates;
+              openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /etc/d2e/tls/ca.pem >/dev/null 2>&1 || { echo "FATAL: the internal CA is not present in /etc/ssl/certs/ca-certificates.crt after update-ca-certificates. SSL_CERT_FILE/REQUESTS_CA_BUNDLE point at that bundle, so every Python HTTP stack would fail verification. Refusing to start untrusted." >&2; exit 1; };
               python -c 'import certifi; open(certifi.where(), "a").write("\n" + open("/etc/d2e/tls/ca.pem").read() + "\n")';
               prefect work-pool create "${PREFECT_POOL:-process-pool}" --type ${WORKPOOL_TYPE:-process};
               prefect worker start --pool "${PREFECT_POOL:-process-pool}" --type ${WORKPOOL_TYPE:-process}
