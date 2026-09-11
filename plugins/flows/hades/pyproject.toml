@@ -347,3 +347,10 @@ setup-r = "bash setup_r.sh"
 "r-zoo" = "==1.8_14"
 # Something in the R stack pulls conda numpy; hold it to the pypi pin.
 "numpy" = "==2.0.0"
+# renv itself: hades' renv.lock has no renv record, so nothing above pins it,
+# and r-rsconnect pulls the latest conda-forge renv (1.2.x), which setup_r.sh
+# then uses instead of installing the snapshot's. renv 1.2.x resolved GitHub
+# records to their current HEADs (Keeper 2.1.3, needing DatabaseConnector >=
+# 7.0.0) instead of the locked commits. Hold it to the snapshot version that
+# linux-64 installs, as data_transformation and base do via their renv.lock.
+"r-renv" = "==1.1.5"
