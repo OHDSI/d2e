@@ -247,7 +247,7 @@ Deno.test("ALTER DEFAULT PRIVILEGES falls back to no-FOR-ROLE when manager is ab
   );
 });
 
-import { runBootstrapStatements } from "./bootstrap.ts";
+import { isConcurrentCatalogUpdate, redactStatement, runBootstrapStatements } from "./bootstrap.ts";
 
 Deno.test("runBootstrapStatements executes every statement in order", async () => {
   const seen: string[] = [];
@@ -268,4 +268,106 @@ Deno.test("runBootstrapStatements propagates failures (bootstrap is fatal)", asy
     assertEquals((e as Error).message.includes("boom"), true);
   }
   assertEquals(threw, true);
+});
+
+// ── Concurrent catalog update retry ───────────────────────────────────────
+// Shape copied from the real failure: node-postgres surfaces the server's
+// SQLSTATE on `.code`, and simple_heap_update's message is the discriminator.
+function concurrentUpdateError(): Error & { code: string } {
+  return Object.assign(new Error("tuple concurrently updated"), { code: "XX000" });
+}
+
+Deno.test("isConcurrentCatalogUpdate matches only the concurrent-GRANT error", () => {
+  assertEquals(isConcurrentCatalogUpdate(concurrentUpdateError()), true);
+  // Same SQLSTATE, different failure — XX000 is internal_error generally.
+  assertEquals(
+    isConcurrentCatalogUpdate(Object.assign(new Error("could not read block"), { code: "XX000" })),
+    false,
+  );
+  // Same message, different SQLSTATE.
+  assertEquals(
+    isConcurrentCatalogUpdate(
+      Object.assign(new Error("tuple concurrently updated"), { code: "40001" }),
+    ),
+    false,
+  );
+  assertEquals(isConcurrentCatalogUpdate(new Error("tuple concurrently updated")), false);
+  assertEquals(isConcurrentCatalogUpdate(null), false);
+  assertEquals(isConcurrentCatalogUpdate("tuple concurrently updated"), false);
+});
+
+Deno.test("runBootstrapStatements retries a concurrent catalog update and continues", async () => {
+  const seen: string[] = [];
+  const slept: number[] = [];
+  let failures = 2;
+  const count = await runBootstrapStatements(
+    (sql) => {
+      seen.push(sql);
+      if (seen.length === 1 && failures > 0) {
+        failures--;
+        seen.pop();
+        return Promise.reject(concurrentUpdateError());
+      }
+      return Promise.resolve(null);
+    },
+    CFG,
+    { sleep: (ms) => { slept.push(ms); return Promise.resolve(); } },
+  );
+  // Every statement still applied exactly once, in order.
+  assertEquals(count, seen.length);
+  assertStringIncludes(seen[0], "CREATE ROLE anon");
+  // Backoff doubled between the two retries.
+  assertEquals(slept, [100, 200]);
+});
+
+Deno.test("runBootstrapStatements gives up after the bounded attempts", async () => {
+  let calls = 0;
+  let threw: unknown = null;
+  try {
+    await runBootstrapStatements(
+      () => { calls++; return Promise.reject(concurrentUpdateError()); },
+      CFG,
+      { sleep: () => Promise.resolve() },
+    );
+  } catch (e) {
+    threw = e;
+  }
+  assertEquals(calls, 5);
+  assertEquals(isConcurrentCatalogUpdate(threw), true);
+});
+
+Deno.test("runBootstrapStatements does not retry any other error", async () => {
+  let calls = 0;
+  let threw = false;
+  try {
+    await runBootstrapStatements(
+      () => { calls++; return Promise.reject(Object.assign(new Error("boom"), { code: "42501" })); },
+      CFG,
+      { sleep: () => Promise.resolve() },
+    );
+  } catch (_e) {
+    threw = true;
+  }
+  assertEquals(calls, 1);
+  assertEquals(threw, true);
+});
+
+Deno.test("redactStatement keeps passwords out of the retry log", () => {
+  const stmt = buildBootstrapStatements(CFG).find((s) => /\bPASSWORD\b/i.test(s));
+  if (!stmt) throw new Error("expected a password-bearing statement in the fixture");
+  const redacted = redactStatement(stmt);
+  assertEquals(redacted.toUpperCase().includes("PASSWORD"), false);
+  assertEquals(redacted.includes("m-pass"), false);
+  assertStringIncludes(redacted, "alp_pg_admin_user");
+  // Redaction never lengthens the statement, and every password-bearing
+  // statement in the fixture is covered, not just the first.
+  for (const sql of buildBootstrapStatements(CFG).filter((s) => /\bPASSWORD\b/i.test(s))) {
+    const r = redactStatement(sql);
+    assertEquals(r.toUpperCase().includes("PASSWORD"), false);
+    for (const secret of ["m-pass", "r-pass", "w-pass", "l-pass"]) {
+      assertEquals(r.includes(secret), false);
+    }
+  }
+  // Short, password-free statements survive intact.
+  assertEquals(redactStatement('GRANT ALL ON SCHEMA "portal" TO "x"'), 'GRANT ALL ON SCHEMA "portal" TO "x"');
 });

@@ -68,7 +68,7 @@
                           <li>&gt; or &lt; for greater/less than</li>
                           <li>&gt;= or &lt;= for greater than or equal to/less than or equal to</li>
                           <li>[x-y] or ]x-y[ for an interval including or excluding the endpoints</li>
-                          <li>(-x) for negative values</li>
+                          <li v-if="field.allowNegative === true">(-x) for negative values</li>
                         </ul>
                         <span>E.g: &gt;=60, [50-80]</span>
                       </span>
@@ -245,6 +245,7 @@ import {
   getWizardGroupValidationMessage,
   isWizardFieldDisabledByGroupLimit,
   isConditionField,
+  numericFilterContainsNegativeValue,
   normalizeWizardFieldValueForComparison,
   resolveWizardFormLayout,
 } from '@/utils/dashboardFlowUtils'
@@ -364,6 +365,8 @@ const numericParser = new InputParser(
   RangeConstraintPatternDefinition.acceptedPatterns
 )
 
+type NumericValidationStatus = 'valid' | 'invalid-format' | 'negative-not-allowed'
+
 const currentYear = new Date().getFullYear()
 const yearOptions = computed(() => {
   const years: number[] = []
@@ -425,24 +428,29 @@ function validateAllFields(): boolean {
       continue
     }
 
-    // Skip validation for non-required fields
-    if (field.required === false) {
-      continue
-    }
-
     const value = formValues[field.id]
 
-    // Date types
-    if (isDateType(field.type)) {
-      if (!value || (!value.from && !value.to)) {
+    // Numeric types validate any provided value, including optional fields.
+    if (field.type === 'num') {
+      const hasValue = normalizeInputValue(value).trim().length > 0
+      if (!hasValue) {
+        if (field.required !== false) isValid = false
+        continue
+      }
+      if (validateNumericValue(value, field.allowNegative === true) !== 'valid') {
         isValid = false
       }
       continue
     }
 
-    // Numeric types - validate if field has value
-    if (field.type === 'num' && value) {
-      if (!validateNumericValue(value)) {
+    // Skip validation for other non-required fields
+    if (field.required === false) {
+      continue
+    }
+
+    // Date types
+    if (isDateType(field.type)) {
+      if (!value || (!value.from && !value.to)) {
         isValid = false
       }
       continue
@@ -497,24 +505,29 @@ const isFormValid = computed(() => {
       continue
     }
 
-    // Skip validation for non-required fields
-    if (field.required === false) {
-      continue
-    }
-
     const value = formValues[field.id]
 
-    // Date types
-    if (isDateType(field.type)) {
-      if (!value || (!value.from && !value.to)) {
+    // Numeric types validate any provided value, including optional fields.
+    if (field.type === 'num') {
+      const hasValue = normalizeInputValue(value).trim().length > 0
+      if (!hasValue) {
+        if (field.required !== false) return false
+        continue
+      }
+      if (validateNumericValue(value, field.allowNegative === true) !== 'valid') {
         return false
       }
       continue
     }
 
-    // Numeric types - validate if field has value
-    if (field.type === 'num' && value) {
-      if (!validateNumericValue(value)) {
+    // Skip validation for other non-required fields
+    if (field.required === false) {
+      continue
+    }
+
+    // Date types
+    if (isDateType(field.type)) {
+      if (!value || (!value.from && !value.to)) {
         return false
       }
       continue
@@ -682,28 +695,31 @@ function handleSubmit() {
 /**
  * Validates a numeric expression value using the InputParser
  * @param value - The value to validate
- * @returns boolean indicating if the value is valid
+ * @param allowNegative - Whether parsed negative operands are accepted
+ * @returns syntax and sign-policy validation status
  */
-function validateNumericValue(value: unknown): boolean {
+function validateNumericValue(value: unknown, allowNegative: boolean): NumericValidationStatus {
   const normalizedValue = normalizeInputValue(value).trim()
 
   if (!normalizedValue) {
-    return true // Empty values are handled separately by required check
+    return 'valid' // Empty values are handled separately by required check
   }
 
-  let isValid = true
+  let hasInvalidFormat = false
+  let hasNegativeValue = false
   numericParser.parseInput(
     normalizedValue,
-    () => {
-      // Success callback - parsing succeeded
-      isValid = true
+    (_inputPart: string, parsedValue: unknown) => {
+      hasNegativeValue ||= numericFilterContainsNegativeValue(parsedValue)
     },
     () => {
-      // Fail callback - parsing failed
-      isValid = false
+      hasInvalidFormat = true
     }
   )
-  return isValid
+
+  if (hasInvalidFormat) return 'invalid-format'
+  if (!allowNegative && hasNegativeValue) return 'negative-not-allowed'
+  return 'valid'
 }
 
 /**
@@ -719,9 +735,12 @@ function validateNumericField(fieldId: string, value: unknown): void {
     return
   }
 
-  const isValid = validateNumericValue(normalizedValue)
-  if (isValid) {
+  const field = props.allFields.find(candidate => candidate.id === fieldId)
+  const validationStatus = validateNumericValue(normalizedValue, field?.allowNegative === true)
+  if (validationStatus === 'valid') {
     delete numericErrors[fieldId]
+  } else if (validationStatus === 'negative-not-allowed') {
+    numericErrors[fieldId] = getText('MRI_PA_NEGATIVE_VALUES_NOT_ALLOWED', field?.label || fieldId)
   } else {
     numericErrors[fieldId] = getText('MRI_PA_NUMERIC_EXPRESSION_INVALID')
   }

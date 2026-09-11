@@ -85,7 +85,9 @@ class SupabaseStorageAPI(BaseAPI):
         except Exception as e:
             raise ValueError(f"Failed to decode file data: {str(e)}")
 
-        file_path = str(Path(filepath) / filename)
+        download_dir = Path(filepath)
+        download_dir.mkdir(parents=True, exist_ok=True)
+        file_path = download_dir / filename
         ext = Path(filename).suffix.lower()
 
         
@@ -93,15 +95,13 @@ class SupabaseStorageAPI(BaseAPI):
             # Handle text files
             try:
                 file_content = file_bytes.decode("utf-8")
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(file_content)
-            except Exception as e:
+            except UnicodeDecodeError as e:
                 raise ValueError(f"Failed to decode text file '{filename}': {str(e)}")
+            file_path.write_text(file_content, encoding="utf-8")
         else:
-            with open(file_path, "wb") as f:
-                f.write(file_bytes)
+            file_path.write_bytes(file_bytes)
 
-        return file_path
+        return str(file_path)
 
 
     def get_file(self, node_id: str, filename: str) -> dict:

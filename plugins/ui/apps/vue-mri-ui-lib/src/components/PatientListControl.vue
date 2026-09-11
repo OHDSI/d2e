@@ -77,11 +77,7 @@
                 <div v-for="detail in row[attribute.parentPath]" :key="detail" class="cellContainer">
                   <div class="textContent row-item">
                     <div class="textContent row-item">
-                      <component
-                        :is="cellComponent(detail, attribute)"
-                        :item="detail"
-                        :meta="attribute"
-                      />
+                      <component :is="cellComponent(detail, attribute)" :item="detail" :meta="attribute" />
                     </div>
                   </div>
                 </div>
@@ -336,8 +332,9 @@ export default {
             })
             break
           case 'REMOVE_INTERACTION':
-            this.selectedColumn.children.forEach(attribute => {
-              this.$emit('removeColumn', { configPath: attribute.path })
+            this.$emit('toggleInteraction', {
+              path: this.selectedColumn.path,
+              selected: false,
             })
             this.$emit('refreshColumnMenu')
             break

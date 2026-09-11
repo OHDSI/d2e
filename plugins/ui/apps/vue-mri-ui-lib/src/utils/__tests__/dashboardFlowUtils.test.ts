@@ -5,6 +5,7 @@ import {
   getWizardFlow,
   isWizardFieldDisabledByGroupLimit,
   isWizardVisibleOnSurface,
+  numericFilterContainsNegativeValue,
   normalizeWizardFieldValueForComparison,
   parseNumericInput,
   resolveWizardFormLayout,
@@ -212,6 +213,44 @@ describe('parseNumericInput', () => {
 
   it('returns empty array for invalid input', () => {
     expect(parseNumericInput('abc')).toEqual([])
+  })
+})
+
+describe('numericFilterContainsNegativeValue', () => {
+  it.each([
+    [{ op: '=', value: -5 }],
+    [{ op: '=', value: -0 }],
+    [
+      {
+        and: [
+          { op: '>=', value: -10 },
+          { op: '<=', value: 5 },
+        ],
+      },
+    ],
+    [
+      [
+        { op: '>=', value: 5 },
+        { op: '<=', value: -1.5 },
+      ],
+    ],
+  ])('detects a negative parsed operand in %j', parsedValue => {
+    expect(numericFilterContainsNegativeValue(parsedValue)).toBe(true)
+  })
+
+  it.each([
+    [{ op: '=', value: 0 }],
+    [{ op: '>=', value: 5 }],
+    [
+      {
+        and: [
+          { op: '>=', value: 5 },
+          { op: '<=', value: 10 },
+        ],
+      },
+    ],
+  ])('ignores non-negative parsed operands in %j', parsedValue => {
+    expect(numericFilterContainsNegativeValue(parsedValue)).toBe(false)
   })
 })
 
