@@ -113,7 +113,13 @@ export class UserGroupRouter {
             const { tenantId } = req.query
             const criteria = tenantId ? { tenant_id: tenantId as string } : undefined
             const userGroups = await this.userGroupService.getUserGroupExtList(criteria)
-            return res.status(200).json(userGroups)
+            // The setup account provisions the deployment and is not somebody an
+            // administrator manages: listing it puts a row in the users table
+            // that cannot be meaningfully edited or deleted.
+            const setupUser = env.D2E_SETUP_USER
+            return res
+              .status(200)
+              .json(setupUser ? userGroups.filter(group => group.username !== setupUser) : userGroups)
           }
         } catch (err) {
           this.logger.error(`Error when getting overview: ${JSON.stringify(err)}`)

@@ -18,6 +18,32 @@ const atlasDistDir = join(rootDir, 'node_modules', '@ohdsi', 'atlas3', 'dist');
 
 console.log('[postinstall] Setting up Atlas3 plugin resources...');
 
+// D2E sign-in page (served at /d2e-login): where trex's OIDC provider sends a
+// browser that has no session, since trex hosts no login UI of its own.
+//
+// Staged before the atlas3 check below, which exits on failure. This page is
+// what every unauthenticated browser is redirected to, and it does not depend on
+// atlas3 — leaving it after that exit meant a failed atlas3 fetch silently took
+// the login page with it, turning the redirect into a 404.
+const d2eLoginSrc = join(rootDir, 'd2e-login');
+const d2eLoginDest = join(rootDir, 'resources', 'd2e-login');
+if (existsSync(d2eLoginSrc)) {
+  rmSync(d2eLoginDest, { recursive: true, force: true });
+  mkdirSync(d2eLoginDest, { recursive: true });
+  cpSync(d2eLoginSrc, d2eLoginDest, { recursive: true });
+
+  // The page's logo travels with it. Referencing it inside the atlas3 dist made
+  // the sign-in page depend on a separate application's build output, so the
+  // logo was simply missing wherever that dist was absent.
+  const logoSrc = join(rootDir, 'd2e2.svg');
+  if (existsSync(logoSrc)) {
+    copyFileSync(logoSrc, join(d2eLoginDest, 'd2e2.svg'));
+  } else {
+    console.warn('[postinstall] d2e2.svg not found; the sign-in page will render without its logo');
+  }
+  console.log('[postinstall] Copied D2E login page to resources/d2e-login');
+}
+
 if (!existsSync(atlasDistDir)) {
   console.error('[postinstall] ERROR: @ohdsi/atlas3 dist not found at', atlasDistDir);
   console.error('[postinstall] Did the GitHub Packages install succeed? Ensure GITHUB_TOKEN is set (see .npmrc).');

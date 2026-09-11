@@ -79,6 +79,7 @@
     "./src/api/BaseIDPAPI": "./src/api/BaseIDPAPI.ts",
     "./src/api/PortalAPI": "./src/api/PortalAPI.ts",
     "./src/api/LogtoAPI": "./src/api/LogtoAPI.ts",
+    "./src/api/TrexIdpAPI": "./src/api/TrexIdpAPI.ts",
     "./src/api/WebAPI": "./src/api/WebAPI.ts",
     "./src/api/request-util": "./src/api/request-util.ts",
     "./src/api/OpenIDAPI": "./src/api/OpenIDAPI.ts",

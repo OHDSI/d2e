@@ -24,7 +24,7 @@ export const permittedTenantCheck =
     const tenantId = _.get(req, opts.tenantIdPath || 'params.tenantId')
 
     try {
-      const { userId: ctxUserId } = req.user
+      const { userId: ctxUserId, idpUserId: ctxIdpUserId } = req.user
       const userGroupService = Container.get(UserGroupService)
 
       // Service / M2M tokens are tagged with the SERVICE_USER_ID sentinel and
@@ -39,7 +39,11 @@ export const permittedTenantCheck =
         return res.status(403).send('You do not have enough privileges to manage this tenant')
       }
 
-      const ctxUserGroups = await getUserGroupsCached(req, userGroupService, ctxUserId)
+      // The caller's groups are keyed by identity-provider subject, not by the
+      // usermgmt row id. Those were the same string under an identity provider
+      // that minted both, so passing the row id worked; where they differ the
+      // lookup finds nobody and every tenant check fails.
+      const ctxUserGroups = await getUserGroupsCached(req, userGroupService, ctxIdpUserId)
 
       if (ctxUserGroups.alp_role_user_admin) {
         // Bypass for ALP_USER_ADMIN

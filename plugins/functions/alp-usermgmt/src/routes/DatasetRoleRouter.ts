@@ -3,6 +3,8 @@ import { Service } from 'typedi'
 import { IAppRequest } from '../types'
 import { createLogger } from '../Logger'
 import { LogtoAPI, PortalAPI } from '../api'
+import { resolveRoleStore } from '../services/UserGroupService'
+import { env } from '../env'
 import { permittedUserCheck } from '../middlewares/permitted-user-check'
 
 @Service()
@@ -26,7 +28,12 @@ export class DatasetRoleRouter {
       }
 
       try {
-        await this.logtoApi.ensureDatasetRole(datasetId, tokenStudyCode, type)
+        // Roles are registered ahead of use only where the provider stores them
+        // as objects with scopes. trex carries the role name in the token and
+        // resolves it on assignment, so there is nothing to create here.
+        if (resolveRoleStore(env.IDP_ROLE_STORE) !== 'trex') {
+          await this.logtoApi.ensureDatasetRole(datasetId, tokenStudyCode, type)
+        }
         return res.status(200).json({ datasetId, tokenStudyCode })
       } catch (err) {
         this.logger.error(`Failed to ensure dataset role for ${tokenStudyCode}: ${JSON.stringify(err)}`)
@@ -42,7 +49,9 @@ export class DatasetRoleRouter {
       }
 
       try {
-        await this.logtoApi.removeDatasetRole(datasetId, tokenStudyCode)
+        if (resolveRoleStore(env.IDP_ROLE_STORE) !== 'trex') {
+          await this.logtoApi.removeDatasetRole(datasetId, tokenStudyCode)
+        }
         return res.status(200).json({ datasetId, tokenStudyCode })
       } catch (err) {
         this.logger.error(`Failed to remove dataset role for ${tokenStudyCode}: ${JSON.stringify(err)}`)
@@ -82,7 +91,9 @@ export class DatasetRoleRouter {
           }
 
           try {
-            await this.logtoApi.ensureDatasetRole(dataset.id, dataset.tokenStudyCode, dataset.type)
+            if (resolveRoleStore(env.IDP_ROLE_STORE) !== 'trex') {
+              await this.logtoApi.ensureDatasetRole(dataset.id, dataset.tokenStudyCode, dataset.type)
+            }
             results.synced++
           } catch (err) {
             const error = err instanceof Error ? err.message : String(err)

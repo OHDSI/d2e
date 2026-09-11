@@ -13,6 +13,7 @@ const replyFromHost = (choice: unknown) => {
     new MessageEvent('message', {
       data: { type: 'pa-concept-set-chosen', requestId: posted.requestId, choice },
       origin: window.location.origin,
+      source: window.parent,
     })
   )
 }
@@ -80,6 +81,7 @@ describe('atlasTerminologyBridge', () => {
       new MessageEvent('message', {
         data: { type: 'pa-concept-set-chosen', requestId: firstPosted.requestId, choice: { conceptSetId: 1, name: 'One' } },
         origin: window.location.origin,
+        source: window.parent,
       })
     )
     await flush()
@@ -97,6 +99,26 @@ describe('atlasTerminologyBridge', () => {
       new MessageEvent('message', {
         data: { type: 'pa-concept-set-chosen', requestId: posted.requestId, choice: { conceptSetId: 9, name: 'Evil' } },
         origin: 'https://attacker.example',
+        source: window.parent,
+      })
+    )
+    await flush()
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ignores a same-origin reply that did not come from the parent', async () => {
+    // Every plugin iframe the portal hosts is same-origin and request ids are a
+    // plain counter, so origin alone would let a sibling frame answer this.
+    const onClose = vi.fn()
+    openTerminology({ mode: 'CONCEPT_SET', onClose })
+    const posted = postMessage.mock.calls.at(-1)?.[0]
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'pa-concept-set-chosen', requestId: posted.requestId, choice: { conceptSetId: 9, name: 'Evil' } },
+        origin: window.location.origin,
+        source: { postMessage: vi.fn() } as any,
       })
     )
     await flush()

@@ -1,11 +1,12 @@
 import type { Knex } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 import { env} from "../../env.ts"
+import { initialUserRowId } from './01_user.ts'
 
 const TABLE_NAME = 'user_group'
 
 export const seed = async (knex: Knex): Promise<void> => {
-  const data = getSeeds()
+  const data = await getSeeds(knex)
   if (data.length === 0) {
     return
   }
@@ -23,11 +24,14 @@ export const seed = async (knex: Knex): Promise<void> => {
   }
 }
 
-const getSeeds = (): { [key: string]: any }[] => {
+const getSeeds = async (knex: Knex): Promise<{ [key: string]: any }[]> => {
   const localUserIds: string[] = []
 
-  if (env.IDP__INITIAL_USER__UUID && env.IDP__INITIAL_USER__NAME) {
-    localUserIds.push(env.IDP__INITIAL_USER__UUID)
+  // Resolved rather than taken from configuration, so the memberships follow
+  // the row the user seed settled on.
+  const initialUserId = await initialUserRowId(knex)
+  if (initialUserId) {
+    localUserIds.push(initialUserId)
   }
 
   let seeds: any[] = []
@@ -67,6 +71,21 @@ const getSeeds = (): { [key: string]: any }[] => {
           id: uuidv4(),
           user_id: userId,
           b2c_group_id: '72b00548-2cbf-48f6-aa68-bbf81864857b'
+        },
+        // Dashboard viewer and ETL mapping contributor. The identity provider
+        // used to hold these for the initial account, and the users table read
+        // its roles from there; reading them from these memberships instead
+        // silently dropped both, leaving the administrator without access the
+        // deployment had always given them.
+        {
+          id: uuidv4(),
+          user_id: userId,
+          b2c_group_id: '1792e31c-5dda-467a-9625-31f97cdfb4ec'
+        },
+        {
+          id: uuidv4(),
+          user_id: userId,
+          b2c_group_id: 'd1c8e5b7-9a0c-4c3b-9c8e-1f2a9e5d6f3a'
         }
       ])
     }

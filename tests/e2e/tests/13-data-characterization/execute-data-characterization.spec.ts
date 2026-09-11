@@ -10,7 +10,7 @@ test(TEST_NAME, async ({ page }) => {
   test.setTimeout(360000)
 
   // Sign in
-  await page.goto('/')
+  await page.goto('/d2e/portal')
   await page.locator('input[name="identifier"]').click()
   await page.locator('input[name="identifier"]').fill('admin')
   await page.locator('input[name="password"]').click()

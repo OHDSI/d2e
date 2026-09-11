@@ -21,9 +21,29 @@ DEFAULT_PASSWORD_LENGTH=30
 OS="$(uname -s)"
 
 # functions
+# Engines that enforce a password policy - HANA among them - require at least one
+# uppercase letter, one lowercase letter and one digit. Drawing uniformly from
+# the alphabet does not guarantee that: a sixteen-character password contains no
+# digit roughly six percent of the time, which surfaced as an occasional HANA
+# setup failure that looked like an infrastructure flake. Redrawing leaves every
+# compliant password equally likely, which placing one character of each class at
+# a fixed position would not.
 function random-password {
     PASSWORD_LENGTH=${1}
-    (LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c ${PASSWORD_LENGTH}) 2>/dev/null
+    local password
+    while true; do
+        password=$( (LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c ${PASSWORD_LENGTH}) 2>/dev/null )
+        # Too short to hold one of each; the caller asked for what it asked for.
+        if [ "${PASSWORD_LENGTH}" -lt 3 ]; then
+            break
+        fi
+        if printf '%s' "$password" | LC_ALL=C grep -q '[A-Z]' \
+            && printf '%s' "$password" | LC_ALL=C grep -q '[a-z]' \
+            && printf '%s' "$password" | LC_ALL=C grep -q '[0-9]'; then
+            break
+        fi
+    done
+    printf '%s' "$password"
 }
 
 function random-uuid {

@@ -75,7 +75,16 @@ export const d2eWebapiRequest = async (
             return response.data;
         } else {
             log.error(JSON.stringify(response.data));
-            throw response.data;
+            // The body is whatever upstream chose to send and is empty on plenty
+            // of failures, so throwing it verbatim hands the caller a nothing to
+            // fail on: it reaches the response callback as neither an error nor a
+            // result, and reading a status off it throws where nobody catches it.
+            // Carry the status, which says what happened even when the body does
+            // not, and keep the body for anything that wants to read it.
+            throw Object.assign(
+                new Error(`d2e-webapi responded ${response.status}`),
+                { status: response.status, data: response.data }
+            );
         }
     } catch (err) {
         log.enrichErrorWithRequestCorrelationID(err, req);

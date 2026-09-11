@@ -6,7 +6,9 @@ import { generatePassword } from '../utils'
 import { UserService } from './UserService'
 import { UserGroupService } from './UserGroupService'
 import { UserField } from '../repositories'
-import { LogtoAPI, WebAPI } from '../api'
+import { LogtoAPI, TrexIdpAPI, WebAPI } from '../api'
+import { env } from '../env'
+import { resolveRoleStore } from './UserGroupService'
 
 @Service()
 export class MemberService {
@@ -16,6 +18,7 @@ export class MemberService {
     private readonly userService: UserService,
     private readonly userGroupService: UserGroupService,
     private readonly logtoApi: LogtoAPI,
+    private readonly trexIdpAPI: TrexIdpAPI,
     private readonly webApi: WebAPI
   ) {}
 
@@ -51,8 +54,14 @@ export class MemberService {
 
       if (password == null) password = generatePassword()
 
-      const logtoUser = await this.logtoApi.createUser(username, password)
-      const idpUserId = logtoUser.id
+      // Whichever provider the deployment actually uses. This created the user
+      // in the previous one unconditionally, so on a deployment that has moved
+      // the call went to a service that is no longer running and adding a user
+      // failed with a DNS error naming a host nobody expects to exist.
+      const idpUserId =
+        resolveRoleStore(env.IDP_ROLE_STORE) === 'trex'
+          ? (await this.trexIdpAPI.createUser(username, password)).id
+          : (await this.logtoApi.createUser(username, password)).id
 
       this.logger.info('Update IDP user ID')
       const updateFields = { id: newUser.id, idp_user_id: idpUserId }
@@ -91,7 +100,11 @@ export class MemberService {
     try {
       await this.userService.deleteUser(userId, trx)
       if (user.idpUserId) {
-        await this.logtoApi.deleteUser(user.idpUserId)
+        if (resolveRoleStore(env.IDP_ROLE_STORE) === 'trex') {
+          await this.trexIdpAPI.deleteUser(user.idpUserId)
+        } else {
+          await this.logtoApi.deleteUser(user.idpUserId)
+        }
       }
       await trx.commit()
     } catch (err) {
@@ -132,7 +145,11 @@ export class MemberService {
 
       await this.userService.touchAuthzChangedAt(userId, trx)
 
-      await this.logtoApi.activateUser(user.idpUserId, active)
+      if (resolveRoleStore(env.IDP_ROLE_STORE) === 'trex') {
+        await this.trexIdpAPI.setUserActive(user.idpUserId, active)
+      } else {
+        await this.logtoApi.activateUser(user.idpUserId, active)
+      }
 
       await trx.commit()
     } catch (err) {

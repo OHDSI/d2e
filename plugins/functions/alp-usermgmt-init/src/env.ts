@@ -19,6 +19,13 @@ export const env = {
   PG_SSL: _env.PG__SSL,
   IDP__INITIAL_USER__UUID: _env.IDP__INITIAL_USER__UUID,
   IDP__INITIAL_USER__NAME: _env.IDP__INITIAL_USER__NAME,
+  // The IdP identifies accounts by email; usermgmt by username. This is the
+  // domain that turns one into the other, and it has to match what the sign-in
+  // page appends to a bare username.
+  IDP__INITIAL_USER__DOMAIN: _env.IDP__INITIAL_USER__DOMAIN ?? "d2e.local",
+  D2E__SEED_USER: _env.D2E__SEED_USER,
+  TREX_AUTH_URL: _env.TREX__AUTH_URL,
+  TREX_SERVICE_ROLE_KEY: _env.TREX__SERVICE_ROLE_KEY || _env.SUPABASE_SERVICE_ROLE_KEY,
   ALP_SYSTEM_NAME: Deno.env.get("ALP__SYSTEM_NAME"),
   APP__TENANT_ID: _env.APP__TENANT_ID,
 }

@@ -466,6 +466,11 @@ spec:
                   key: AZ_AUTO_GRANT_RESEARCHER_BY_DATASET_CODES
             - name: USER_MGMT__ROLE_SOURCE
               value: "logto"
+            # This chart has not been migrated to the trex identity provider yet;
+            # pin the previous behaviour deliberately rather than let usermgmt
+            # default to a role store nothing here is configured for.
+            - name: IDP__ROLE_STORE
+              value: "logto"
             - name: NETWORK_COGNITO_DOMAIN
               value: ""
             - name: NETWORK_CENTRAL_API_URL

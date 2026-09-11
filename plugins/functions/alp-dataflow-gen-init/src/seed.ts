@@ -4,6 +4,10 @@ import { PrefectAPI } from "./PrefectAPI";
 import { customDockerWorkpool, customProcessWorkpool } from "./customWorkpool";
 
 export async function seed(): Promise<void> {
+  // This step reported nothing at all, so a run that never happened and a run
+  // that succeeded looked identical - and the difference only showed up later
+  // as a flow failing on a block it could not find.
+  console.log("Prefect seeding: starting");
   let prefectApi = new PrefectAPI();
 
   // Prefect sits behind nginx, which is listening before Prefect is: an unready
@@ -64,6 +68,10 @@ export async function seed(): Promise<void> {
   // Report variables and secrets together: a partial seed is what makes flows
   // fail much later with an unhelpful "Unable to find block document" error, so
   // name everything that is missing in one place.
+  console.log(
+    `Prefect seeding: ${Object.keys(prefectVariables).length} variable(s), ` +
+      `${Object.keys(prefectSecrets).length} secret(s) attempted`
+  );
   if (variableFailures.length > 0 || secretFailures.length > 0) {
     const parts = [];
     if (variableFailures.length > 0) {

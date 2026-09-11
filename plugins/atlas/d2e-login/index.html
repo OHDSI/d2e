@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign in · D2E</title>
+    <link rel="icon" href="/atlas/config/d2e2.svg" />
+    <style>
+      /* Navy is the D2E brand colour; the greys are the portal's surface tones. */
+      :root {
+        --d2e-navy: #000080;
+        --d2e-navy-hover: #00006b;
+        --d2e-border: #dad7d7;
+        --d2e-surface: #f5f5f5;
+        --d2e-tint: #ebf1f8;
+        --d2e-text: #1f2937;
+        --d2e-muted: #6b7280;
+        --d2e-error: #b42318;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: linear-gradient(180deg, var(--d2e-tint) 0%, var(--d2e-surface) 100%);
+        color: var(--d2e-text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 400px;
+        background: #fff;
+        border: 1px solid var(--d2e-border);
+        border-radius: 10px;
+        padding: 32px;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+      }
+
+      .logo { display: block; height: 76px; max-width: 100%; margin: 0 auto 24px; }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .sub {
+        margin: 0 0 24px;
+        text-align: center;
+        font-size: 13px;
+        color: var(--d2e-muted);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        font-family: inherit;
+        color: inherit;
+        border: 1px solid var(--d2e-border);
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: var(--d2e-navy);
+        box-shadow: 0 0 0 3px rgba(0, 0, 128, 0.12);
+      }
+
+      button {
+        width: 100%;
+        padding: 11px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        color: #fff;
+        background: var(--d2e-navy);
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) { background: var(--d2e-navy-hover); }
+      button:disabled { opacity: 0.6; cursor: default; }
+
+      /* Reserved rather than toggled, so the card does not jump when an error appears. */
+      .error {
+        min-height: 20px;
+        margin: 12px 0 0;
+        font-size: 13px;
+        color: var(--d2e-error);
+        text-align: center;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --d2e-border: #2f3542;
+          --d2e-surface: #11141a;
+          --d2e-tint: #171b23;
+          --d2e-text: #e5e7eb;
+          --d2e-muted: #9aa3b2;
+        }
+        .card { background: #191d25; }
+        input { background: #11141a; color: inherit; }
+        .logo { filter: brightness(0) invert(1); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="logo" src="d2e2.svg" alt="D2E" />
+      <h1>Sign in</h1>
+      <p class="sub">Use your D2E account to continue</p>
+
+      <form id="form" novalidate>
+        <label for="identifier">Username or email</label>
+        <input id="identifier" name="identifier" type="text" autocomplete="username" required autofocus />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+        <button id="submit" type="submit">Sign in</button>
+        <p class="error" id="error" role="alert" aria-live="polite"></p>
+      </form>
+    </main>
+    <script src="./login.js"></script>
+  </body>
+</html>

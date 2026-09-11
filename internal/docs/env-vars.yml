@@ -186,3 +186,23 @@ TLS__INTERNAL__DOMAIN:
 TLS__INTERNAL__KEY:
   comment: Internal Microservice TLS Communication Private
   publish: true
+TREX__OIDC__WEBAPI_CLIENT_ID:
+  comment: OIDC client id WebAPI presents to the trex identity provider
+  publish: false
+  type: string
+TREX__OIDC__WEBAPI_CLIENT_SECRET:
+  comment: OIDC client secret shared by WebAPI and the registration trex seeds for it
+  publish: false
+  type: string
+IDP__ROLE_STORE:
+  comment: Which identity provider holds role assignments usermgmt writes to ('trex' or 'logto')
+  publish: false
+  type: string
+TREX__ADMIN_URL:
+  comment: trex admin API endpoint usermgmt calls to assign/remove roles
+  publish: false
+  type: string
+TREX__SERVICE_ROLE_KEY:
+  comment: Optional override for the trex admin API credential; defaults to trex's own injected SUPABASE_SERVICE_ROLE_KEY
+  publish: false
+  type: string

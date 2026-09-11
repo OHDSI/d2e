@@ -63,6 +63,9 @@ export class PortalAPI {
     ready: boolean;
     cacheExists: boolean;
     cacheAttached: boolean;
+    // When the cache file last changed. Readiness alone does not mean the copy
+    // has finished, so callers use this to tell a settled cache from a growing one.
+    lastModified?: number | null;
     activeJobStatus?: string | null;
     lastJobError?: string | null;
   }> {
@@ -75,6 +78,21 @@ export class PortalAPI {
       const status = error.status || error.response?.status;
       const responseData = error.response?.data;
       console.error(`Error while getting cache status: ${error.message}, status: ${status}, data: ${JSON.stringify(responseData)}`);
+      throw error;
+    }
+  }
+
+  // Starts the cache job. getCacheStatus only reports; without this nothing ever
+  // builds the cache, so a caller that merely polls waits out its own timeout.
+  async refreshCache(datasetId: string): Promise<void> {
+    try {
+      const options = await this.getRequestConfig();
+      const url = `${this.baseURL}/dataset/${encodeURIComponent(datasetId)}/refresh-cache`;
+      await this.channel.post(url, {}, options);
+    } catch (error: any) {
+      const status = error.status || error.response?.status;
+      const responseData = error.response?.data;
+      console.error(`Error while refreshing cache: ${error.message}, status: ${status}, data: ${JSON.stringify(responseData)}`);
       throw error;
     }
   }

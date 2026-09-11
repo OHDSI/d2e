@@ -55,6 +55,10 @@
         {
           "source": "/atlas-login",
           "target": "/resources/login"
+        },
+        {
+          "source": "/d2e-login",
+          "target": "/resources/d2e-login"
         }
       ],
       "uiplugins": {

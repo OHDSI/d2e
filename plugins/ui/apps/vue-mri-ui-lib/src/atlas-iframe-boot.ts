@@ -58,8 +58,16 @@ const boot = () => {
 
 // The wait cannot depend on another message arriving: contexts are only re-posted
 // on a five minute token refresh, so a deployment with no dataset would sit blank
-// until then.
-let waitTimer: ReturnType<typeof setTimeout> | null = setTimeout(boot, DATASET_WAIT_MS)
+// until then. It starts when the first dataset-less context lands rather than at
+// load: boot() needs a context to publish, so a timer armed before one arrives
+// would fire against a null `latest`, return having done nothing, and be spent -
+// leaving nothing to rescue the very case it exists for.
+let waitTimer: ReturnType<typeof setTimeout> | null = null
+
+const armDatasetWait = () => {
+  if (booted || waitTimer !== null) return
+  waitTimer = setTimeout(boot, DATASET_WAIT_MS)
+}
 
 window.addEventListener('message', (event: MessageEvent<PaContextMessage>) => {
   if (event.origin !== window.location.origin) return
@@ -83,7 +91,10 @@ window.addEventListener('message', (event: MessageEvent<PaContextMessage>) => {
   }
 
   latest = data
-  if (!data.datasetId) return
+  if (!data.datasetId) {
+    armDatasetWait()
+    return
+  }
   boot()
 })
 

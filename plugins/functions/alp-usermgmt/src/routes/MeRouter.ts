@@ -4,7 +4,9 @@ import jwt, { JwtPayload } from 'jsonwebtoken'
 import { MemberService, UserGroupService, UserService } from '../services'
 import { IAppRequest, UserDeleteRequest } from '../types'
 import { createLogger } from '../Logger'
-import { LogtoAPI, WebAPI } from '../api'
+import { LogtoAPI, TrexIdpAPI, WebAPI } from '../api'
+import { resolveRoleStore } from '../services/UserGroupService'
+import { env } from '../env'
 
 @Service()
 export class MeRouter {
@@ -16,6 +18,7 @@ export class MeRouter {
     private readonly userGroupService: UserGroupService,
     private readonly memberService: MemberService,
     private readonly logtoApi: LogtoAPI,
+    private readonly trexIdpAPI: TrexIdpAPI,
     private readonly webApi: WebAPI
   ) {
     this.registerRoutes()
@@ -42,6 +45,9 @@ export class MeRouter {
       /* fall through to Logto lookup */
     }
     try {
+      if (resolveRoleStore(env.IDP_ROLE_STORE) === 'trex') {
+        return (await this.trexIdpAPI.getUser(idpUserId))?.email
+      }
       const logtoUser = await this.logtoApi.getUser(idpUserId)
       return (logtoUser?.username ?? logtoUser?.primaryEmail) as string | undefined
     } catch (e) {
@@ -175,6 +181,15 @@ export class MeRouter {
       }
 
       try {
+        if (resolveRoleStore(env.IDP_ROLE_STORE) === 'trex') {
+          const result = await this.trexIdpAPI.changePassword(user.username!, oldPassword, password)
+          if (!result.ok) {
+            this.logger.warn(`Error when updating user password ${idpUserId}: ${result.message}`)
+            return res.status(result.status).send({ message: result.message })
+          }
+          return res.sendStatus(204)
+        }
+
         await this.logtoApi.updatePassword(idpUserId, password, oldPassword)
         res.sendStatus(204)
       } catch (err) {

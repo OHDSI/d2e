@@ -18,8 +18,7 @@ test('cohort-generation', async ({ page }) => {
   // Fill in admin credentials and sign in
   await page.locator('input[name="identifier"]').click()
   await page.locator('input[name="identifier"]').fill('admin')
-  await page.locator('input[name="identifier"]').press('Tab')
-  await page.getByRole('button').filter({ hasText: /^$/ }).press('Tab')
+  await page.locator('input[name="password"]').click()
   await page.locator('input[name="password"]').fill('Updatepassword12345')
   await page.getByRole('button', { name: 'Sign in' }).click()
 

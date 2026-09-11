@@ -17,7 +17,7 @@
 # stack never runs; TREX_DX_ENABLED only gates it at runtime, it is in the image
 # either way. Pinned by tag AND index digest — `image:tag@digest` is valid, so
 # one arg carries both.
-ARG TREXSQL_REF=prod-sha-5ce42757279f969bca123f0128a5c967ff2e3bd4@sha256:e162d8282df32231b58297fd31fef8567272468c86a82c64d36ec76d0de0d6ca
+ARG TREXSQL_REF=prod-sha-84949e26abb989445f8f02c5cb80628eb7f3f2ce@sha256:a46811a17bfb4c0b4775eb1e710deec2a42c984495195b126b943f24cd7fe42c
 FROM ghcr.io/ohdsi/trexsql:${TREXSQL_REF} AS base
 
 USER root
@@ -109,6 +109,13 @@ RUN --mount=type=secret,id=PLUGINS_REGISTRY --mount=type=secret,id=github_token 
 # trex aborts boot when POSTGRES_MANAGE_CONFIG is set and no provision plugin is
 # found — a compose-only mount would take down every other deploy path.
 COPY provision/d2e-bootstrap /usr/src/bundled-plugins/d2e-bootstrap
+
+# The notebook schema's migrations, run by trex's `trex.migrations` plugin kind.
+# Baked for the same reason as the bootstrap above: PG_SCHEMA creates the empty
+# `notebook` schema on every deploy path, but only compose bind-mounts this
+# plugin, so a Helm install got the schema with none of its tables and every
+# notebook GraphQL operation failed.
+COPY migrations/notebook /usr/src/bundled-plugins/notebook-schema
 
 # NOTE: The legacy @data2evidence/d2e-atlas ("Atlas Lite") is no longer bundled.
 # Atlas3 (@ohdsi/atlas3) is shipped by the local plugins/atlas plugin, which owns

@@ -8,7 +8,11 @@ const envVarUtils = new EnvVarUtils(Deno.env.toObject());
 
 export function values(req: IMRIRequest, res, next) {
     function _sendResult(err, result) {
-        if (err) {
+        // A failure that carries no reason arrives here as neither an error nor
+        // a result. Reading the status off that throws inside the callback,
+        // where nothing catches it: the worker goes down with every request it
+        // was serving, so callers time out instead of being told it failed.
+        if (err || !result) {
             return res
                 .status(500)
                 .send(MRIEndpointErrorHandler({ err, language }));

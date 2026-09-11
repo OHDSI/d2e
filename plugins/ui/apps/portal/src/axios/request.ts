@@ -10,6 +10,11 @@ const isPublicUrl = (url?: string) => !!url && PUBLIC_URL_PREFIXES.some((prefix)
 // changed. The token itself is still validly signed, so a silent refresh
 // (which re-mints against Logto's current role state) resolves it without
 // forcing a full re-login.
+// Retries of a request rejected for a stale token. Three covers an
+// administrator whose own authorization changes while they work; beyond that a
+// token that never refreshes is a real failure, not a race.
+const STALE_TOKEN_MAX_RETRIES = 3;
+
 const isStaleTokenError = (error: any) =>
   error.response?.status === 401 &&
   (error.response.headers?.["x-token-stale"] === "1" || error.response.data?.code === "AUTHZ_STALE_TOKEN");
@@ -51,14 +56,20 @@ client.interceptors.response.use(
     }
 
     if (isStaleTokenError(error)) {
-      if (config.__isStaleTokenRetry) {
+      // More than one attempt, because the token can go stale again between the
+      // refresh and the retry: granting a role stamps the target user, and an
+      // administrator changing their own permissions invalidates the very token
+      // they are using. A single retry loses that race and logs the user out
+      // mid-task; the bound still stops a genuinely unrefreshable token looping.
+      config.__staleTokenRetries = config.__staleTokenRetries ?? 0;
+      if (config.__staleTokenRetries >= STALE_TOKEN_MAX_RETRIES) {
         console.error("[Portal API] Token still stale after refresh, logging out");
         await authLogout();
         return Promise.reject(error);
       }
 
       console.warn("[Portal API] Access token stale (AUTHZ_STALE_TOKEN), refreshing and retrying...");
-      config.__isStaleTokenRetry = true;
+      config.__staleTokenRetries += 1;
       const token = await refreshAuthToken();
       if (!token) {
         console.error("[Portal API] Token refresh failed, logging out");

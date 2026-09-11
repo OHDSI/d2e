@@ -12,7 +12,8 @@ import {
   UserService,
 } from '../services'
 import { env, getAutoGrantDatasetCodes } from '../env'
-import { LogtoAPI } from '../api'
+import { LogtoAPI, TrexIdpAPI } from '../api'
+import { resolveRoleStore } from '../services/UserGroupService'
 import { IDataset, ITokenUser } from '../types'
 import { UserField } from '../repositories'
 
@@ -166,8 +167,12 @@ export const grantRolesByScopes = async (req: Request, res: Response, next: Next
     if (isSync && sub) {
       const user = await userService.getUserByIdpUserId(sub)
       if (!user) {
-        logger.info(`User with idp_user_id "${sub}" not found, delete from Logto`)
-        await logtoApi.deleteUser(sub)
+        logger.info(`User with idp_user_id "${sub}" not found, delete from the identity provider`)
+        if (resolveRoleStore(env.IDP_ROLE_STORE) === 'trex') {
+          await Container.get(TrexIdpAPI).deleteUser(sub)
+        } else {
+          await logtoApi.deleteUser(sub)
+        }
       }
     }
 

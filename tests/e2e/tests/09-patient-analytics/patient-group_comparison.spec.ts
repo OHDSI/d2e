@@ -10,13 +10,12 @@ test('pa-compare-cohorts', async ({ page }) => {
   // AUTHENTICATION SECTION
   // ========================
   // Navigate to the D2E portal login page
-  await page.goto('/')
+  await page.goto('/d2e/portal')
 
   // Fill in admin credentials and sign in
   await page.locator('input[name="identifier"]').click()
   await page.locator('input[name="identifier"]').fill('admin')
-  await page.locator('input[name="identifier"]').press('Tab')
-  await page.getByRole('button').filter({ hasText: /^$/ }).press('Tab')
+  await page.locator('input[name="password"]').click()
   await page.locator('input[name="password"]').fill('Updatepassword12345')
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForTimeout(5000)

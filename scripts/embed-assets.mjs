@@ -52,6 +52,12 @@ const SCRIPT_MAP = {
   "check-setupdemohana-flow.mjs": { fn: "checkSetupDemoHanaFlow" },
   "syncroles.mjs":                { fn: "syncRoles" },
   "get-noproxy.mjs":              { fn: "getNoProxy", paramExpr: "nodeModulesPath", argvBlock: "NOPROXY" },
+  // Unlike the scripts above, this one is already a real ES module with named
+  // exports (planMigration, canonicalRoleNames, runMigration) — those are unit
+  // tested directly, which the wrap-into-a-function transform below would
+  // break. cli.ts dynamic-imports it by path, so it only needs to sit next to
+  // dist/cli.js, not be rewritten.
+  "migrate-idp-roles.mjs":        { copy: true },
 };
 
 const ARGV_BLOCK =
@@ -81,8 +87,26 @@ const generatedPaths = [];
 
 const ARGV_BLOCKS = { NOPROXY: NOPROXY_ARGV_BLOCK };
 
-for (const [filename, { fn, paramExpr, argvBlock: argvBlockKey }] of Object.entries(SCRIPT_MAP)) {
+// Shared modules the scripts import at runtime. The transform below rewrites
+// each script into a function but leaves its imports alone, so anything it
+// imports has to exist next to the emitted file or the CLI fails at require
+// time with MODULE_NOT_FOUND.
+mkdirSync(join(distDir, "lib"), { recursive: true });
+for (const lib of readdirSync(join(__dirname, "lib"))) {
+  if (!lib.endsWith(".mjs") && !lib.endsWith(".cjs")) continue;
+  writeFileSync(join(distDir, "lib", lib), readFileSync(join(__dirname, "lib", lib), "utf8"));
+  console.log(`Copied lib/${lib} to dist/lib/`);
+}
+
+for (const [filename, { fn, paramExpr, argvBlock: argvBlockKey, copy }] of Object.entries(SCRIPT_MAP)) {
   const src = readFileSync(join(__dirname, filename), "utf8");
+
+  if (copy) {
+    writeFileSync(join(distDir, filename), src);
+    console.log(`Copied ${filename} to dist/`);
+    continue;
+  }
+
   const block = argvBlockKey ? ARGV_BLOCKS[argvBlockKey] : ARGV_BLOCK;
   const param = paramExpr ?? 'envfile = ".env"';
 

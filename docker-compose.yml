@@ -75,9 +75,10 @@ services:
       - hades-data:/data/hades
       - audit-logs:/var/log/d2e/audit
       # `notebook` schema (studies/notebooks) + its PostGraphile grants, applied
-      # as a trex migrations plugin. Must land under a PLUGINS_DEV_PATH entry to
-      # be scanned; trex runs it against _config (the alp Postgres catalog) and
-      # tracks applied versions in notebook.refinery_schema_history.
+      # as a trex migrations plugin. trex runs it against _config (the alp
+      # Postgres catalog) and tracks applied versions in
+      # notebook.refinery_schema_history. Already baked into the image; mounted
+      # so a source edit takes effect on restart without a rebuild.
       - ./services/trex/migrations/notebook:/usr/src/bundled-plugins/notebook-schema:ro
       # d2e's DB provisioning (login users, supabase roles, schemas, grants),
       # applied as a trex provision plugin BEFORE any other plugin loads.
@@ -220,19 +221,33 @@ services:
       SECURITY_AUTH_DB_DATASOURCE_USERNAME: postgres
       SECURITY_AUTH_DB_DATASOURCE_PASSWORD: ${PG_SUPER_PASSWORD}
       SECURITY_AUTH_DB_DATASOURCE_SCHEMA: webapi_security
-      # OpenID Connect configuration (Logto)
-      # Property prefix updated for WebAPI p-hoffmann/openid branch: security.auth.openId.* (was security.oid.*)
-      SECURITY_AUTH_OIDC_CLIENTID: ${LOGTO__D2E_APP__CLIENT_ID:-${LOGTO__ALP_APP__CLIENT_ID}}
-      SECURITY_AUTH_OIDC_APISECRET: ${LOGTO__D2E_APP__CLIENT_SECRET:-${LOGTO__ALP_APP__CLIENT_SECRET}}
-      # Discover OIDC metadata directly from Logto over HTTPS:3001 — same host/port as
-      # LOGTO__TOKEN_URL, so trex (token exchange) and WebAPI (discovery/JWKS) reach Logto
-      # consistently. The discovered issuer is still http://alp-caddy:8080/oidc (matches the
-      # token iss / LOGTO__ISSUER); only the fetch endpoint + jwks_uri are proper HTTPS on :3001.
-      SECURITY_AUTH_OIDC_URL: "https://${PROJECT_NAME:-d2e}-logto-1.${TLS__INTERNAL__DOMAIN:-d2e.local}:3001/oidc/.well-known/openid-configuration"
+      # OpenID Connect configuration — the identity provider trex serves at
+      # /trex/oidc. Discovery goes straight to trex rather than through Caddy:
+      # it is the same container that issues the tokens, so there is no TLS or
+      # forwarded-header question to work around.
+      SECURITY_AUTH_OIDC_CLIENTID: ${TREX__OIDC__WEBAPI_CLIENT_ID:-d2e-webapi}
+      SECURITY_AUTH_OIDC_APISECRET: ${TREX__OIDC__WEBAPI_CLIENT_SECRET:?TREX__OIDC__WEBAPI_CLIENT_SECRET must be set (run d2e init)}
+      # SECURITY_AUTH_OIDC_APISECRET above is WebAPI's, and WebAPI now
+      # authenticates against trex. d2e-compat still verifies the portal's
+      # Logto tokens and historically read that same variable as Logto's
+      # secret, so it has to be given Logto's under its own name -- otherwise
+      # the portal code exchange goes to Logto carrying trex's secret and is
+      # rejected with 401.
+      LOGTO__CLIENT_SECRET: ${LOGTO__D2E_APP__CLIENT_SECRET:-${LOGTO__ALP_APP__CLIENT_SECRET}}
+      # The issuer trex advertises, which is also what its tokens carry. WebAPI
+      # runs alongside trex rather than behind the gateway, so this address does
+      # not resolve for it -- SECURITY_AUTH_OIDC_INTERNALURL below is where the
+      # metadata and signing keys are actually read from. Both are needed: the
+      # issuer cannot be swapped for the internal address without invalidating
+      # every token, and the internal address cannot be reached from a browser.
+      SECURITY_AUTH_OIDC_URL: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/trex/oidc/.well-known/openid-configuration"
+      SECURITY_AUTH_OIDC_INTERNALURL: "http://${PROJECT_NAME:-d2e}-trex:33001/trex/oidc"
       # External URL for browser redirects - used to rewrite internal OIDC URLs to external ones
-      SECURITY_AUTH_OIDC_EXTERNALURL: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/oidc"
-      SECURITY_AUTH_OIDC_LOGOUTURL: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/oidc/session/end"
-      # Role claim in the ID token (Logto emits `roles` when the roles feature is enabled for the app)
+      SECURITY_AUTH_OIDC_EXTERNALURL: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/trex/oidc"
+      SECURITY_AUTH_OIDC_LOGOUTURL: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/trex/oidc/session/end"
+      # trex emits the application role array as `roles`; `trex_role` is a
+      # different claim entirely — trex's own admin/user system role, which
+      # must never be read as a WebAPI role.
       SECURITY_AUTH_OIDC_ROLESCLAIM: "roles"
       # NOTE: scopes `openid profile email` are added by default by the new WebAPI; extraScopes no longer required
       # OAuth callback URLs - must use external URL for browser redirects
@@ -293,6 +308,63 @@ services:
          }
         }
       POSTGRES_MANAGE_ROLES_USERS: ${POSTGRES_MANAGE_ROLES_USERS:-{}}
+      # ── OIDC provider ───────────────────────────────────────────────────────
+      # trex is the identity provider for Atlas and WebAPI. The issuer is the
+      # externally reachable origin, not an internal one: it is baked into every
+      # token and re-checked by the relying party, so it has to be the URL a
+      # browser sees. BASE_PATH is appended, giving /trex/oidc/*.
+      # trex is the identity provider for the whole stack, not just WebAPI.
+      # d2e-compat verifies portal bearers against it and the portal login
+      # flow points at it. Deployments that still hold their users in Logto
+      # must run `d2e migrate-idp-roles --apply --create-missing-users`
+      # BEFORE this takes effect, or nobody can sign in: the accounts simply
+      # do not exist in trex yet.
+      D2E_IDP: ${D2E_IDP:-trex}
+      # trex authenticates users itself, so its native login surface has to be
+      # on. It is off by default in the engine for stacks fronted by an external
+      # IdP. Enabling it does not expose a default account: the seeded
+      # admin@trex.local has a user row but NO credential (trexdb.account is
+      # empty), so it cannot sign in until someone provisions one.
+      TREX_IDP_ENABLED: "true"
+      TREX_OIDC_PROVIDER_ENABLED: "true"
+      # One sign-in spends a password grant and a code exchange, and the limit
+      # is per address rather than per user, so everyone behind one gateway -
+      # or a whole test run - shares the count.
+      TREX_AUTH_RATE_LIMIT_MAX: ${TREX__AUTH_RATE_LIMIT_MAX:-2000}
+      # Where cache database files live, shared with the flow containers by the
+      # trex volume below. Set here rather than left to the function manifest:
+      # a variable that never reaches the seed leaves flows resolving a null
+      # path much later, far from the cause.
+      DUCKDB__DATA_FOLDER: ${DUCKDB__DATA_FOLDER:-/app/duckdb_data/cache}
+      # The public origin: `iss` must name where the discovery document is
+      # served, and a deployment's FQDN resolves inside the network too. Where it
+      # does not -- local and CI, whose FQDN is `localhost` and therefore points
+      # back at this container -- docker-compose-local.yml sets
+      # TREX_OIDC_INTERNAL_BASE so server-side fetches take a reachable route
+      # while `iss` stays put.
+      TREX_OIDC_ISSUER: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}"
+      # trex ships no login UI; an unauthenticated /authorize lands here.
+      TREX_OIDC_LOGIN_URL: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/d2e-login/"
+      # WebAPI is the only relying party: Atlas reaches the IdP through it. The
+      # registration is upserted on every boot, so these values are the source of
+      # truth and a changed URL needs no manual fix-up.
+      TREX_OIDC_CLIENT_ID: ${TREX__OIDC__WEBAPI_CLIENT_ID:-d2e-webapi}
+      TREX_OIDC_CLIENT_SECRET: ${TREX__OIDC__WEBAPI_CLIENT_SECRET:?TREX__OIDC__WEBAPI_CLIENT_SECRET must be set (run d2e init)}
+      TREX_OIDC_CLIENT_NAME: "D2E WebAPI"
+      # Spring's oauth2Login appends the registration id, hence the /openid tail.
+      # Two relying parties share this registration: WebAPI (Spring appends the
+      # /openid registration id) and the portal, whose callback d2e-compat builds
+      # from the same clientId. A redirect URI that is not listed here is refused
+      # at /authorize, so the portal cannot log in without its entry.
+      #
+      # WebAPI derives the redirect URI it asks for from the request it received,
+      # so reaching Atlas by any other name than the one below - another
+      # hostname, an address, a different port - produces a URI that is not on
+      # this list and the sign-in ends in "unregistered redirect_uri".
+      # TREX_OIDC__EXTRA_REDIRECT_URIS registers those additional origins; give
+      # it whole callback URLs, comma separated.
+      TREX_OIDC_CLIENT_REDIRECT_URIS: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/WebAPI/user/oauth/callback/openid,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/d2e/portal/login-callback,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/atlas-login/,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}/WebAPI/user/oauth/callback/openid,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}/d2e/portal/login-callback,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}/atlas-login/${TREX_OIDC__EXTRA_REDIRECT_URIS:+,${TREX_OIDC__EXTRA_REDIRECT_URIS}}"
+      TREX_OIDC_CLIENT_POST_LOGOUT_URIS: "https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/atlas/,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}:${CADDY_PORT:-${PORT:-443}}/d2e/portal,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}/atlas/,https://${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}/d2e/portal"
       TREX_SQL_PASSWORD: ${TREX__SQL__PASSWORD:?TREX__SQL__PASSWORD must be set (run d2e init); refusing default pencil}
       TREX__SQL__PORT: ${TREX__SQL__PORT:-5433}
       TREX__SQL__DBNAME: postgres
@@ -497,7 +569,23 @@ services:
       IS_SELF_MANAGED_ROLES: ${IS_SELF_MANAGED_ROLES:-false}
       AUTO_GRANT_RESEARCHER_BY_DATASET_CODES: ${AUTO_GRANT_RESEARCHER_BY_DATASET_CODES:-${AZ_AUTO_GRANT_RESEARCHER_BY_DATASET_CODES:-}}
       IDP__AUTO_PROVISION_USERS: ${IDP__AUTO_PROVISION_USERS:-false}
-      USER_MGMT__ROLE_SOURCE: ${USER_MGMT__ROLE_SOURCE:-logto}
+      # Follows D2E_IDP above. Left on logto, group memberships are written to
+      # an identity provider the tokens no longer come from, so study roles
+      # never reach the claim the portal reads and datasets stay invisible.
+      USER_MGMT__ROLE_SOURCE: ${USER_MGMT__ROLE_SOURCE:-trex}
+      # Role assignments are written to trex, which is also the identity provider
+      # issuing the tokens they travel in.
+      IDP__ROLE_STORE: "trex"
+      TREX__ADMIN_URL: "http://${PROJECT_NAME:-d2e}-trex:33001/trex/admin/roles"
+      # Account provisioning, as opposed to role assignment above. Used to
+      # create the initial user in the IdP so usermgmt can record its subject.
+      TREX__AUTH_URL: "http://${PROJECT_NAME:-d2e}-trex:33001/trex/auth/v1"
+      D2E__SEED_USER: ${D2E__SEED_USER:-}
+      D2E__SETUP_USER: ${D2E__SETUP_USER:-d2e-setup@d2e.local}
+      # Optional override only: usermgmt runs as a function worker inside the
+      # trex container, and trex already injects this same credential as
+      # SUPABASE_SERVICE_ROLE_KEY into every such worker's environment.
+      TREX__SERVICE_ROLE_KEY: ${TREX__SERVICE_ROLE_KEY:-}
       USERMGMT__AUTO_PROVISION_ENABLED: ${USERMGMT__AUTO_PROVISION_ENABLED:-false}
       USERMGMT__AUTO_PROVISION_CONNECTORS: ${USERMGMT__AUTO_PROVISION_CONNECTORS:-}
       USERMGMT__AUTO_PROVISION_DEFAULT_TENANT_ID: ${USERMGMT__AUTO_PROVISION_DEFAULT_TENANT_ID:-}
@@ -654,6 +742,11 @@ services:
           }
           redir @atlas_uppercase /atlas{re.atlas_case.1} 301
 
+          # Bare root lands on Atlas. Matched exactly so only "/" moves: every
+          # other path still falls through to the trex gateway below.
+          @root path /
+          redir @root /atlas/ 302
+
           @studio path /plugins/trex/studio /plugins/trex/studio/*
           handle @studio {
             reverse_proxy http://${PROJECT_NAME:-d2e}-trex:33001 {
@@ -768,8 +861,9 @@ services:
   alp-dataflow-gen:
     container_name: &c2 ${PROJECT_NAME:-d2e}-dataflow-gen-1
     depends_on:
-      alp-logto-post-init:
-        condition: service_completed_successfully
+      # No edge to alp-logto-post-init: it sits behind the logto profile and
+      # compose cannot express a dependency that applies only when a profile is
+      # active, so waiting on it would break every default start.
       # Needs the alp_pg_* users, which trex's bootstrap creates.
       trex:
         condition: service_healthy
@@ -850,8 +944,7 @@ services:
     container_name: &c83 ${PROJECT_NAME:-d2e}-dataflow-gen-worker
     platform: linux/amd64
     depends_on:
-      alp-logto-post-init:
-        condition: service_completed_successfully
+      # See alp-dataflow-gen: no edge to the profiled logto services.
       alp-dataflow-gen:
         condition: service_healthy
     healthcheck:
@@ -932,6 +1025,9 @@ services:
   #     - alp
 
   alp-logto-post-init:
+    # Opt-in with `--profile logto`. trex is the identity provider now, so this
+    # does not start by default.
+    profiles: [logto]
     container_name: ${PROJECT_NAME:-d2e}-logto-post-init-1
     depends_on:
       alp-logto:
@@ -1007,6 +1103,8 @@ services:
       CADDY__D2E__PUBLIC_FQDN: ${CADDY__D2E__PUBLIC_FQDN:-${CADDY__ALP__PUBLIC_FQDN:-localhost}}${PORT:+:${PORT:-443}}
 
   alp-logto:
+    # Opt-in with `--profile logto`; see alp-logto-post-init above.
+    profiles: [logto]
     container_name: &c8 ${PROJECT_NAME:-d2e}-logto-1
     depends_on:
       # Only Postgres: the wait for trex's bootstrap is the beacon poll in the

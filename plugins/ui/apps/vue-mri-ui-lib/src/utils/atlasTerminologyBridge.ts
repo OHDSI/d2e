@@ -46,6 +46,11 @@ const askHostForConceptSet = (title?: string): Promise<ConceptSetChoice | null> 
 
 const onHostReply = (event: MessageEvent) => {
   if (event.origin !== window.location.origin) return
+  // Origin alone is not enough: every plugin iframe the portal hosts is
+  // same-origin, and request ids are a plain counter, so a sibling frame could
+  // answer a request it did not receive. The request goes to window.parent, so
+  // only window.parent may answer it - the same check the parcel receiver makes.
+  if (event.source !== window.parent) return
   if (event.data?.type !== REPLY_MESSAGE) return
 
   const resolve = pending.get(event.data.requestId)

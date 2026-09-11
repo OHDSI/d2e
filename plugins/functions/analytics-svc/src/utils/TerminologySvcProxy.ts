@@ -69,7 +69,14 @@ export const terminologyRequest = async (
             return response.data;
         } else {
             log.error(JSON.stringify(response.data));
-            throw response.data;
+            // An empty error body would otherwise be thrown as a nothing, which
+            // reaches callers as a failure carrying no reason and fails again
+            // where they read it. Carry the status, which says what happened
+            // even when the body does not.
+            throw Object.assign(
+                new Error(`terminology svc responded ${response.status}`),
+                { status: response.status, data: response.data }
+            );
         }
     } catch (err) {
         log.enrichErrorWithRequestCorrelationID(err, req);

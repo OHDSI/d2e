@@ -1,8 +1,8 @@
 import React, { FC, ReactNode, useEffect } from "react";
 import { useToken, useTranslation } from "../../../contexts";
 import { useFeatures } from "../../../hooks";
-import env from "../../../env";
 import "./PluginContainer.scss";
+import { resolveIdTokenName } from "../../../utils/idTokenName";
 
 interface PluginContainerProps {
   getToken?: () => Promise<string>;
@@ -11,8 +11,6 @@ interface PluginContainerProps {
   releaseId?: string;
   children?: ReactNode;
 }
-
-const nameProp = env.REACT_APP_IDP_NAME_PROP;
 
 const PluginContainer: FC<PluginContainerProps> = ({
   children,
@@ -35,7 +33,7 @@ const PluginContainer: FC<PluginContainerProps> = ({
             qeSvcUrl,
             studyId,
             releaseId,
-            username: idTokenClaims[nameProp],
+            username: resolveIdTokenName(idTokenClaims),
             features,
             featuresLoading,
             locale,

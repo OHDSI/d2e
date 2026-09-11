@@ -100,93 +100,112 @@ sleep 120
 docker ps -a
 
 ########################
-# Login to logto and get Bearer token and sub
+# Login and get Bearer token and sub
 ########################
-# Get sign in page
-response=$(curl -ik "https://localhost:41100/oidc/auth?redirect_uri=https%3A%2F%2Flocalhost%3A41100%2Fd2e%2Fportal%2Flogin-callback&client_id=$LOGTO__D2E_APP__CLIENT_ID&response_type=code&state=lbFDB1hcko&scope=openid%20offline_access%20profile%20email&nonce=Osptnuwqc47w&code_challenge=n6eqz8p8jj1L9Qu7pY2_GrWO7XyaQbWrcs54x9OAnPg&code_challenge_method=S256")
-printf "%s\n" "$response"
+D2E_IDP_SELECTED="${D2E_IDP:-logto}"
+if [ "$D2E_IDP_SELECTED" = "trex" ]; then
+  # Three calls instead of Logto's interaction dance; see the helper for why the
+  # authorization-code flow is required rather than the password grant.
+  # shellcheck source=/dev/null
+  source "$(git rev-parse --show-toplevel)/tests/backend_integration_tests/lib/trex-login.sh"
+  TREX__OIDC__WEBAPI_CLIENT_SECRET=$(grep -E '^TREX__OIDC__WEBAPI_CLIENT_SECRET=' .env.local | cut -d'=' -f2-)
+  SEED_USER=$(printf '%s' "${D2E__SEED_USER:-$LOGTO__USER}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["username"])')
+  SEED_PASS=$(printf '%s' "${D2E__SEED_USER:-$LOGTO__USER}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("initialPassword") or d["password"])')
+  case "$SEED_USER" in
+    *@*) SEED_EMAIL="$SEED_USER" ;;
+    *)   SEED_EMAIL="$SEED_USER@${D2E__SEED_USER_DOMAIN:-trex.local}" ;;
+  esac
+  trex_login "https://localhost:41100" "$SEED_EMAIL" "$SEED_PASS" \
+    "${TREX__OIDC__WEBAPI_CLIENT_ID:-d2e-webapi}" "$TREX__OIDC__WEBAPI_CLIENT_SECRET"
+  export BEARER_TOKEN
+  echo "BEARER_TOKEN=$BEARER_TOKEN" >>$GITHUB_ENV
+else
+  # Get sign in page
+  response=$(curl -ik "https://localhost:41100/oidc/auth?redirect_uri=https%3A%2F%2Flocalhost%3A41100%2Fd2e%2Fportal%2Flogin-callback&client_id=$LOGTO__D2E_APP__CLIENT_ID&response_type=code&state=lbFDB1hcko&scope=openid%20offline_access%20profile%20email&nonce=Osptnuwqc47w&code_challenge=n6eqz8p8jj1L9Qu7pY2_GrWO7XyaQbWrcs54x9OAnPg&code_challenge_method=S256")
+  printf "%s\n" "$response"
 
-# Extract cookies
-interaction_cookie=$(printf "%s\n" "$response" | grep _interaction= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-interaction_sig_cookie=$(printf "%s\n" "$response" | grep _interaction.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-interaction_resume_cookie=$(printf "%s\n" "$response" | grep _interaction_resume= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-interaction_resume_sig_cookie=$(printf "%s\n" "$response" | grep _interaction_resume.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-logto_cookie=$(printf "%s\n" "$response" | grep _logto= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  # Extract cookies
+  interaction_cookie=$(printf "%s\n" "$response" | grep _interaction= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_sig_cookie=$(printf "%s\n" "$response" | grep _interaction.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_resume_cookie=$(printf "%s\n" "$response" | grep _interaction_resume= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_resume_sig_cookie=$(printf "%s\n" "$response" | grep _interaction_resume.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  logto_cookie=$(printf "%s\n" "$response" | grep _logto= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
 
-# Sign in
-response=$(curl -ik --request PUT 'https://localhost:41100/api/interaction' \
-    --header 'content-type: application/json' \
-    --header 'Referer: https://localhost:41100/sign-in' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}" \
-    --data '{
-    "event": "SignIn",
-    "identifier": {
-        "username": "admin",
-        "password": "Updatepassword12345"
-    }
-}')
-printf "%s\n" "$response"
+  # Sign in
+  response=$(curl -ik --request PUT 'https://localhost:41100/api/interaction' \
+      --header 'content-type: application/json' \
+      --header 'Referer: https://localhost:41100/sign-in' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}" \
+      --data '{
+      "event": "SignIn",
+      "identifier": {
+          "username": "admin",
+          "password": "Updatepassword12345"
+      }
+  }')
+  printf "%s\n" "$response"
 
-# Submit sign in page
-response=$(curl -ik --request POST 'https://localhost:41100/api/interaction/submit' \
-    --header 'accept: application/json' \
-    --header 'origin: https://localhost:41100' \
-    --header 'referer: https://localhost:41100/sign-in' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
-printf "%s\n" "$response"
+  # Submit sign in page
+  response=$(curl -ik --request POST 'https://localhost:41100/api/interaction/submit' \
+      --header 'accept: application/json' \
+      --header 'origin: https://localhost:41100' \
+      --header 'referer: https://localhost:41100/sign-in' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
+  printf "%s\n" "$response"
 
-# Get session
-response=$(curl -ik "https://localhost:41100/oidc/auth/$interaction_cookie" \
-    --header 'referer: https://localhost:41100/sign-in' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
-printf "%s\n" "$response"
+  # Get session
+  response=$(curl -ik "https://localhost:41100/oidc/auth/$interaction_cookie" \
+      --header 'referer: https://localhost:41100/sign-in' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
+  printf "%s\n" "$response"
 
-interaction_cookie=$(printf "%s\n" "$response" | grep _interaction= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-interaction_sig_cookie=$(printf "%s\n" "$response" | grep _interaction.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-interaction_resume_cookie=$(printf "%s\n" "$response" | grep _interaction_resume= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-interaction_resume_sig_cookie=$(printf "%s\n" "$response" | grep _interaction_resume.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-logto_cookie=$(printf "%s\n" "$response" | grep _logto= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-session_cookie=$(printf "%s\n" "$response" | grep _session= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
-session_sig_cookie=$(printf "%s\n" "$response" | grep _session.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_cookie=$(printf "%s\n" "$response" | grep _interaction= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_sig_cookie=$(printf "%s\n" "$response" | grep _interaction.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_resume_cookie=$(printf "%s\n" "$response" | grep _interaction_resume= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  interaction_resume_sig_cookie=$(printf "%s\n" "$response" | grep _interaction_resume.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  logto_cookie=$(printf "%s\n" "$response" | grep _logto= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  session_cookie=$(printf "%s\n" "$response" | grep _session= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
+  session_sig_cookie=$(printf "%s\n" "$response" | grep _session.sig= | awk -F'=' '{print $2}' | awk -F'; ' '{print $1}')
 
-# Submit consent page
-response=$(curl -ik 'https://localhost:41100/consent' \
-    --header 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
-    --header 'referer: https://localhost:41100/sign-in' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
-printf "%s\n" "$response"
+  # Submit consent page
+  response=$(curl -ik 'https://localhost:41100/consent' \
+      --header 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
+      --header 'referer: https://localhost:41100/sign-in' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
+  printf "%s\n" "$response"
 
-# Get authorization code
-response=$(curl -ik "https://localhost:41100/oidc/auth/$interaction_cookie" \
-    --header 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
-    --header 'referer: https://localhost:41100/sign-in' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
-printf "%s\n" "$response"
+  # Get authorization code
+  response=$(curl -ik "https://localhost:41100/oidc/auth/$interaction_cookie" \
+      --header 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
+      --header 'referer: https://localhost:41100/sign-in' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
+  printf "%s\n" "$response"
 
-authorization_code=$(printf "%s\n" "$response" | sed -n 's/.*code=\([^&]*\).*/\1/p' | head -n 1)
+  authorization_code=$(printf "%s\n" "$response" | sed -n 's/.*code=\([^&]*\).*/\1/p' | head -n 1)
 
-# Complete login
-response=$(curl -ik "https://localhost:41100/d2e/portal/login-callback?code=$authorization_code&state=lbFDB1hcko&iss=https%3A%2F%2Flocalhost%3A41100%2Foidc" \
-    --header 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
-    --header 'referer: https://localhost:41100/sign-in' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
-printf "%s\n" "$response"
+  # Complete login
+  response=$(curl -ik "https://localhost:41100/d2e/portal/login-callback?code=$authorization_code&state=lbFDB1hcko&iss=https%3A%2F%2Flocalhost%3A41100%2Foidc" \
+      --header 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
+      --header 'referer: https://localhost:41100/sign-in' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}")
+  printf "%s\n" "$response"
 
-# Get Bearer token
-response=$(curl -ik 'https://localhost:41100/d2e/oauth/token' \
-    --header 'accept: application/json, text/javascript, */*; q=0.01' \
-    --header 'content-type: application/x-www-form-urlencoded' \
-    --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}" \
-    --header 'origin: https://localhost:41100' \
-    --header 'referer: https://localhost:41100/d2e/portal/login-callback?code=2sxkx6uCahwOfKo1cwzLaAq5MfdBJrMcqCLNHvOTXFv&state=odSrnZhVyE&iss=https%3A%2F%2Flocalhost%3A41100%2Foidc' \
-    --data-urlencode 'grant_type=authorization_code' \
-    --data-urlencode "client_id=$LOGTO__D2E_APP__CLIENT_ID" \
-    --data-urlencode 'redirect_uri=https://localhost:41100/d2e/portal/login-callback' \
-    --data-urlencode "code=$authorization_code" \
-    --data-urlencode 'code_verifier=kqVLhCyXRJ3Y9mXie6F9d1FW8AUbTUzIuJiqUf1SM9I')
-printf "%s\n" "$response"
+  # Get Bearer token
+  response=$(curl -ik 'https://localhost:41100/d2e/oauth/token' \
+      --header 'accept: application/json, text/javascript, */*; q=0.01' \
+      --header 'content-type: application/x-www-form-urlencoded' \
+      --header "Cookie: _interaction=$interaction_cookie; _interaction.sig=$interaction_sig_cookie; _interaction_resume=$interaction_resume_cookie; _interaction_resume.sig=$interaction_resume_sig_cookie; _session=$session_cookie; _session.sig=$session_sig_cookie; _logto={\"appId\":\"$LOGTO__D2E_APP__CLIENT_ID\"}" \
+      --header 'origin: https://localhost:41100' \
+      --header 'referer: https://localhost:41100/d2e/portal/login-callback?code=2sxkx6uCahwOfKo1cwzLaAq5MfdBJrMcqCLNHvOTXFv&state=odSrnZhVyE&iss=https%3A%2F%2Flocalhost%3A41100%2Foidc' \
+      --data-urlencode 'grant_type=authorization_code' \
+      --data-urlencode "client_id=$LOGTO__D2E_APP__CLIENT_ID" \
+      --data-urlencode 'redirect_uri=https://localhost:41100/d2e/portal/login-callback' \
+      --data-urlencode "code=$authorization_code" \
+      --data-urlencode 'code_verifier=kqVLhCyXRJ3Y9mXie6F9d1FW8AUbTUzIuJiqUf1SM9I')
+  printf "%s\n" "$response"
 
-export BEARER_TOKEN=$(echo "$response" | grep -o '"access_token":"[^"]*"' | sed 's/"access_token":"\([^"]*\)"/\1/')
+  export BEARER_TOKEN=$(echo "$response" | grep -o '"access_token":"[^"]*"' | sed 's/"access_token":"\([^"]*\)"/\1/')
+fi
 echo "BEARER_TOKEN=$BEARER_TOKEN" >>$GITHUB_ENV # Make available to subsequent github actions steps
 
 echo "BEARER TOKEN:"

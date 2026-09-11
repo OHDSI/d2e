@@ -177,6 +177,58 @@ export class DemoService {
   // Poll cache status until bao reports COMPLETED. The dataset POST returns as
   // soon as the row is inserted, so DQD/DC would otherwise race against the
   // still-building TrexSQL cache and fail with cache-not-ready errors.
+  /**
+   * Wait until the cache file stops growing.
+   *
+   * For dialects that build the cache without a job row, readiness is reported
+   * as soon as the file exists and is attached - which happens long before the
+   * copy has finished. Setup then hands a half-populated cache to whatever runs
+   * next: patient counts answer from the tables that made it, while anything
+   * touching a table still being copied fails with a catalog error naming it.
+   * The file's own modification time is the only progress signal available
+   * here, so wait for it to hold still.
+   */
+  private async waitForCacheToSettle(
+    portalAPI: PortalAPI,
+    datasetId: string,
+    quietMs = 30_000,
+    timeoutMs = 600_000,
+  ): Promise<void> {
+    const pollMs = 5_000;
+    const deadline = Date.now() + timeoutMs;
+    let lastSeen: number | null = null;
+    let unchangedSince = Date.now();
+
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, pollMs));
+      let modified: number | null = null;
+      try {
+        modified = (await portalAPI.getCacheStatus(datasetId)).lastModified ?? null;
+      } catch (e) {
+        // A failed poll says nothing about the copy; keep waiting.
+        this.logger.warn(
+          `Cache settle poll failed for ${datasetId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        continue;
+      }
+
+      if (modified !== lastSeen) {
+        lastSeen = modified;
+        unchangedSince = Date.now();
+        continue;
+      }
+      if (Date.now() - unchangedSince >= quietMs) {
+        this.logger.info(
+          `Cache for dataset ${datasetId} settled (unchanged for ${Math.round(quietMs / 1000)}s)`,
+        );
+        return;
+      }
+    }
+    this.logger.warn(
+      `Cache for dataset ${datasetId} was still changing after ${Math.round(timeoutMs / 1000)}s; continuing anyway`,
+    );
+  }
+
   public async waitForCache(token: string, _input: any, progress?: IProgress) {
     this.logger.info("Waiting for cache");
 
@@ -188,16 +240,69 @@ export class DemoService {
     }
 
     const portalAPI = new PortalAPI(token);
-    const pollTimeoutMs = 15 * 60 * 1000;
+
+    // Ask for the cache before waiting on it: when nothing has started the job,
+    // polling alone sits at activeJobStatus:null until the timeout below expires.
+    // Registering the dataset can start one on its own, though, and asking again
+    // while that one is copying is refused with "session busy" - the build that
+    // is running still finishes, but the request that lost the race is the one
+    // that would have attached the result. An existing cache file is the signal
+    // that something already started, since a build that reports no job row
+    // creates the file before it copies into it.
+    let triggered = true;
+    let asked = false;
+    const startingStatus = await portalAPI.getCacheStatus(dataset.id).catch(() => undefined);
+    if (startingStatus?.cacheExists) {
+      this.logger.info(
+        `A cache already exists for ${dataset.id}; waiting for it rather than asking for another.`,
+      );
+    } else {
+      asked = true;
+      try {
+        await portalAPI.refreshCache(dataset.id);
+      } catch (e) {
+        triggered = false;
+        this.logger.error(
+          `Could not start the cache job for ${dataset.id}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
+    }
+
+    // A failed trigger gets a short grace period, not the full budget. Something
+    // else may already have started the job, so it is worth a brief look — but
+    // waiting fifteen minutes for a job nobody started turns a clear failure
+    // into a silent stall, and with retries above it that is three quarters of
+    // an hour before anyone sees the real error.
+    const pollTimeoutMs = triggered ? 15 * 60 * 1000 : 60 * 1000;
     const pollIntervalMs = 5000;
     const deadline = Date.now() + pollTimeoutMs;
+    const graceDeadline = Date.now() + 60 * 1000;
     let lastStatus;
     while (Date.now() < deadline) {
-      lastStatus = await portalAPI.getCacheStatus(dataset.id);
+      // A poll that comes back empty is a transient condition, not a fatal one:
+      // the endpoint answers 200 with no body while the dataset is still being
+      // registered. Reading `.ready` straight off it turned that into
+      // "Cannot read properties of undefined", which reported a cache problem
+      // when the truth was simply that nothing had answered yet.
+      lastStatus = await portalAPI.getCacheStatus(dataset.id).catch((e) => {
+        this.logger.warn(
+          `Cache status poll failed for ${dataset.id}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+        return undefined;
+      });
+      if (!lastStatus) {
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+        continue;
+      }
       if (lastStatus.ready) {
         this.logger.info(
-          `Cache ready for dataset ${dataset.id}: ${JSON.stringify(lastStatus)}`
+          `Cache reports ready for dataset ${dataset.id}: ${JSON.stringify(lastStatus)}`
         );
+        await this.waitForCacheToSettle(portalAPI, dataset.id);
         return lastStatus;
       }
       if (
@@ -211,6 +316,21 @@ export class DemoService {
       this.logger.info(
         `Cache not ready yet for dataset ${dataset.id}: ${JSON.stringify(lastStatus)}`
       );
+      // The cache file that made this skip the trigger belonged to a build that
+      // is evidently not running: nothing has reported a job and the cache has
+      // not come ready. Ask once, late enough that a build already in flight has
+      // finished rather than being interrupted by the request.
+      if (!asked && !lastStatus.activeJobStatus && Date.now() > graceDeadline) {
+        asked = true;
+        this.logger.info(`Nothing is building the cache for ${dataset.id}; asking for one.`);
+        await portalAPI.refreshCache(dataset.id).catch((e) => {
+          this.logger.error(
+            `Could not start the cache job for ${dataset.id}: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        });
+      }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
     throw new Error(
@@ -443,7 +563,7 @@ export class DemoService {
 
     const userMgmtAPI = new UserMgmtAPI(token);
     const result = await userMgmtAPI.registerStudyRoles({
-      userIds: ["a6660e40-261e-4782-873e-f76b4328aecf"],
+      userIds: [await this.initialUserId(userMgmtAPI)],
       tenantId: "e0348e4d-2e17-43f2-a3c6-efd752d17c23",
       studyId: datasetId,
       roles: ["RESEARCHER"],
@@ -452,6 +572,30 @@ export class DemoService {
       `Researcher role added to admin: ${JSON.stringify(result)}`
     );
     return result;
+  }
+
+  // The account is looked up rather than named by a fixed id. That id used to be
+  // both the usermgmt primary key and the identity provider's subject, which
+  // only held while a single provider minted both; granting to a stale one
+  // succeeds against usermgmt and then propagates to nobody.
+  private async initialUserId(userMgmtAPI: UserMgmtAPI): Promise<string> {
+    const name = env.IDP__INITIAL_USER__NAME;
+    if (!name) {
+      throw new Error("IDP__INITIAL_USER__NAME is not set, so the demo grants have no subject");
+    }
+    const email = name.includes("@") ? name : `${name}@${env.IDP__INITIAL_USER__DOMAIN}`;
+    const users = await userMgmtAPI.getUsers();
+    const match = users.find((user) => user.username === email) ??
+      users.find((user) => user.username === name);
+    if (!match) {
+      throw new Error(`No user named ${email} to grant the demo dataset to`);
+    }
+    if (!match.idpUserId) {
+      // Without a subject the grant lands on a row no token maps to, which is
+      // the silent failure this lookup exists to avoid.
+      throw new Error(`${email} has no identity-provider subject recorded, so roles cannot be granted`);
+    }
+    return match.id;
   }
 
   private async encrypt(data: string, salt: string) {

@@ -15,8 +15,8 @@ import { useFeatures } from "../../hooks";
 import { PluginDropdownItem, SubFeatureFlags } from "@portal/plugin";
 import { PluginType } from "../../types";
 import env from "../../env";
+import { resolveIdTokenName } from "../../utils/idTokenName";
 
-const nameProp = env.REACT_APP_IDP_NAME_PROP;
 
 const VUE_APP_HOST = env.REACT_APP_DN_BASE_URL.endsWith("/")
   ? `${env.REACT_APP_DN_BASE_URL}d2e`
@@ -58,7 +58,7 @@ export const ResearcherStudyPluginRenderer: FC<ResearcherStudyPluginRendererProp
   const { idTokenClaims } = useToken();
   const { locale } = useTranslation();
   const [features, featuresLoading] = useFeatures();
-  const username = idTokenClaims?.[nameProp] as string | undefined;
+  const username = resolveIdTokenName(idTokenClaims);
 
   const [component, setComponent] = useState<any>();
   const [pluginType, setPluginType] = useState<PluginType | null>(null);

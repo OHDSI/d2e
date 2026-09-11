@@ -13,13 +13,13 @@ import DeleteAccountDialog from "./DeleteAccountDialog/DeleteAccountDialog";
 import { ChangeLanguageDialog } from "./ChangeLanguageDialog/ChangeLanguageDialog";
 import { LegalCard } from "../Legal/LegalCard";
 import "./Account.scss";
+import { resolveIdTokenName } from "../../../utils/idTokenName";
 
 interface AccountProps {
   portalType: PortalType;
 }
 
 const subProp = env.REACT_APP_IDP_SUBJECT_PROP;
-const nameProp = env.REACT_APP_IDP_NAME_PROP;
 
 const EMPTY_MY_USER: User = { id: "", name: "" };
 
@@ -46,7 +46,7 @@ export const Account: FC<AccountProps> = ({ portalType }) => {
       fetchUserGroups();
       setMyUser({
         id: idTokenClaims[subProp],
-        name: idTokenClaims[nameProp],
+        name: resolveIdTokenName(idTokenClaims) ?? "",
       });
     }
   }, [idTokenClaims, fetchUserGroups]);

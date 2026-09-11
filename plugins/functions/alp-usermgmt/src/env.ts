@@ -31,6 +31,15 @@ export const env = {
   IDP_ALP_ADMIN_CLIENT_ID: Deno.env.get("IDP__ALP_ADMIN__CLIENT_ID"),
   IDP_ALP_ADMIN_CLIENT_SECRET: Deno.env.get("IDP__ALP_ADMIN__CLIENT_SECRET"),
   IDP_ALP_ADMIN_RESOURCE: Deno.env.get("IDP__ALP_ADMIN__RESOURCE"),
+  TREX_ADMIN_URL: Deno.env.get("TREX__ADMIN_URL"),
+  // Account creation, as opposed to role assignment on TREX__ADMIN_URL.
+  TREX_AUTH_URL: Deno.env.get("TREX__AUTH_URL"),
+  // The identity provider identifies accounts by email; this turns a bare
+  // username into one, and has to match what the sign-in page appends.
+  IDP_USER_DOMAIN: Deno.env.get("IDP__INITIAL_USER__DOMAIN") ?? "d2e.local",
+  TREX_SERVICE_ROLE_KEY: Deno.env.get("TREX__SERVICE_ROLE_KEY"),
+  SUPABASE_SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  IDP_ROLE_STORE: Deno.env.get("IDP__ROLE_STORE"),
   SSL_PRIVATE_KEY: Deno.env.get("TLS__INTERNAL__KEY")?.replace(/\\n/g, '\n'),
   SSL_PUBLIC_CERT: Deno.env.get("TLS__INTERNAL__CRT")?.replace(/\\n/g, '\n'),
   SSL_CA_CERT: Deno.env.get("TLS__INTERNAL__CA_CRT")?.replace(/\\n/g, '\n'),
@@ -43,6 +52,12 @@ export const env = {
   AUTO_GRANT_RESEARCHER_BY_DATASET_CODES:
     _env.AUTO_GRANT_RESEARCHER_BY_DATASET_CODES || _env.AZ_AUTO_GRANT_RESEARCHER_BY_DATASET_CODES,
   USER_MGMT_ROLE_SOURCE: Deno.env.get("USER_MGMT__ROLE_SOURCE"),
+  // The account the setup scripts run as. It has to administer tenants to grant
+  // study roles, and unlike the initial user it does not exist when the seeds
+  // run - it is created on its first sign-in - so the privilege is attached
+  // where the row is created instead. Unset means no account is treated this
+  // way, so a deployment has to name it deliberately.
+  D2E_SETUP_USER: Deno.env.get("D2E__SETUP_USER"),
   USERMGMT_AUTO_PROVISION_ENABLED: Deno.env.get("USERMGMT__AUTO_PROVISION_ENABLED") === 'true',
   USERMGMT_AUTO_PROVISION_CONNECTORS: Deno.env.get("USERMGMT__AUTO_PROVISION_CONNECTORS") || '',
   USERMGMT_AUTO_PROVISION_DEFAULT_TENANT_ID: Deno.env.get("USERMGMT__AUTO_PROVISION_DEFAULT_TENANT_ID") || Deno.env.get("APP__TENANT_ID"),

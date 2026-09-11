@@ -50,8 +50,16 @@ export class UserGroupRepository extends Repository<UserGroup, UserGroupCriteria
     super(db)
   }
 
-  async getGroupsByUser(userId: string, tenantId?: string, system?: string): Promise<UserGroupExt[]> {
-    const query = this.db(this.tableName)
+  async getGroupsByUser(
+    userId: string,
+    tenantId?: string,
+    system?: string,
+    trx?: Knex
+  ): Promise<UserGroupExt[]> {
+    // Reading through the caller's transaction matters when memberships are being
+    // withdrawn in bulk: the deletes are not committed yet, so the default
+    // connection would still report groups the user is in the middle of losing.
+    const query = (trx || this.db)(this.tableName)
       .innerJoin('b2c_group', 'user_group.b2c_group_id', 'b2c_group.id')
       .innerJoin('user', 'user.id', 'user_group.user_id')
       .where('user_id', userId)

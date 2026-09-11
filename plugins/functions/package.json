@@ -34,7 +34,8 @@
           "function": "/alp-dataflow-gen-init",
           "imports": "/alp-dataflow-gen-init/deno.json",
           "env": "alp-dataflow-gen-init",
-          "waitforEnvVar": "PREFECT_HEALTH_CHECK"
+          "waitforEnvVar": "PREFECT_HEALTH_CHECK",
+          "eszip": "/alp-dataflow-gen-init/index.eszip"
         },
         {
           "function": "/files-manager-init",
@@ -385,7 +386,14 @@
           "USER_MGMT__IDP_SUBJECT_PROP": "sub",
           "USER_MGMT__LOG_LEVEL": "info",
           "USER_MGMT__PATH": "/usermgmt/",
-          "USER_MGMT__PORT": 41104
+          "USER_MGMT__PORT": 41104,
+          "D2E__SEED_USER": "${D2E__SEED_USER}",
+          "TREX__AUTH_URL": "${TREX__AUTH_URL}",
+          "TREX__SERVICE_ROLE_KEY": "${TREX__SERVICE_ROLE_KEY}",
+          "IDP__INITIAL_USER__DOMAIN": "${IDP__INITIAL_USER__DOMAIN:-d2e.local}",
+          "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}",
+          "TREX__ADMIN_URL": "${TREX__ADMIN_URL}",
+          "D2E__SETUP_USER": "${D2E__SETUP_USER}"
         },
         "white-rabbit": {
           "PG_ADMIN_PASSWORD": "${PG_ADMIN_PASSWORD}",
@@ -528,7 +536,9 @@
           "DEMO__DB_DEFAULT": "{ \"name\": \"postgres\", \"dialect\": \"postgres\", \"host\": \"demodb\", \"port\": 5432, \"extra\": { \"Internal\": { \"statementTimeout\": 60000, \"queryTimeout\": 60000, \"idleTimeoutMillis\": 300000, \"idleInTransactionSessionTimeout\": 300000, \"max\": 50 } }, \"authenticationMode\": \"Password\", \"credentials\": []}",
           "DEMO__DB_USER": "${DEMO__DB_USER:-postgres}",
           "DEMO__DB_PASSWORD": "${DEMO__DB_PASSWORD:-mypass}",
-          "DEMO__DATASET": "{ \"tokenStudyCode\": \"demo\", \"type\": \"source\", \"tenantId\": \"e0348e4d-2e17-43f2-a3c6-efd752d17c23\", \"schemaOption\": \"existing_cdm\", \"dialect\": \"postgres\", \"dataModel\": \"omop5-4\", \"plugin\": \"omop_cdm_plugin\", \"paConfigId\": \"4fce3cb7-32bf-4b46-8cba-32e4f77a14dd\", \"visibilityStatus\": \"DEFAULT\", \"detail\": { \"name\": \"Demo dataset\", \"summary\": \"Demo dataset\", \"description\": \"Demo dataset\", \"showRequestAccess\": false }, \"dashboards\": [], \"attributes\": [], \"tags\": [], \"cacheDatasetName\": \"Demo dataset\", \"cacheDatasetType\": \"omop\" }"
+          "DEMO__DATASET": "{ \"tokenStudyCode\": \"demo\", \"type\": \"source\", \"tenantId\": \"e0348e4d-2e17-43f2-a3c6-efd752d17c23\", \"schemaOption\": \"existing_cdm\", \"dialect\": \"postgres\", \"dataModel\": \"omop5-4\", \"plugin\": \"omop_cdm_plugin\", \"paConfigId\": \"4fce3cb7-32bf-4b46-8cba-32e4f77a14dd\", \"visibilityStatus\": \"DEFAULT\", \"detail\": { \"name\": \"Demo dataset\", \"summary\": \"Demo dataset\", \"description\": \"Demo dataset\", \"showRequestAccess\": false }, \"dashboards\": [], \"attributes\": [], \"tags\": [], \"cacheDatasetName\": \"Demo dataset\", \"cacheDatasetType\": \"omop\" }",
+          "IDP__INITIAL_USER__NAME": "${IDP__INITIAL_USER__NAME:-admin}",
+          "IDP__INITIAL_USER__DOMAIN": "${IDP__INITIAL_USER__DOMAIN:-d2e.local}"
         },
         "d2e-webapi": {},
         "alp-dataflow-gen-init": {

@@ -2,6 +2,12 @@ services:
   trex:
     environment:
       TREX_DX_ENABLED: "false"
+      # CI's public FQDN is `localhost`, which inside this container is the
+      # container itself, so the token proxy and WebAPI cannot fetch the issuer's
+      # endpoints over it. This routes those server-side calls somewhere that
+      # resolves; `iss` stays the public issuer from docker-compose.yml, so tokens
+      # verify unchanged everywhere else.
+      TREX_OIDC_INTERNAL_BASE: "http://${PROJECT_NAME:-d2e}-trex:33001"
     volumes:
       - ./plugins/ui-built:/usr/src/plugins/d2e-ui-pr
       # Overlay the e2e-patched MRI/PA seed config onto the image-bundled

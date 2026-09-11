@@ -296,8 +296,26 @@ class D2ECli {
       SUPABASE_STORAGE_JWT_SECRET: `${this.SUPABASE_STORAGE_JWT_SECRET}`,
       SUPABASE_STORAGE_JWT_TOKEN: `${this.SUPABASE_STORAGE_JWT_TOKEN}`,
       PROJECT_NAME: `${this.PROJECT_NAME}`,
-      USER_MGMT__ROLE_SOURCE: `logto`,
+      // "logto" selects the token-claims path: usermgmt reads the `roles` claim
+      // out of the bearer token rather than any Logto API, so it holds for any
+      // IdP that emits a compatible list - trex included.
+      USER_MGMT__ROLE_SOURCE: `trex`,
       TREX__SQL__PASSWORD: `${this.generate_random_password(
+        this.DEFAULT_PASSWORD_LENGTH,
+      )}`,
+      // Shared between WebAPI's OIDC client and the registration trex seeds for
+      // it, so the two are generated together and cannot drift apart.
+      // Which IdP the stack authenticates against. Read by the container
+      // (d2e-compat) and by the setup scripts, which run on the host -- so it
+      // lives in the env file rather than only in compose, or the two disagree.
+      D2E_IDP: `trex`,
+      // The account the test suites and a first-run operator sign in as. Mirrors
+      // LOGTO__USER, which seeds the same person into Logto, and lives in the env
+      // file because the setup scripts run on the host where compose env is not
+      // visible.
+      D2E__SEED_USER: `{"username":"admin","initialPassword":"Updatepassword12345"}`,
+      TREX__OIDC__WEBAPI_CLIENT_ID: `d2e-webapi`,
+      TREX__OIDC__WEBAPI_CLIENT_SECRET: `${this.generate_random_password(
         this.DEFAULT_PASSWORD_LENGTH,
       )}`,
       // Root encryption key for trex's KEK/DEK wrapping and JWT signing. The
@@ -468,7 +486,24 @@ class D2ECli {
     this.libUtils.genTlsInternal(DOTENV_FILE);
   }
 
+  // Engines that enforce a password policy - HANA among them - require at least
+  // one uppercase letter, one lowercase letter and one digit. Drawing uniformly
+  // from the alphabet does not guarantee that: a sixteen-character password
+  // contains no digit roughly six percent of the time, which surfaced as an
+  // occasional HANA setup failure that looked like an infrastructure flake.
+  // Redrawing leaves every compliant password equally likely, which placing one
+  // character of each class at a fixed position would not.
   generate_random_password(length: number): string {
+    while (true) {
+      const password = this.draw_password(length);
+      // Too short to hold one of each; the caller asked for what it asked for.
+      if (length < 3 || (/[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password))) {
+        return password;
+      }
+    }
+  }
+
+  private draw_password(length: number): string {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const charsLength = chars.length;
@@ -599,8 +634,138 @@ class D2ECli {
       }),
     );
   }
+  /** Polls WebAPI's own endpoint until it answers, or the budget runs out. */
+  wait_for_webapi(seconds = 300): boolean {
+    const trex = `${this.PROJECT_NAME}-trex`;
+    for (let i = 0; i < seconds / 5; i++) {
+      try {
+        const code = execSync(
+          `docker exec ${trex} curl -s -o /dev/null -w '%{http_code}' ` +
+            `--max-time 5 http://localhost:8080/WebAPI/info`,
+          { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+        ).trim();
+        if (code === "200") {
+          console.log(`WebAPI ready after ~${i * 5}s.`);
+          return true;
+        }
+      } catch {
+        // Container not up, or curl unavailable yet; keep waiting.
+      }
+      execSync("sleep 5");
+    }
+    return false;
+  }
+
+  /**
+   * Publish trex's service-role key into the environment file.
+   *
+   * usermgmt needs that credential to write role assignments into the identity
+   * provider, but trex mints it on first boot and keeps it in its own settings
+   * table, so nothing can supply it up front. Without it the role writes fail
+   * and users are granted access that never reaches a token.
+   *
+   * @returns whether the file changed, which means trex has to be recreated to
+   *   pick the value up.
+   */
+  /**
+   * The running database container.
+   *
+   * Looked up rather than composed from the project name: the compose service
+   * is `alp-minerva-postgres`, so `<project>-minerva-postgres-1` only happens to
+   * be right where the project is itself called `alp`, and is wrong everywhere
+   * else - including CI, where it named a container that does not exist.
+   */
+  postgres_container(): string {
+    try {
+      const found = execSync(
+        `docker ps --filter name=minerva-postgres --format "{{.Names}}"`,
+        { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+      )
+        .split("\n")
+        .map((n) => n.trim())
+        .filter(Boolean);
+      return found[0] ?? "";
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Block until trex reports healthy, or give up and say so.
+   *
+   * Uses the container's own healthcheck rather than a guess at a URL, so it
+   * tracks whatever readiness trex itself defines.
+   */
+  async wait_for_trex(timeoutMs = 300_000): Promise<void> {
+    const trex = `${this.PROJECT_NAME}-trex`;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      let status = "";
+      try {
+        status = execSync(
+          `docker inspect --format "{{.State.Health.Status}}" ${trex}`,
+          { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+        ).trim();
+      } catch {
+        // Container not up yet; keep waiting rather than failing outright.
+      }
+      if (status === "healthy") {
+        console.log("trex is ready.");
+        return;
+      }
+      if (status === "unhealthy") {
+        console.warn("trex reports unhealthy; continuing, but it may not serve yet.");
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+    console.warn(
+      `trex was still not healthy after ${Math.round(timeoutMs / 1000)}s; continuing anyway.`,
+    );
+  }
+
+  sync_trex_service_role_key(): boolean {
+    const postgres = this.postgres_container();
+    if (!postgres) {
+      console.warn("Could not find the database container; role writes will fail until the key is set.");
+      return false;
+    }
+    let key = "";
+    try {
+      key = execSync(
+        `docker exec ${postgres} psql -U postgres -d alp -tAc ` +
+          `"select value #>> '{}' from trexdb.setting where key='auth.serviceRoleKey'"`,
+        { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+      ).trim();
+    } catch {
+      console.warn("Could not read the trex service-role key; role writes will fail until it is set.");
+      return false;
+    }
+    if (!key) {
+      console.warn("trex has not minted a service-role key yet; role writes will fail until it has.");
+      return false;
+    }
+
+    const env = fs.readFileSync(this.ENVFILE, "utf-8");
+    const line = `TREX__SERVICE_ROLE_KEY=${key}`;
+    if (env.includes(line)) {
+      return false;
+    }
+    const updated = /^TREX__SERVICE_ROLE_KEY=.*$/m.test(env)
+      ? env.replace(/^TREX__SERVICE_ROLE_KEY=.*$/m, line)
+      : `${env.replace(/\n*$/, "")}\n${line}\n`;
+    fs.writeFileSync(this.ENVFILE, updated);
+    console.log("Recorded the trex service-role key.");
+    return true;
+  }
+
   patch_demodb() {
     console.log("Patching demodb...");
+    // Everything after this talks to WebAPI, which trex starts asynchronously —
+    // so the stack can report healthy while Tomcat is still coming up, and a
+    // caller that races that window gets a connection error on its first token
+    // exchange rather than a useful message.
+    this.wait_for_webapi();
     const database_host = `${this.PROJECT_NAME}-demodb`;
     // Create cohort table if it doesn't exist
     const createCohortCmd = `docker exec ${database_host} psql -h localhost -U postgres -c "SET search_path TO demo_cdm; CREATE TABLE IF NOT EXISTS cohort (cohort_definition_id integer NOT NULL,subject_id integer NOT NULL,cohort_start_date DATE NOT NULL,cohort_end_date DATE NOT NULL)"`;
@@ -634,8 +799,20 @@ class D2ECli {
     console.log("Setting up http test database...");
     this.patch_demodb();
     process.env.PORT = this.port;
-    await runSetupHTTPTestEnv(this.ENVFILE).catch(() => process.exit(1));
-    await checkSetupDemoFlow(this.ENVFILE).catch(() => process.exit(1));
+    await runSetupHTTPTestEnv(this.ENVFILE).catch((error) => this.fail(error));
+    await checkSetupDemoFlow(this.ENVFILE).catch((error) => this.fail(error));
+  }
+
+  /**
+   * End the command, saying why.
+   *
+   * These failures used to be discarded and turned into a bare exit code, which
+   * in CI reads as a step that stopped two seconds in with no output and no
+   * indication of what it was doing.
+   */
+  private fail(error: unknown): never {
+    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+    process.exit(1);
   }
 
   getbearertoken(): void {
@@ -646,20 +823,20 @@ class D2ECli {
   async setupdemohana(): Promise<void> {
     console.log("Setting up demo database for hana...");
     process.env.PORT = this.port;
-    await setupDemoHana(this.ENVFILE).catch(() => process.exit(1));
-    await checkSetupDemoHanaFlow(this.ENVFILE).catch(() => process.exit(1));
+    await setupDemoHana(this.ENVFILE).catch((error) => this.fail(error));
+    await checkSetupDemoHanaFlow(this.ENVFILE).catch((error) => this.fail(error));
   }
 
   async checkflow(): Promise<void> {
     console.log("Checking flow...");
     process.env.PORT = this.port;
-    await checkSetupDemoFlow(this.ENVFILE).catch(() => process.exit(1));
+    await checkSetupDemoFlow(this.ENVFILE).catch((error) => this.fail(error));
   }
 
   async getnoproxy(): Promise<void> {
     process.env.PORT = this.port;
     process.env.DOTENV_FILE = this.ENVFILE;
-    await runGetNoProxy(this.compose_dir).catch(() => process.exit(1));
+    await runGetNoProxy(this.compose_dir).catch((error) => this.fail(error));
   }
 
   async syncRoles(): Promise<{ ok: boolean }> {
@@ -675,10 +852,17 @@ class D2ECli {
     }
   }
 
+  /**
+   * True only for an env written before the role source was a setting at all.
+   * Those stacks still need the one-time migration; an env that names a source
+   * has already made its choice, and for anything other than logto - a
+   * deployment whose IdP is trex, say - syncing roles into Logto would be
+   * migrating them somewhere nothing reads.
+   */
   needsSyncRoles(): boolean {
     if (!fs.existsSync(this.ENVFILE)) return false;
     const env = fs.readFileSync(this.ENVFILE, "utf-8");
-    return !/^USER_MGMT__ROLE_SOURCE=logto\s*$/m.test(env);
+    return !/^USER_MGMT__ROLE_SOURCE=/m.test(env);
   }
 
   isFullStart(opts: CliOptions): boolean {
@@ -740,6 +924,25 @@ class D2ECli {
           console.log("Process completed successfully.");
 
           if (!this.isFullStart(this.program.opts())) return;
+
+          // trex only mints its service-role key once it has started, so the
+          // first start always comes up without it. Recording it now and
+          // bringing the stack up again recreates just the service whose
+          // environment changed; without it, role writes fail and users are
+          // granted access that never reaches a token.
+          if (this.sync_trex_service_role_key()) {
+            console.log("Applying the trex service-role key...");
+            await new Promise<void>((resolve) => {
+              const again = spawn(cmd, { stdio: "inherit", shell: true, env });
+              again.on("close", () => resolve());
+            });
+            // Compose returns as soon as the container is started, not when the
+            // service inside it answers. Whatever runs next - a setup script, a
+            // test suite - would otherwise race a trex that is still loading
+            // plugins, and see a gateway that serves no sign-in page yet.
+            await this.wait_for_trex();
+          }
+
           if (!this.needsSyncRoles()) return;
 
           console.log(
@@ -1100,6 +1303,32 @@ class D2ECli {
       .action(async () => {
         const r = await this.syncRoles();
         if (!r.ok) process.exit(1);
+      });
+    this.program
+      .command("migrate-idp-roles")
+      .description(
+        "Move role assignments from Logto to the trex identity provider (one-time migration)",
+      )
+      .option(
+        "--apply",
+        "Perform the changes; without this the plan is only printed",
+      )
+      .option(
+        "--create-missing-users",
+        "Also create trex accounts for usermgmt users that have none. Off by " +
+          "default: this grants access to a system those users could not reach " +
+          "before, which a role migration should not do silently.",
+      )
+      .action(async (opts) => {
+        dotenvConfig({ path: this.ENVFILE });
+        this.load_env_variables();
+        const { runMigration } = await import(
+          path.join(__dirname, "migrate-idp-roles.mjs")
+        );
+        await runMigration({
+          apply: Boolean(opts.apply),
+          createMissing: Boolean(opts.createMissingUsers),
+        });
       });
   }
 
