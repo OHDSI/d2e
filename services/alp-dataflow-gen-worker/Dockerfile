@@ -69,6 +69,62 @@ RUN stage_group hades hades-flow
 COPY plugins/flows/data_transformation /src/plugins/flows/data_transformation
 RUN stage_group data_transformation data-transformation-flow
 
+# Stage each plugin's manifests, lockfiles, and provisioning scripts.
+FROM scratch AS dependency-staging
+# cohort-discovery-flow
+COPY \
+    plugins/flows/cohort_discovery/pyproject.toml \
+    plugins/flows/cohort_discovery/pixi.lock \
+    plugins/flows/cohort_discovery/setup_assets.sh \
+    /staged/cohort-discovery-flow/baked/
+# loyalty-score-flow
+COPY \
+    plugins/flows/loyalty_score/pyproject.toml \
+    plugins/flows/loyalty_score/pixi.lock \
+    /staged/loyalty-score-flow/baked/
+# i2b2-flow
+COPY \
+    plugins/flows/i2b2/pyproject.toml \
+    plugins/flows/i2b2/pixi.lock \
+    plugins/flows/i2b2/setup_assets.sh \
+    /staged/i2b2-flow/baked/
+# data-management-flow
+COPY \
+    plugins/flows/data_management/pyproject.toml \
+    plugins/flows/data_management/pixi.lock \
+    plugins/flows/data_management/setup_assets.sh \
+    /staged/data-management-flow/baked/
+# search-embedding-flow
+COPY \
+    plugins/flows/search_embedding/pyproject.toml \
+    plugins/flows/search_embedding/pixi.lock \
+    plugins/flows/search_embedding/setup_assets.sh \
+    /staged/search-embedding-flow/baked/
+# hades-flow
+COPY \
+    plugins/flows/hades/pyproject.toml \
+    plugins/flows/hades/pixi.lock \
+    plugins/flows/hades/renv.lock \
+    plugins/flows/hades/setup_r.sh \
+    plugins/flows/hades/rprofile_java.R \
+    /staged/hades-flow/baked/
+# data-transformation-flow
+COPY \
+    plugins/flows/data_transformation/pyproject.toml \
+    plugins/flows/data_transformation/pixi.lock \
+    plugins/flows/data_transformation/renv.lock \
+    plugins/flows/data_transformation/setup_assets.sh \
+    plugins/flows/data_transformation/setup_r.sh \
+    /staged/data-transformation-flow/baked/
+# d2e-flows
+COPY \
+    plugins/flows/base/pyproject.toml \
+    plugins/flows/base/pixi.lock \
+    plugins/flows/base/renv.lock \
+    plugins/flows/base/setup_assets.sh \
+    plugins/flows/base/setup_r.sh \
+    /staged/d2e-flows/baked/
+
 # Shared base for the env-build stages and the final image: same apt set and
 # pixi binary everywhere, so envs compile in exactly the runtime they run in.
 FROM ubuntu:24.04 AS runtime-base
@@ -101,11 +157,11 @@ RUN chmod 755 /app/provision-envs.sh /app/slim-envs.sh
 # compile among them — and the stage still builds in parallel with the heavy
 # lineage.
 FROM provisioner AS env-light
-COPY --from=staging /staged/cohort-discovery-flow /var/lib/d2e-flows/cohort-discovery-flow
-COPY --from=staging /staged/loyalty-score-flow /var/lib/d2e-flows/loyalty-score-flow
-COPY --from=staging /staged/i2b2-flow /var/lib/d2e-flows/i2b2-flow
-COPY --from=staging /staged/data-management-flow /var/lib/d2e-flows/data-management-flow
-COPY --from=staging /staged/search-embedding-flow /var/lib/d2e-flows/search-embedding-flow
+COPY --from=dependency-staging /staged/cohort-discovery-flow /var/lib/d2e-flows/cohort-discovery-flow
+COPY --from=dependency-staging /staged/loyalty-score-flow /var/lib/d2e-flows/loyalty-score-flow
+COPY --from=dependency-staging /staged/i2b2-flow /var/lib/d2e-flows/i2b2-flow
+COPY --from=dependency-staging /staged/data-management-flow /var/lib/d2e-flows/data-management-flow
+COPY --from=dependency-staging /staged/search-embedding-flow /var/lib/d2e-flows/search-embedding-flow
 RUN --mount=type=cache,target=/opt/pixi/cache,sharing=locked \
     set -e; \
     for group in cohort-discovery-flow loyalty-score-flow i2b2-flow \
@@ -124,7 +180,7 @@ RUN --mount=type=cache,target=/opt/pixi/cache,sharing=locked \
 # ~51 for hades). Leading with base meant its every change also rebuilt both R
 # envs - the whole ~89 minutes - for inputs that had not changed.
 FROM provisioner AS env-hades
-COPY --from=staging /staged/hades-flow /var/lib/d2e-flows/hades-flow
+COPY --from=dependency-staging /staged/hades-flow /var/lib/d2e-flows/hades-flow
 # Secret mount, not a build-arg: the token differs per CI run and an ARG would
 # poison this stage's cache key (registry cache would never hit).
 RUN --mount=type=secret,id=github_pat \
@@ -134,13 +190,13 @@ RUN --mount=type=secret,id=github_pat \
  && /app/slim-envs.sh --strip /var/lib/d2e-flows/hades-flow/baked
 
 FROM env-hades AS env-data-transformation
-COPY --from=staging /staged/data-transformation-flow /var/lib/d2e-flows/data-transformation-flow
+COPY --from=dependency-staging /staged/data-transformation-flow /var/lib/d2e-flows/data-transformation-flow
 RUN --mount=type=cache,target=/opt/pixi/cache,sharing=locked \
     MAKEFLAGS="-j$(nproc)" /app/provision-envs.sh --dir /var/lib/d2e-flows/data-transformation-flow/baked \
  && /app/slim-envs.sh --strip /var/lib/d2e-flows/data-transformation-flow/baked
 
 FROM env-data-transformation AS env-base
-COPY --from=staging /staged/d2e-flows /var/lib/d2e-flows/d2e-flows
+COPY --from=dependency-staging /staged/d2e-flows /var/lib/d2e-flows/d2e-flows
 RUN --mount=type=cache,target=/opt/pixi/cache,sharing=locked \
     MAKEFLAGS="-j$(nproc)" /app/provision-envs.sh --dir /var/lib/d2e-flows/d2e-flows/baked \
  && /app/slim-envs.sh --strip /var/lib/d2e-flows/d2e-flows/baked
@@ -162,6 +218,16 @@ RUN chmod 755 /app/run-flow.sh /app/provision-envs.sh /entrypoint.sh
 # runtime artifact updates land beside them). One COPY, so the hardlinks
 # slim-envs.sh made in env-light survive into this layer.
 COPY --from=env-light /var/lib/d2e-flows /var/lib/d2e-flows
+
+# Copy the rest of flow files to the respective plugin directories.
+COPY --from=staging /staged/cohort-discovery-flow /var/lib/d2e-flows/cohort-discovery-flow
+COPY --from=staging /staged/loyalty-score-flow /var/lib/d2e-flows/loyalty-score-flow
+COPY --from=staging /staged/i2b2-flow /var/lib/d2e-flows/i2b2-flow
+COPY --from=staging /staged/data-management-flow /var/lib/d2e-flows/data-management-flow
+COPY --from=staging /staged/search-embedding-flow /var/lib/d2e-flows/search-embedding-flow
+COPY --from=staging /staged/hades-flow /var/lib/d2e-flows/hades-flow
+COPY --from=staging /staged/data-transformation-flow /var/lib/d2e-flows/data-transformation-flow
+COPY --from=staging /staged/d2e-flows /var/lib/d2e-flows/d2e-flows
 
 WORKDIR /app
 ENTRYPOINT ["/entrypoint.sh"]
