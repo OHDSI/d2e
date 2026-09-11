@@ -101,6 +101,22 @@ test(TEST_NAME, async ({ page }) => {
     await expect(dialog.locator('.person-event-view-buttons')).toHaveCount(0)
   })
 
+  await test.step('Assert funnel chart labels use the rule display names', async () => {
+    const funnelLabels = dialog.locator('.funnel-chart g.ytick > text')
+    await expect(funnelLabels.first()).toBeVisible()
+    // Plotly keeps the string it was handed - <br> line breaks from the label wrapping and all -
+    // in data-unformatted, which is also what keys the label hover lookup.
+    const labels = (
+      await funnelLabels.evaluateAll(nodes => nodes.map(n => n.getAttribute('data-unformatted') ?? ''))
+    ).map(label => label.replace(/<br>/g, ' '))
+
+    expect(labels).toContain('+ Gender')
+    expect(labels).toContain('+ Year of Birth')
+    expect(labels.some(l => l.startsWith('+ Condition Occurrence A'))).toBe(true)
+    expect(labels.some(l => l.startsWith('- Visit A'))).toBe(true)
+    expect(labels.every(l => !l.includes('Basic Data'))).toBe(true)
+  })
+
   await test.step('Verify SummaryTable and RulesTable content', async () => {
     await expect(dialog.getByText('Summary Statistics')).toBeVisible()
     await expect(dialog.getByText('Total Persons: 2,694')).toBeVisible()
@@ -109,25 +125,32 @@ test(TEST_NAME, async ({ page }) => {
     const rulesRows = dialog.locator('table.rules-table tbody tr')
     await expect(rulesRows).toHaveCount(4)
 
+    // A Basic Data rule is titled by its attribute name: the shared "Basic Data" card name is
+    // dropped, and the attribute is not repeated as a "<attribute>:" label above its constraint.
     const genderRow = rulesRows.nth(0)
-    await expect(genderRow.locator('td.rule-name')).toContainText('Gender')
+    await expect(genderRow.locator('td.rule-name')).toHaveText(/^\+\s+Gender\b/)
     await expect(genderRow.locator('td.rule-name')).toContainText('FEMALE')
+    await expect(genderRow.locator('td.rule-name')).not.toContainText('Basic Data')
+    await expect(genderRow.locator('td.rule-name')).not.toContainText('Gender:')
     await expect(genderRow).toContainText('1,373')
     await expect(genderRow).toContainText('50.97%')
 
     const yobRow = rulesRows.nth(1)
-    await expect(yobRow.locator('td.rule-name')).toContainText('Year of Birth')
+    await expect(yobRow.locator('td.rule-name')).toHaveText(/^\+\s+Year of Birth\b/)
     await expect(yobRow.locator('td.rule-name')).toContainText('>1950')
+    await expect(yobRow.locator('td.rule-name')).not.toContainText('Basic Data')
+    await expect(yobRow.locator('td.rule-name')).not.toContainText('Year of Birth:')
     await expect(yobRow).toContainText('1,016')
     await expect(yobRow).toContainText('37.71%')
 
+    // Non-Basic cards keep their own card name as the title
     const conditionRow = rulesRows.nth(2)
-    await expect(conditionRow.locator('td.rule-name')).toContainText('Condition Occurrence A')
+    await expect(conditionRow.locator('td.rule-name')).toHaveText(/^\+\s+Condition Occurrence A\b/)
     await expect(conditionRow).toContainText('291')
     await expect(conditionRow).toContainText('10.80%')
 
     const visitRow = rulesRows.nth(3)
-    await expect(visitRow.locator('td.rule-name')).toContainText('Visit A')
+    await expect(visitRow.locator('td.rule-name')).toHaveText(/^-\s+Visit A\b/)
     await expect(visitRow).toContainText('199')
     await expect(visitRow).toContainText('7.39%')
   })
@@ -141,7 +164,7 @@ test(TEST_NAME, async ({ page }) => {
     await expect(dialog.locator('.reorder-loading-overlay')).not.toBeVisible({ timeout: 30000 })
 
     const yobRow = rulesRows.nth(0)
-    await expect(yobRow.locator('td.rule-name')).toContainText('Year of Birth')
+    await expect(yobRow.locator('td.rule-name')).toHaveText(/^\+\s+Year of Birth\b/)
     await expect(yobRow).toContainText('1,983')
     await expect(yobRow).toContainText('73.61%')
 
@@ -151,7 +174,7 @@ test(TEST_NAME, async ({ page }) => {
     await expect(conditionRow).toContainText('20.68%')
 
     const genderRow = rulesRows.nth(2)
-    await expect(genderRow.locator('td.rule-name')).toContainText('Gender')
+    await expect(genderRow.locator('td.rule-name')).toHaveText(/^\+\s+Gender\b/)
     await expect(genderRow).toContainText('291')
     await expect(genderRow).toContainText('10.80%')
 

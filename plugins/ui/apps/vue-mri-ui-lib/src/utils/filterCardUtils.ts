@@ -114,7 +114,8 @@ function formatConstraints(constraints: any): string[] {
 export function extractFilterCardDetail(
   entry: any,
   getAttributeName: GetAttributeNameFn,
-  getAdvanceTimeFilterFormatted: GetAdvanceTimeFilterFormattedFn
+  getAdvanceTimeFilterFormatted: GetAdvanceTimeFilterFormattedFn,
+  isBasicData = false
 ): FilterCardDetail {
   let attributes = entry.attributes
   let isExcluded = false
@@ -146,7 +147,45 @@ export function extractFilterCardDetail(
     }
   }
 
-  return { name: filterCardName, visibleAttributes, visibleAdvanceTime, isExcluded }
+  return { name: filterCardName, visibleAttributes, visibleAdvanceTime, isExcluded, isBasicData }
+}
+
+export interface RuleNamePart {
+  text: string
+  isOr: boolean
+  fc?: FilterCardDetail
+  isBasicData: boolean
+}
+
+/**
+ * Splits a rule name on its OR separators and pairs each part with its filter card detail.
+ *
+ * Basic Data rules are split per attribute, so the attribute name — not the shared
+ * "Basic Data" card name — is the part's real title.
+ */
+export function getRuleNameParts(statName: string, ruleDetails?: RuleFilterCardDetails): RuleNamePart[] {
+  let fcIndex = 0
+  return statName.split(/\b(OR)\b/).map(part => {
+    if (part === 'OR') {
+      return { text: part, isOr: true, fc: undefined, isBasicData: false }
+    }
+    const fc = ruleDetails?.[fcIndex++]
+    const isBasicData = !!fc?.isBasicData
+    const attributeName = fc?.visibleAttributes[0]?.name
+    return { text: isBasicData && attributeName ? attributeName : part, isOr: false, fc, isBasicData }
+  })
+}
+
+/**
+ * Flattens a rule name into a single display string, for places that can't render
+ * per-part markup (chart axis labels, CSV cells). Without ruleDetails this returns
+ * the original name with surrounding whitespace normalised.
+ */
+export function getRuleDisplayName(statName: string, ruleDetails?: RuleFilterCardDetails): string {
+  return getRuleNameParts(statName, ruleDetails)
+    .map(part => part.text.trim())
+    .filter(Boolean)
+    .join(' ')
 }
 
 /**
@@ -162,7 +201,8 @@ export function getInclusionReportFilterCardDetails(
   getAdvanceTimeFilterFormatted: GetAdvanceTimeFilterFormattedFn
 ): RuleFilterCardDetails[] {
   const ruleDetails: RuleFilterCardDetails[] = []
-  const extract = (entry: any) => extractFilterCardDetail(entry, getAttributeName, getAdvanceTimeFilterFormatted)
+  const extract = (entry: any, isBasicData = false) =>
+    extractFilterCardDetail(entry, getAttributeName, getAdvanceTimeFilterFormatted, isBasicData)
 
   // --- Basic Data ---
   const isBasicDataContainer = (bc: any) =>
@@ -181,10 +221,10 @@ export function getInclusionReportFilterCardDetails(
     )
 
     if (attrsWithConstraints.length === 1) {
-      ruleDetails.push([extract(basicEntry)])
+      ruleDetails.push([extract(basicEntry, true)])
     } else {
       for (const attr of attrsWithConstraints) {
-        ruleDetails.push([extract({ ...basicEntry, attributes: { ...basicEntry.attributes, content: [attr] } })])
+        ruleDetails.push([extract({ ...basicEntry, attributes: { ...basicEntry.attributes, content: [attr] } }, true)])
       }
     }
   }
@@ -198,14 +238,14 @@ export function getInclusionReportFilterCardDetails(
   for (const bc of nonBasicContainers) {
     const inclusionCards = bc.content.filter((e: any) => e.op !== 'NOT')
     if (inclusionCards.length > 0) {
-      ruleDetails.push(inclusionCards.map(extract))
+      ruleDetails.push(inclusionCards.map((e: any) => extract(e)))
     }
   }
 
   for (const bc of nonBasicContainers) {
     const exclusionCards = bc.content.filter((e: any) => e.op === 'NOT')
     for (const excCard of exclusionCards) {
-      ruleDetails.push(excCard.content.map(extract))
+      ruleDetails.push(excCard.content.map((e: any) => extract(e)))
     }
   }
 

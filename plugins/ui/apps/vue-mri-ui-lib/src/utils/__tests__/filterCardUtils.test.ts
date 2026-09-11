@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { extractFilterCardDetail, getInclusionReportFilterCardDetails } from '../filterCardUtils'
+import {
+  extractFilterCardDetail,
+  getInclusionReportFilterCardDetails,
+  getRuleNameParts,
+  getRuleDisplayName,
+} from '../filterCardUtils'
 
 // --- fixture helpers ---
 
@@ -250,6 +255,26 @@ describe('getInclusionReportFilterCardDetails – inclusion/exclusion ordering',
     expect(rules[0][0].isExcluded).toBe(false)
   })
 
+  it('flags only Basic Data cards, regardless of their position within an OR group', () => {
+    const bdContainer = makeBasicDataContainer([makeAttr('p.attr.gender', [makeConstraint('=', 'F')])])
+    // Two OR'd cards in one container: the second must not inherit isBasicData from its index
+    const orContainer = makeContainer(
+      makeCard('Condition Occurrence A', [makeAttr('p.attr.c', [makeConstraint('=', 'legacy:243')])]),
+      makeCard('Condition Occurrence B', [makeAttr('p.attr.c', [makeConstraint('=', 'legacy:241')])])
+    )
+    const excContainer = makeContainer(
+      makeExclusionWrapper(makeCard('ExcA', [makeAttr('p.x', [makeConstraint('=', '1')])])),
+      makeExclusionWrapper(makeCard('ExcB', [makeAttr('p.y', [makeConstraint('=', '2')])]))
+    )
+
+    const rules = getInclusionReportFilterCardDetails(
+      [bdContainer, orContainer, excContainer],
+      noopAttrName,
+      noopAdvTime
+    )
+    expect(rules.map(r => r.map((c: any) => c.isBasicData))).toEqual([[true], [false, false], [false], [false]])
+  })
+
   it('orders Basic Data rules before non-Basic inclusion rules before exclusion rules', () => {
     const bdContainer = makeBasicDataContainer([makeAttr('p.attr.gender', [makeConstraint('=', 'F')])])
     const incCard = makeCard('Condition', [makeAttr('p.attr.c', [makeConstraint('=', '1')])])
@@ -258,5 +283,47 @@ describe('getInclusionReportFilterCardDetails – inclusion/exclusion ordering',
 
     const rules = getInclusionReportFilterCardDetails([bdContainer, nonBdContainer], noopAttrName, noopAdvTime)
     expect(rules.map(r => r[0].name)).toEqual(['Basic Data', 'Condition', 'Medication'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+describe('getRuleNameParts / getRuleDisplayName', () => {
+  const detail = (name: string, attrName: string, isBasicData: boolean) => ({
+    name,
+    visibleAttributes: [{ name: attrName, visibleConstraints: ['x'] }],
+    visibleAdvanceTime: [],
+    isExcluded: false,
+    isBasicData,
+  })
+
+  it('titles a Basic Data rule by its attribute name', () => {
+    const parts = getRuleNameParts('Basic Data', [detail('Basic Data', 'Gender', true)])
+    expect(parts.map(p => p.text)).toEqual(['Gender'])
+    expect(getRuleDisplayName('Basic Data', [detail('Basic Data', 'Gender', true)])).toBe('Gender')
+  })
+
+  it('keeps the card name for non-Basic rules on both sides of an OR', () => {
+    const ruleDetails = [
+      detail('Condition Occurrence A', 'Condition concept set', false),
+      detail('Condition Occurrence B', 'Condition concept set', false),
+    ]
+    const name = 'Condition Occurrence A OR Condition Occurrence B'
+    expect(getRuleNameParts(name, ruleDetails).map(p => p.text.trim())).toEqual([
+      'Condition Occurrence A',
+      'OR',
+      'Condition Occurrence B',
+    ])
+    expect(getRuleDisplayName(name, ruleDetails)).toBe(name)
+  })
+
+  it('falls back to the rule name when a Basic Data card has no attributes', () => {
+    const bare = { name: 'Basic Data', visibleAttributes: [], visibleAdvanceTime: [], isExcluded: false, isBasicData: true }
+    expect(getRuleDisplayName('Basic Data', [bare])).toBe('Basic Data')
+  })
+
+  it('returns the original name unchanged when no details are supplied', () => {
+    expect(getRuleDisplayName('Death A')).toBe('Death A')
+    expect(getRuleDisplayName('Cond A OR Cond B')).toBe('Cond A OR Cond B')
   })
 })

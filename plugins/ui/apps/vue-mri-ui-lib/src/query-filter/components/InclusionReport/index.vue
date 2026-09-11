@@ -129,7 +129,8 @@ const {
 const { funnelChartRef, downloadFunnelChart, downloadFunnelChartCSV } = useFunnelChart(
   inclusionReportResponse,
   draggableAttritionStats,
-  getText
+  getText,
+  computed(() => props.filterCardDetails)
 )
 
 const { treemapChartRef, disposeTreemap, downloadTreemapImage, downloadTreemapCSV } = useTreemapChart(

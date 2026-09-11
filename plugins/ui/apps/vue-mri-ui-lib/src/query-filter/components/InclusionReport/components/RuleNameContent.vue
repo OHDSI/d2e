@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RuleFilterCardDetails } from '@/query-filter/types/InclusionReportTypes'
+import { getRuleNameParts } from '@/utils/filterCardUtils'
 
 const props = defineProps<{
   stat: { id: number; name: string; isExclude: boolean }
@@ -8,28 +9,19 @@ const props = defineProps<{
 }>()
 
 /** Pairs each non-OR name part with its corresponding FilterCardDetail (if available) */
-const nameParts = computed(() => {
-  const parts = props.stat.name.split(/\b(OR)\b/)
-  const ruleDetails = props.filterCardDetails?.[props.stat.id]
-  let fcIndex = 0
-  return parts.map(part => ({
-    text: part,
-    isOr: part === 'OR',
-    fc: part !== 'OR' ? ruleDetails?.[fcIndex++] : undefined,
-  }))
-})
+const nameParts = computed(() => getRuleNameParts(props.stat.name, props.filterCardDetails?.[props.stat.id]))
 </script>
 
 <template>
   <span>{{ stat.isExclude ? '-' : '+' }}&nbsp;</span>
   <template v-for="(part, i) in nameParts" :key="i">
-    <b v-if="part.isOr">OR</b>
+    <b v-if="part.isOr"> OR </b>
     <template v-else>
       {{ part.text }}
       <div v-if="part.fc" class="filter-card-details">
         <template v-for="attribute in part.fc.visibleAttributes" :key="attribute.name">
           <div class="bookmark-attribute">
-            <span class="bookmark-element">{{ attribute.name }}: </span>
+            <span v-if="!part.isBasicData" class="bookmark-element">{{ attribute.name }}: </span>
             <span
               v-for="(constraint, cIdx) in attribute.visibleConstraints"
               :key="cIdx"
