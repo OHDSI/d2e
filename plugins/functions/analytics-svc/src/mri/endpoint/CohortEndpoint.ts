@@ -82,6 +82,22 @@ export class CohortEndpoint {
         private sourceResultsSchemaName?: string
     ) {}
 
+    // TO_NVARCHAR and TO_DATE are HANA built-ins. Every other dialect reaches
+    // this endpoint through trex, which executes the SQL in DuckDB, where
+    // neither function exists -- the query fails to bind before it can run.
+    // ANSI casts are equivalent here and are understood by both engines.
+    private toText(expression: string): string {
+        return this.dialect === ANALYTICS_DB_DIALECTS.HANA
+            ? `TO_NVARCHAR(${expression})`
+            : `CAST(${expression} AS VARCHAR)`;
+    }
+
+    private toDate(expression: string): string {
+        return this.dialect === ANALYTICS_DB_DIALECTS.HANA
+            ? `TO_DATE(${expression})`
+            : `CAST(${expression} AS DATE)`;
+    }
+
     public static async createCohortEndpoint(
         connection: ConnectionInterface,
         schemaName: string,
@@ -159,7 +175,7 @@ export class CohortEndpoint {
                     queryValues.push(queryParams[key]);
                     break;
                 case "DATE":
-                    selectQueryString += `WHERE TO_DATE(cd.COHORT_INITIATION_DATE) = TO_DATE(%s)`;
+                    selectQueryString += `WHERE ${this.toDate("cd.COHORT_INITIATION_DATE")} = ${this.toDate("%s")}`;
                     queryValues.push(queryParams[key]);
                     break;
                 case "SYNTAX":
@@ -171,7 +187,7 @@ export class CohortEndpoint {
                     ];
                     let syntaxFilterSql = "";
                     const syntaxFilter =
-                        "TO_NVARCHAR(cd.COHORT_DEFINITION_SYNTAX) LIKE %s";
+                        `${this.toText("cd.COHORT_DEFINITION_SYNTAX")} LIKE %s`;
                     for (const filterKey of filterableKeys) {
                         if (queryParams[key][filterKey]) {
                             if (syntaxFilterSql === "") {
@@ -290,9 +306,9 @@ export class CohortEndpoint {
                 SELECT
                     COHORT_DEFINITION_ID,
                     COHORT_DEFINITION_NAME,
-                    TO_NVARCHAR(COHORT_DEFINITION_DESCRIPTION) AS COHORT_DEFINITION_DESCRIPTION,
+                    ${this.toText("COHORT_DEFINITION_DESCRIPTION")} AS COHORT_DEFINITION_DESCRIPTION,
                     COHORT_INITIATION_DATE,
-                    TO_NVARCHAR(COHORT_DEFINITION_SYNTAX) AS COHORT_DEFINITION_SYNTAX
+                    ${this.toText("COHORT_DEFINITION_SYNTAX")} AS COHORT_DEFINITION_SYNTAX
                 FROM ${this.schemaName}.COHORT_DEFINITION cd
         `;
 
@@ -746,8 +762,8 @@ export class CohortEndpoint {
     ): Promise<number> {
         let selectQueryString = `SELECT COHORT_DEFINITION_ID AS "COHORT_DEFINITION_ID" FROM ${this.schemaName}.COHORT_DEFINITION 
         WHERE COHORT_DEFINITION_NAME=%s AND 
-        TO_DATE(COHORT_INITIATION_DATE)=TO_DATE(%s) AND 
-        TO_NVARCHAR(COHORT_DEFINITION_SYNTAX)=%s
+        ${this.toDate("COHORT_INITIATION_DATE")}=${this.toDate("%s")} AND 
+        ${this.toText("COHORT_DEFINITION_SYNTAX")}=%s
         `;
         const sqlParams = [
             cohortDefinition.name,
@@ -758,7 +774,7 @@ export class CohortEndpoint {
         // Add description clause only if description is not null
         if (cohortDefinition.description !== null) {
             selectQueryString +=
-                " AND TO_NVARCHAR(COHORT_DEFINITION_DESCRIPTION)=%s";
+                ` AND ${this.toText("COHORT_DEFINITION_DESCRIPTION")}=%s`;
             sqlParams.push(cohortDefinition.description);
         }
 
