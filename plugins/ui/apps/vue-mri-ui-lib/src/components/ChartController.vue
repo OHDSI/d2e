@@ -1,11 +1,6 @@
 <template>
   <div class="chartController" v-bind:class="{ withoutAxis: withoutAxis, genomics: getActiveChart === 'vb' }">
     <div v-if="getChartCover" class="chartCover"></div>
-    <div v-if="isBelowMinCohortSize && !chartBusy" class="min-cohort-placeholder">
-      <CohortDefinitionIcon class="min-cohort-placeholder__icon" />
-      <div class="min-cohort-placeholder__title">{{ getText('MRI_PA_NOT_ENOUGH_DATA_TITLE') }}</div>
-      <div class="min-cohort-placeholder__message">{{ notEnoughDataMessage }}</div>
-    </div>
     <div class="chartControllerContent">
       <div class="axisContainer" ref="axisContainer">
         <!-- <div class="kaplanAxis-label" v-if="getActiveChart === 'vb'">{{ getText('MRI_PA_KAPLAN_AXIS_TITLE') }}</div> -->
@@ -61,6 +56,11 @@
         </div>
       </div>
       <div class="chartContainer">
+        <div v-if="isBelowMinCohortSize && !chartBusy" class="min-cohort-placeholder">
+          <CohortDefinitionIcon class="min-cohort-placeholder__icon" />
+          <div class="min-cohort-placeholder__title">{{ getText('MRI_PA_NOT_ENOUGH_DATA_TITLE') }}</div>
+          <div class="min-cohort-placeholder__message">{{ notEnoughDataMessage }}</div>
+        </div>
         <loadingAnimation v-if="showChartLoadingAnimation"></loadingAnimation>
         <stackBarChart
           v-if="getActiveChart === 'stacked'"

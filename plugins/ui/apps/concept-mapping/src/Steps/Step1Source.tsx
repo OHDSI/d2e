@@ -103,6 +103,15 @@ export const Step1Source: FC<Step1SourceProps> = ({
   const state = useContext(ConceptMappingContext);
   const dispatch = useContext<React.Dispatch<DispatchType>>(ConceptMappingDispatchContext);
   const nodeColumns = useMemo(() => (sourceNode ? extractColumns(sourceNode) : null), [sourceNode]);
+  // The dataset endpoint returns datasets in creation order; the dropdown lists them A-Z so a
+  // user can find one by name. Datasets without a name sort last rather than throwing.
+  const sortedDatasets = useMemo(
+    () =>
+      [...datasets].sort((a, b) =>
+        (a.studyDetail?.name ?? "").localeCompare(b.studyDetail?.name ?? "", undefined, { sensitivity: "base" })
+      ),
+    [datasets]
+  );
 
   // Set the wizard source AND bridge its rows into csvData so Step 3's MappingTable,
   // auto-populate and Save (which all read conceptMappingState.csvData.data) have real
@@ -406,7 +415,7 @@ export const Step1Source: FC<Step1SourceProps> = ({
                 onChange={handleDataset}
                 disabled={state.wizard.mappingStarted}
               >
-                {datasets.map((d) => (
+                {sortedDatasets.map((d) => (
                   <MenuItem value={d.id} key={d.id}>
                     {d.studyDetail?.name}
                   </MenuItem>

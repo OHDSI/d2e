@@ -60,6 +60,14 @@ for p in "${SUBPLUGINS[@]}"; do
   fi
 done
 
+DQ_DIR="$ATLAS_DIR/subplugins/data-quality"
+echo "[build-atlas] Building sub-plugin: data-quality ($DQ_DIR)"
+( cd "$DQ_DIR" && npm install && npm run build )
+if [ ! -f "$DQ_DIR/dist/index.system.js" ]; then
+  echo "[build-atlas] ERROR: data-quality did not produce dist/index.system.js" >&2
+  exit 1
+fi
+
 echo "[build-atlas] Building the Atlas plugin (assembles Atlas3 + sub-plugin dists)..."
 ( cd "$ATLAS_DIR" && npm install && npm run build )
 

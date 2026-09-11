@@ -193,6 +193,20 @@ describe("ConceptMappingSuggestionService.addSuggestion", () => {
     assertEquals(suggestionRepo.items[0].suggestedBy, "user-a");
   });
 
+  it("records the acting user's username so the table can show who checked the row", async () => {
+    const dto = await service.addSuggestion(
+      DATAFLOW_ID,
+      NODE_ID,
+      ROW_ID,
+      CONCEPT_A,
+      "user-a",
+      "alice",
+    );
+
+    assertEquals(dto.suggestedByName, "alice");
+    assertEquals(suggestionRepo.items[0].suggestedByName, "alice");
+  });
+
   it("rejects a duplicate suggestion (same targetConceptId for the row) with a ConflictError", async () => {
     await service.addSuggestion(DATAFLOW_ID, NODE_ID, ROW_ID, CONCEPT_A, "user-a");
 
@@ -309,7 +323,42 @@ describe("ConceptMappingSuggestionService.approve", () => {
   });
 });
 
+describe("ConceptMappingSuggestionService.approve - approver identity", () => {
+  it("records the approver's username, which can differ from the suggester's", async () => {
+    const suggestion = await service.addSuggestion(
+      DATAFLOW_ID,
+      NODE_ID,
+      ROW_ID,
+      CONCEPT_A,
+      "user-a",
+      "alice",
+    );
+
+    await service.approve(suggestion.id, "user-b", "bob");
+
+    assertEquals(suggestionRepo.items[0].approvedByName, "bob");
+    assertEquals(suggestionRepo.items[0].suggestedByName, "alice");
+  });
+});
+
 describe("ConceptMappingSuggestionService.unapprove", () => {
+  it("clears the approver's username along with the approval", async () => {
+    const suggestion = await service.addSuggestion(
+      DATAFLOW_ID,
+      NODE_ID,
+      ROW_ID,
+      CONCEPT_A,
+      "user-a",
+      "alice",
+    );
+    await service.approve(suggestion.id, "user-b", "bob");
+
+    await service.unapprove(suggestion.id, "user-b");
+
+    assertEquals(suggestionRepo.items[0].approvedByName, null);
+  });
+
+
   it("clears isApproved on the suggestion", async () => {
     const suggestion = await service.addSuggestion(
       DATAFLOW_ID,
@@ -374,6 +423,23 @@ describe("ConceptMappingSuggestionService.clearNode", () => {
 });
 
 describe("ConceptMappingSuggestionService.listByNode", () => {
+  it("exposes suggestedByName and approvedByName on each suggestion", async () => {
+    const suggestion = await service.addSuggestion(
+      DATAFLOW_ID,
+      NODE_ID,
+      ROW_ID,
+      CONCEPT_A,
+      "user-a",
+      "alice",
+    );
+    await service.approve(suggestion.id, "user-b", "bob");
+
+    const rows = await service.listByNode(DATAFLOW_ID, NODE_ID);
+
+    assertEquals(rows[0].suggestions[0].suggestedByName, "alice");
+    assertEquals(rows[0].suggestions[0].approvedByName, "bob");
+  });
+
   it("groups suggestions by sourceRowId and attaches the row's flagged state", async () => {
     await service.addSuggestion(DATAFLOW_ID, NODE_ID, "row-1", CONCEPT_A, "user-a");
     await service.addSuggestion(DATAFLOW_ID, NODE_ID, "row-1", CONCEPT_B, "user-b");

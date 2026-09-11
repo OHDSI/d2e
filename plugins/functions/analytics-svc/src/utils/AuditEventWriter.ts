@@ -95,6 +95,9 @@ export function createPatientAccessAuditTransport(
             try {
                 await writer.append(PATIENT_ACCESS_AUDIT_FILE, {
                     ...eventData,
+                    "log-type": "audit",
+                    "audit-log-type": "access",
+                    "service-name": "analytics-svc",
                     schemaVersion: 1,
                     eventType: "patient.access",
                     actor: {
