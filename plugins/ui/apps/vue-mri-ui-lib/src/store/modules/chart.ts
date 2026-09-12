@@ -319,7 +319,8 @@ const actions = {
     commit(types.ZIP_DOWNLOAD_ERROR, { zipDownloadError })
   },
   setInitialAxisSelection({ getters, dispatch, rootGetters }) {
-    const initialAxis = rootGetters.getMriFrontendConfig.getInitialAxisSelection()
+    const mriFrontendConfig = rootGetters.getMriFrontendConfig
+    const initialAxis = mriFrontendConfig.getInitialAxisSelection()
     for (let i = 0; i < Constants.MRIChartDimensions.Count; i += 1) {
       let filterCardId = ''
       let key = ''
@@ -328,6 +329,7 @@ const actions = {
         key = axisValue.pop()
         axisValue.pop()
         filterCardId = axisValue.join('.')
+        const defaultBinSize = mriFrontendConfig.getAttributeByPath(initialAxis[i])?.getDefaultBinSize?.()
 
         dispatch('setAxisValue', {
           id: i,
@@ -335,12 +337,13 @@ const actions = {
             key,
             filterCardId,
             attributeId: initialAxis[i],
+            binsize: defaultBinSize ?? '',
           },
         })
       } else {
         dispatch('setAxisValue', {
           id: i,
-          props: { key: '', filterCardId: '' },
+          props: { key: '', filterCardId: '', attributeId: '', binsize: '' },
         })
       }
     }
@@ -373,10 +376,18 @@ const actions = {
   releaseFireRequest({ commit }) {
     commit(types.CHART_RELEASE_FIRE_REQUEST)
   },
-  resetChart({ dispatch, getters }) {
-    dispatch('resetChartProperties')
-    const initialIFR = getters.getMriFrontendConfig.getInitialIFR()
-    return dispatch('setIFRState', { ifr: initialIFR }).then(() => dispatch('setupChartDefaults'))
+  async resetChart({ dispatch, getters }) {
+    await dispatch('holdFireRequest')
+    try {
+      await dispatch('queryReset')
+      await dispatch('resetChartProperties')
+      const initialIFR = getters.getMriFrontendConfig.getInitialIFR()
+      await dispatch('setIFRState', { ifr: initialIFR })
+      await dispatch('setupChartDefaults')
+    } finally {
+      await dispatch('releaseFireRequest')
+    }
+    await dispatch('setFireRequest')
   },
   setBarChartType({ commit, dispatch, state, rootGetters }, modeId: string) {
     const previousMode = state.barDisplayMode
